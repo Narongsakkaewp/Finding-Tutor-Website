@@ -9,11 +9,39 @@ function Register() {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [type, setType] = useState('');
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        // TODO: เชื่อมต่อ database หรือ API สำหรับ register
-        // ตัวอย่าง: registerUser({ name, email, password, role });
-    };
+    const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+        alert('รหัสผ่านไม่ตรงกัน');
+        return;
+    }
+
+    if (password.length < 8) {
+        alert('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร');
+        return;
+    }
+
+    if (!type) {
+        alert('กรุณาเลือกประเภทผู้ใช้งาน');
+        return;
+    }
+    try {
+        const res = await fetch('http://localhost:5000/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, lastname, email, password, type }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert('สมัครสมาชิกสำเร็จ');
+            // อาจ redirect ไปหน้า login
+        } else {
+            alert(data.message || 'สมัครสมาชิกไม่สำเร็จ');
+        }
+    } catch (err) {
+        alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+    }
+};
 
     return (
         <div className="bg-gray-100 p-8 flex flex-col items-center">
