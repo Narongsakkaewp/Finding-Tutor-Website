@@ -1,6 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
+import Login from '../pages/Login';
+import Register from '../pages/Register';
 
 function Index() {
+  const [showLogin, setShowLogin] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
+
+  const handleClose = () => {
+    setShowLogin(false);
+    setShowRegister(false);
+  };
+
   return (
     <div className="bg-gray-100 min-h-screen">
       {/* Navbar */}
@@ -11,8 +21,18 @@ function Index() {
         <div className="flex gap-4 items-center">
           <a href="#" className="font-bold text-black hover:text-blue-600">หน้าหลัก</a>
           <a href="#" className="font-bold text-black hover:text-blue-600">เกี่ยวกับ</a>
-          <button className="bg-gray-700 text-white font-bold px-4 py-2 rounded">เข้าสู่ระบบ</button>
-          <button className="bg-gray-200 text-gray-700 font-bold px-4 py-2 rounded">ลงทะเบียน</button>
+          <button
+            className="bg-gray-700 text-white font-bold px-4 py-2 rounded"
+            onClick={() => setShowLogin(true)}
+          >
+            เข้าสู่ระบบ
+          </button>
+          <button
+            className="bg-gray-200 text-gray-700 font-bold px-4 py-2 rounded"
+            onClick={() => setShowRegister(true)}
+          >
+            ลงทะเบียน
+          </button>
         </div>
       </div>
 
@@ -65,6 +85,24 @@ function Index() {
           </div>
         </div>
       </div>
+
+      {/* Popup Modal */}
+      {(showLogin || showRegister) && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="relative bg-transparent">
+            <button
+              className="absolute -top-2 -right-6 text-3xl text-white"
+              onClick={handleClose}
+            >
+              &times;
+            </button>
+            <div className="bg-white rounded shadow-lg p-0">
+              {showLogin && <Login />}
+              {showRegister && <Register />}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
