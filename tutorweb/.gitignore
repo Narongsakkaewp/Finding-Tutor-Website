@@ -1,0 +1,25 @@
+# Node modules
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Tailwind CSS cache
+.tailwind-cache/
+.cache/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.*.local
+
+# IDE/Editor folders
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
