@@ -38,7 +38,7 @@ function Index() {
 
       {/* Features Section */}
       <div className="px-8 py-10">
-        <h1 className="text-5xl font-bold text-center mb-4">ค้นหาติวเตอร์ติวเตอร์</h1>
+        <h1 className="text-5xl font-bold text-center mb-4">ค้นหาติวเตอร์</h1>
         <h1 className="text-lg text-center mb-6">สมัครสมาชิกเพื่อค้นหาติวเตอร์ที่คุณต้องการได้เลย</h1>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Card 1 */}
