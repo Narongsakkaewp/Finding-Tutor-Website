@@ -24,34 +24,37 @@ function Register() {
                     style={{ maxWidth: 500 }}
                 >
                     <h2 className="text-2xl font-bold mb-8 text-center">ลงทะเบียน</h2>
-                    <div className="w-full mb-4">
-                        <label className="block font-bold mb-2">ชื่อ</label>
-                        <input
-                            type="text"
-                            className="w-full px-4 py-2 rounded bg-gray-100 outline-none"
-                            placeholder="Input name"
-                            value={name}
-                            onChange={e => setName(e.target.value)}
-                            required
-                        />
+                    <div className="w-full mb-4 flex flex-row gap-4">
+                        <div className="w-full mb-4">
+                            <label className="block font-bold mb-2">ชื่อ</label>
+                            <input
+                                type="text"
+                                className="w-full px-4 py-2 rounded bg-gray-100 outline-none"
+                                placeholder="ชื่อ"
+                                value={name}
+                                onChange={e => setName(e.target.value)}
+                                required
+                            />
+                        </div>
+                        <div className="w-full mb-4">
+                            <label className="block font-bold mb-2">นามสกุล</label>
+                            <input
+                                type="text"
+                                className="w-full px-4 py-2 rounded bg-gray-100 outline-none"
+                                placeholder="นามสกุล"
+                                value={lastname}
+                                onChange={e => setLastname(e.target.value)}
+                                required
+                            />
+                        </div>
                     </div>
-                    <div className="w-full mb-4">
-                        <label className="block font-bold mb-2">นามสกุล</label>
-                        <input
-                            type="text"
-                            className="w-full px-4 py-2 rounded bg-gray-100 outline-none"
-                            placeholder="Input Lastname"
-                            value={lastname}
-                            onChange={e => setLastname(e.target.value)}
-                            required
-                        />
-                    </div>
+
                     <div className="w-full mb-4">
                         <label className="block font-bold mb-2">Email</label>
                         <input
                             type="email"
                             className="w-full px-4 py-2 rounded bg-gray-100 outline-none"
-                            placeholder="example.email@gmail.com"
+                            placeholder="example@email.com"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
                             required
@@ -63,7 +66,7 @@ function Register() {
                             <input
                                 type={showPassword ? "text" : "password"}
                                 className="w-full px-4 pr-10 py-2 rounded bg-gray-100 outline-none"
-                                placeholder="Enter at least 8+ characters"
+                                placeholder="กรุณากรอกอย่างน้อย 8 ตัวอักษร"
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
                                 required
@@ -83,7 +86,7 @@ function Register() {
                             <input
                                 type={showPassword ? "text" : "password"}
                                 className="w-full px-4 pr-10 py-2 rounded bg-gray-100 outline-none"
-                                placeholder="Enter at least 8+ characters"
+                                placeholder="กรอกรอกรหัสผ่านอีกครั้ง"
                                 value={confirmPassword}
                                 onChange={e => setConfirmPassword(e.target.value)}
                                 required
