@@ -1,16 +1,31 @@
 import React, { useState } from 'react';
-
+ 
 function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // TODO: เชื่อมต่อ database หรือ API สำหรับ login
-    // ตัวอย่าง: loginUser({ email, password });
-  };
-
+ 
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  try {
+    const res = await fetch('http://localhost:5000/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert('เข้าสู่ระบบสำเร็จ');
+      // ตัวอย่าง: redirect หรือเก็บข้อมูล user
+      // window.location.href = '/dashboard';
+    } else {
+      alert(data.message || 'เข้าสู่ระบบไม่สำเร็จ');
+    }
+  } catch (err) {
+    alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+  }
+};
+ 
   return (
     <div className="bg-gray-100 p-8 flex flex-col items-center">
       <div className="w-full max-w-2xl mx-auto">
@@ -72,5 +87,5 @@ function Login() {
     </div>
   );
 }
-
+ 
 export default Login;
