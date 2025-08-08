@@ -27,7 +27,7 @@ db.connect((err) => {
 
 // ตัวอย่าง API ดึง Users
 app.get('/api/users', (req, res) => {
-    db.query('SELECT * FROM users', (err, results) => {
+    db.query('SELECT * FROM register', (err, results) => {
         if (err) return res.status(500).send(err);
         res.json(results);
     });
@@ -36,7 +36,7 @@ app.get('/api/users', (req, res) => {
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     db.query(
-        'SELECT * FROM users WHERE email = ? AND password = ?',
+        'SELECT * FROM register WHERE email = ? AND password = ?',
         [email, password],
         (err, results) => {
             if (err) return res.status(500).send(err);
@@ -52,13 +52,13 @@ app.post('/api/login', (req, res) => {
 app.post('/api/register', (req, res) => {
     console.log('req.body:', req.body);
     const { name, lastname, email, password, type } = req.body;
-    db.query('SELECT * FROM users WHERE email = ?', [email], (err, results) => {
+    db.query('SELECT * FROM register WHERE email = ?', [email], (err, results) => {
         if (err) return res.status(500).send(err);
         if (results.length > 0) {
             return res.json({ success: false, message: 'อีเมลนี้ถูกใช้แล้ว' });
         }
         db.query(
-            'INSERT INTO users (name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO register (name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?)',
             [name, lastname, email, password, type],
             (err, result) => {
                 if (err) return res.status(500).send(err);
