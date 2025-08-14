@@ -1,6 +1,7 @@
+// Login.jsx
 import React, { useState } from 'react';
  
-function Login() {
+function Login(props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -16,6 +17,7 @@ function Login() {
     const data = await res.json();
     if (data.success) {
       alert('เข้าสู่ระบบสำเร็จ');
+      props.setIsAuthenticated(true);
       // ตัวอย่าง: redirect หรือเก็บข้อมูล user
       // window.location.href = '/dashboard';
     } else {

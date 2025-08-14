@@ -1,8 +1,9 @@
+// Index.jsx
 import React, { useState } from 'react';
 import Login from '../pages/Login';
 import Register from '../pages/Register';
 
-function Index() {
+function Index({ setIsAuthenticated }) {
   const [showLogin, setShowLogin] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
 
@@ -97,8 +98,8 @@ function Index() {
               &times;
             </button>
             <div className="bg-white rounded shadow-lg p-0">
-              {showLogin && <Login />}
-              {showRegister && <Register />}
+              {showLogin && <Login setIsAuthenticated={setIsAuthenticated} />}
+              {showRegister && <Register setIsAuthenticated={setIsAuthenticated} />}
             </div>
           </div>
         </div>
