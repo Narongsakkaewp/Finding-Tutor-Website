@@ -1,12 +1,15 @@
 import React, { useState } from "react";
 
-const Navbar = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+const Navbar = ({ setIsAuthenticated }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('isAuthenticated');
+  };
 
   return (
     <div>
-      {/* Navbar */}
       <nav className="flex items-center justify-between bg-white p-4 text-black shadow">
         {/* Logo */}
         <div className="font-bold text-xl">Finding Tutor</div>
@@ -42,31 +45,19 @@ const Navbar = () => {
                   <a href="#" className="block px-4 py-2 hover:bg-gray-100">ตั้งค่า</a>
                 </li>
                 <li>
-                  <a href="#" className="block px-4 py-2 hover:bg-gray-100">ออกจากระบบ</a>
+                  <button
+                    onClick={handleLogout}
+                    className="block w-full text-left px-4 py-2 hover:bg-gray-100"
+                  >
+                    ออกจากระบบ
+                  </button>
                 </li>
               </ul>
             </div>
           )}
         </div>
         {/* Sidebar Toggle (Mobile) */}
-        {/* <button
-          className="md:hidden px-3 py-2"
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-        >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-        </button> */}
+        {/* ...hamburger button... */}
       </nav>
     </div>
   );

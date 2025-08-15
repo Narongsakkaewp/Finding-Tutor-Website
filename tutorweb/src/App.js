@@ -19,7 +19,7 @@ function App() {
         <Index setIsAuthenticated={setIsAuthenticated} />
       ) : (
         <>
-          <Navbar setSidebarOpen={setSidebarOpen} sidebarOpen={sidebarOpen} />
+          <Navbar setIsAuthenticated={setIsAuthenticated} setSidebarOpen={setSidebarOpen} sidebarOpen={sidebarOpen} />
           <div className="flex">
             {/* {sidebarOpen && (
               <div

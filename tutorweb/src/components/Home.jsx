@@ -42,7 +42,7 @@ function Home() {
         <Card />
         <Card />
       </div>
-      <h2 className="font-bold text-2xl mb-4">รีวิวสุดฮิต</h2>
+      <h2 className="font-bold text-2xl mb-4">วิชาสุดฮิต</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card />
         <Card />

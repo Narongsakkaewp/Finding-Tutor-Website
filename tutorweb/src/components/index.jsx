@@ -17,7 +17,7 @@ function Index({ setIsAuthenticated }) {
       {/* Navbar */}
       <div className="flex items-center justify-between px-8 py-4 bg-white">
         {/* Logo */}
-        <img src="https://via.placeholder.com/120x50?text=LOGO" alt="Logo" className="h-12" />
+        <img src="" alt="Logo" className="h-12" />
         {/* Menu */}
         <div className="flex gap-4 items-center">
           <a href="#" className="font-bold text-black hover:text-blue-600">หน้าหลัก</a>
