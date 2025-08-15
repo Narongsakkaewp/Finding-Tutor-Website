@@ -1,8 +1,10 @@
 import React from 'react';
 
-const Notification = ({ message, type = 'info', onClose }) => {
-  if (!message) return null;
-
+const Notification = ({
+  message = 'นี่คือข้อความแจ้งเตือนตัวอย่าง 🚀', // ข้อความ default
+  type = 'info',
+  onClose
+}) => {
   const bgColor = {
     success: 'bg-green-100 border-green-400 text-green-700',
     error: 'bg-red-100 border-red-400 text-red-700',
@@ -11,7 +13,10 @@ const Notification = ({ message, type = 'info', onClose }) => {
   }[type];
 
   return (
-    <div className={`border px-4 py-3 rounded relative mb-4 ${bgColor}`} role="alert">
+    <div
+      className={`border px-4 py-3 rounded relative mb-4 ${bgColor}`}
+      role="alert"
+    >
       <span className="block sm:inline">{message}</span>
       {onClose && (
         <button

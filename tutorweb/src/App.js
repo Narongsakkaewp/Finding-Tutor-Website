@@ -2,16 +2,29 @@ import React, { useState, useEffect } from 'react';
 import Index from './components/index';
 import Navbar from './components/navbar';
 import Home from './components/Home';
+import Notification from './components/Notification';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
     () => localStorage.getItem('isAuthenticated') === 'true'
   );
-  const [sidebarOpen, setSidebarOpen] = useState(false); // เพิ่ม state สำหรับ sidebar
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState('home'); // state สำหรับเลือกหน้า
 
   useEffect(() => {
     localStorage.setItem('isAuthenticated', isAuthenticated);
   }, [isAuthenticated]);
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'home':
+        return <Home />;
+      case 'notification':
+        return <Notification />;
+      default:
+        return <Home />;
+    }
+  };
 
   return (
     <div>
@@ -19,26 +32,33 @@ function App() {
         <Index setIsAuthenticated={setIsAuthenticated} />
       ) : (
         <>
-          <Navbar setIsAuthenticated={setIsAuthenticated} setSidebarOpen={setSidebarOpen} sidebarOpen={sidebarOpen} />
+          <Navbar 
+            setSidebarOpen={setSidebarOpen} 
+            sidebarOpen={sidebarOpen} 
+            setIsAuthenticated={setIsAuthenticated} // ✅ ส่ง prop มาให้ Navbar
+          />
           <div className="flex">
-            {/* {sidebarOpen && (
-              <div
-                className="fixed inset-0 bg-black bg-opacity-30 z-40 md:hidden"
-                onClick={() => setSidebarOpen(false)}
-              />
-            )} */}
             <div
-              className={`hidden md:block w-64 bg-white border-r min-h-screen`}>
+              className={`hidden md:block w-64 bg-white border-r min-h-screen`}
+            >
               <ul className="p-6 space-y-4">
                 <li>
-                  <a href="#" className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
-                    <i className="bi bi-house-door-fill font-bold text-2xl"></i> หน้าหลัก
-                  </a>
+                  <button
+                    onClick={() => setCurrentPage('home')}
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
+                  >
+                    <i className="bi bi-house-door-fill font-bold text-2xl"></i>
+                    หน้าหลัก
+                  </button>
                 </li>
                 <li>
-                  <a href="#" className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
-                    <i className="bi bi-bell-fill font-bold text-2xl"></i> การแจ้งเตือน
-                  </a>
+                  <button
+                    onClick={() => setCurrentPage('notification')}
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
+                  >
+                    <i className="bi bi-bell-fill font-bold text-2xl"></i>
+                    การแจ้งเตือน
+                  </button>
                 </li>
                 <li>
                   <a href="#" className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
@@ -56,16 +76,17 @@ function App() {
                   </a>
                 </li>
                 <li className="pt-10">
-                  <a href="#" className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
+                  <button
+                    onClick={() => setIsAuthenticated(false)}
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
+                  >
                     <i className="bi bi-box-arrow-right font-bold text-2xl"></i> ออกจากระบบ
-                  </a>
+                  </button>
                 </li>
-              </ul>
+             </ul>
             </div>
             {/* Content */}
-            <div className="flex-1 px-8 pt-6">
-              <Home />
-            </div>
+            <div className="flex-1 px-8 pt-6">{renderPage()}</div>
           </div>
         </>
       )}
