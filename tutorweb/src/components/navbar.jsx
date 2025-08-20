@@ -8,7 +8,7 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
     // ดึง userId จาก localStorage หลัง login
     const userId = localStorage.getItem('userId');
     if (userId) {
-      fetch(`http://localhost:5000/api/user/${userId}`)
+      fetch(`http://localhost:3001/api/user/${userId}`)
         .then(res => res.json())
         .then(data => {
           console.log('API response:', data);

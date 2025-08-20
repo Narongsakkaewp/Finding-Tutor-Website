@@ -57,15 +57,15 @@ app.post('/api/login', (req, res) => {
  
 app.post('/api/register', (req, res) => {
     console.log('req.body:', req.body);
-    const { name, lastname, email, password, type } = req.body;
+    const { user_id,name, lastname, email, password, type } = req.body;
     db.query('SELECT * FROM register WHERE email = ?', [email], (err, results) => {
         if (err) return res.status(500).send(err);
         if (results.length > 0) {
             return res.json({ success: false, message: 'อีเมลนี้ถูกใช้แล้ว' });
         }
         db.query(
-            'INSERT INTO register (name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?)',
-            [name, lastname, email, password, type],
+            'INSERT INTO register (user_id,name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?)',
+            [user_id, name, lastname, email, password, type],
             (err, result) => {
                 if (err) return res.status(500).send(err);
                 res.json({ success: true, message: 'สมัครสมาชิกสำเร็จ' });
@@ -73,6 +73,8 @@ app.post('/api/register', (req, res) => {
         );
     });
 });
+
+
  
  
 const PORT = process.env.PORT || 5000;

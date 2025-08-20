@@ -31,6 +31,18 @@ function App() {
         return <Home />;
     }
   };
+  function getUserType() {
+    const raw = localStorage.getItem('userType');
+    if (!raw) return null;
+    try {
+      // เผื่อเคยเก็บด้วย JSON.stringify("student") -> "\"student\""
+      const parsed = JSON.parse(raw);
+      return typeof parsed === 'string' ? parsed : null;
+    } catch {
+      // เก็บเป็นสตริงปกติ
+      return raw;
+    }
+  }
 
   return (
     <div>
@@ -69,11 +81,13 @@ function App() {
                 <li>
                   <button
                     onClick={() => {
-                      const userType = localStorage.getItem('userType');
+                      const userType = getUserType(); // หรือ localStorage.getItem('userType')
                       if (userType === 'student') {
                         setCurrentPage('student_info');
                       } else if (userType === 'tutor') {
                         setCurrentPage('tutor_info');
+                      } else {
+                        alert('ยังไม่ทราบบทบาทผู้ใช้ (student/tutor)...');
                       }
                     }}
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"

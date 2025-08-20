@@ -14,18 +14,39 @@ function Login(props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (data.success) {
-        alert('เข้าสู่ระบบสำเร็จ');
-        localStorage.setItem('userType', data.userType);
-        props.setIsAuthenticated(true);
-      } else {
-        alert(data.message || 'เข้าสู่ระบบไม่สำเร็จ');
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
       }
+
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.message || 'เข้าสู่ระบบไม่สำเร็จ');
+        return;
+      }
+
+      // ดึง role จากหลายชื่อฟิลด์ + normalize
+      let role =
+        data.userType ??
+        data.role ??
+        data.user?.userType ??
+        data.user?.role ??
+        '';
+
+      if (role !== 'student' && role !== 'tutor') {
+        alert('API ไม่ได้ส่งบทบาทผู้ใช้กลับมา (student/tutor). โปรดตรวจสอบ backend');
+        return;
+      }
+
+      localStorage.setItem('userType', role);   // << ใช้ role ที่ normalize แล้ว
+      props.setIsAuthenticated(true);
+      alert('เข้าสู่ระบบสำเร็จ');
     } catch (err) {
+      console.error(err);
       alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
     }
   };
+
 
   return (
     <div className="bg-gray-100 p-8 flex flex-col items-center">
