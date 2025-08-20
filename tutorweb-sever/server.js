@@ -26,11 +26,17 @@ db.connect((err) => {
 });
  
 // ตัวอย่าง API ดึง Users
-app.get('/api/users', (req, res) => {
-    db.query('SELECT * FROM register', (err, results) => {
-        if (err) return res.status(500).send(err);
-        res.json(results);
-    });
+app.get('/api/user/:userId', (req, res) => {
+  const userId = req.params.userId;
+  db.query(
+    'SELECT type FROM register WHERE user_id = ?',
+    [userId],
+    (err, results) => {
+      if (err) return res.status(500).json({ error: 'Database error' });
+      if (results.length === 0) return res.status(404).json({ error: 'User not found' });
+      res.json({ userType: results[0].type });
+    }
+  );
 });
  
 app.post('/api/login', (req, res) => {

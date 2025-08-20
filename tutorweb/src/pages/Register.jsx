@@ -35,6 +35,7 @@ function Register() {
         const data = await res.json();
         if (data.success) {
             alert('สมัครสมาชิกสำเร็จ');
+            localStorage.setItem('userType', type);
             // อาจ redirect ไปหน้า login
         } else {
             alert(data.message || 'สมัครสมาชิกไม่สำเร็จ');

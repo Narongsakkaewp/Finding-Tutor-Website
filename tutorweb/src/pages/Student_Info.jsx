@@ -1,9 +1,6 @@
-import { useEffect, useState } from 'react';
-import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from 'react';
 
 export default function StudentInfo() {
-    const { user } = useAuth();
     const [form, setForm] = useState({
         profile_picture: '',
         nickname: '',
@@ -13,26 +10,12 @@ export default function StudentInfo() {
     });
     const [msg, setMsg] = useState('');
 
-    useEffect(() => {
-        async function load() {
-            const { data } = await api.get('/api/student/me');
-            if (data) setForm(prev => ({ ...prev, ...data }));
-        }
-        load();
-    }, []);
-
     const onChange = e => setForm({ ...form, [e.target.name]: e.target.value });
 
-    const onSubmit = async e => {
+    const onSubmit = e => {
         e.preventDefault();
-        setMsg('');
-        await api.post('/api/student', form);
         setMsg('บันทึกข้อมูลโปรไฟล์เรียบร้อย');
     };
-
-    if (user?.type !== 'student') {
-        return <div className="max-w-3xl mx-auto p-6">บัญชีนี้ไม่ใช่นักเรียน</div>;
-    }
 
     return (
         <div className="max-w-3xl mx-auto p-6 bg-white rounded shadow">
