@@ -24,6 +24,7 @@ db.connect((err) => {
         console.log('Connected to MySQL DB');
     }
 });
+
  
 // ตัวอย่าง API ดึง Users
 app.get('/api/user/:userId', (req, res) => {
@@ -38,8 +39,40 @@ app.get('/api/user/:userId', (req, res) => {
     }
   );
 });
- 
+
+function normalizeUserType(input) {
+  const t = String(input || '').trim().toLowerCase();
+  if (['student', 'นักเรียน', 'นักศึกษา', 'std', 'stu'].includes(t)) return 'student';
+  if (['tutor', 'teacher', 'ติวเตอร์', 'ครู', 'อาจารย์'].includes(t)) return 'tutor';
+  return ''; // ไม่รู้จัก
+}
+
 app.post('/api/login', (req, res) => {
+  const { email, password } = req.body;
+  db.query(
+    'SELECT * FROM register WHERE email = ? AND password = ?',
+    [email, password],
+    (err, results) => {
+      if (err) return res.status(500).json({ success: false, message: 'Database error' });
+
+      if (results.length === 0) {
+        return res.json({ success: false, message: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
+      }
+
+      const user = results[0];
+      const raw = String(user.type || '').trim().toLowerCase();
+      const mapped = raw === 'teacher' ? 'tutor' : raw; // map teacher -> tutor
+
+      return res.json({
+        success: true,
+        user: { ...user, role: mapped, userType: mapped }, // ใส่ในก้อน user ด้วย
+        userType: mapped, // และใส่ซ้ำที่ root
+      });
+    }
+  );
+});
+
+/*app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     db.query(
         'SELECT * FROM register WHERE email = ? AND password = ?',
@@ -53,7 +86,7 @@ app.post('/api/login', (req, res) => {
             }
         }
     );
-});
+});*/
  
 app.post('/api/register', (req, res) => {
     console.log('req.body:', req.body);
@@ -64,7 +97,7 @@ app.post('/api/register', (req, res) => {
             return res.json({ success: false, message: 'อีเมลนี้ถูกใช้แล้ว' });
         }
         db.query(
-            'INSERT INTO register (user_id,name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO register (user_id,name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?, ?)',
             [user_id, name, lastname, email, password, type],
             (err, result) => {
                 if (err) return res.status(500).send(err);
@@ -73,8 +106,6 @@ app.post('/api/register', (req, res) => {
         );
     });
 });
-
-
  
  
 const PORT = process.env.PORT || 5000;

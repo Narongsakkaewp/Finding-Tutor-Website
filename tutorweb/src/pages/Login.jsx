@@ -31,6 +31,7 @@ function Login(props) {
         data.role ??
         data.user?.userType ??
         data.user?.role ??
+        data.user?.type ??
         '';
 
       if (role !== 'student' && role !== 'tutor') {

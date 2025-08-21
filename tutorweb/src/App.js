@@ -13,9 +13,51 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('home');
 
+  // เก็บ userType ไว้ใน state เพื่อใช้ซ้ำ
+  const [userType, setUserType] = useState(() => {
+    const raw = localStorage.getItem('userType');
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === 'string' ? parsed : String(raw);
+    } catch {
+      return String(raw);
+    }
+  });
+
+  // sync isAuthenticated -> localStorage
   useEffect(() => {
-    localStorage.setItem('isAuthenticated', isAuthenticated);
+    localStorage.setItem('isAuthenticated', isAuthenticated ? 'true' : 'false');
   }, [isAuthenticated]);
+
+  // helper: เปลี่ยนหน้าโปรไฟล์ตามบทบาท
+  const goToProfileByRole = (roleLike) => {
+    const r = String(roleLike || '').toLowerCase();
+    if (r === 'student') setCurrentPage('student_info');
+    else if (r === 'tutor') setCurrentPage('tutor_info');
+    else alert('ยังไม่ทราบบทบาทผู้ใช้ (student/tutor)...');
+  };
+
+  // ถูกเรียกจากหน้า Login เมื่อสำเร็จ
+  const handleLoginSuccess = (payload = {}) => {
+    const role = (payload.userType || payload.role || payload.user?.role || '').toLowerCase();
+    setIsAuthenticated(true);
+    setUserType(role);
+    // เผื่ออยากไปหน้าโปรไฟล์ทันที:
+    goToProfileByRole(role);
+  };
+
+  // logout
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setCurrentPage('home');
+    setUserType(null);
+    // ล้างค่าใน storage ที่เกี่ยวข้อง
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('userType');
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
+  };
 
   const renderPage = () => {
     switch (currentPage) {
@@ -31,30 +73,20 @@ function App() {
         return <Home />;
     }
   };
-  function getUserType() {
-    const raw = localStorage.getItem('userType');
-    if (!raw) return null;
-    try {
-      // เผื่อเคยเก็บด้วย JSON.stringify("student") -> "\"student\""
-      const parsed = JSON.parse(raw);
-      return typeof parsed === 'string' ? parsed : null;
-    } catch {
-      // เก็บเป็นสตริงปกติ
-      return raw;
-    }
-  }
 
   return (
     <div>
       {!isAuthenticated ? (
-        <Index setIsAuthenticated={setIsAuthenticated} />
+        // ส่ง callback ให้หน้าล็อกอิน
+        <Index setIsAuthenticated={setIsAuthenticated} onLoginSuccess={handleLoginSuccess} />
       ) : (
         <>
           <Navbar
             setSidebarOpen={setSidebarOpen}
             sidebarOpen={sidebarOpen}
             setIsAuthenticated={setIsAuthenticated}
-            setCurrentPage={setCurrentPage} // ส่งไป Navbar
+            setCurrentPage={setCurrentPage}
+            onLogout={handleLogout}
           />
           <div className="flex">
             {/* Sidebar */}
@@ -80,29 +112,12 @@ function App() {
                 </li>
                 <li>
                   <button
-                    onClick={() => {
-                      const userType = getUserType(); // หรือ localStorage.getItem('userType')
-                      if (userType === 'student') {
-                        setCurrentPage('student_info');
-                      } else if (userType === 'tutor') {
-                        setCurrentPage('tutor_info');
-                      } else {
-                        alert('ยังไม่ทราบบทบาทผู้ใช้ (student/tutor)...');
-                      }
-                    }}
+                    onClick={() => goToProfileByRole(userType)}
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
                   >
                     <i className="bi bi-person font-bold text-2xl"></i> โปรไฟล์ของฉัน
                   </button>
                 </li>
-                {/* <li>
-                  <button
-                    onClick={() => setCurrentPage('tutor_info')}
-                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
-                  >
-                    <i className="bi bi-person-badge font-bold text-2xl"></i> โปรไฟล์ติวเตอร์
-                  </button>
-                </li> */}
                 <li>
                   <a href="#" className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
                     <i className="bi bi-table font-bold text-2xl"></i> ตารางการติว
@@ -120,7 +135,7 @@ function App() {
                 </li>
                 <li className="pt-10">
                   <button
-                    onClick={() => setIsAuthenticated(false)}
+                    onClick={handleLogout}
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
                   >
                     <i className="bi bi-box-arrow-right font-bold text-2xl"></i> ออกจากระบบ
