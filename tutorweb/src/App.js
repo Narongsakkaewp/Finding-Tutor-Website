@@ -6,6 +6,7 @@ import Notification from './components/Notification';
 import StudentInfo from './pages/Student_Info';
 import TutorInfo from './pages/Tutor_Info';
 import Booking from './components/Booking';
+import MyPost from './components/MyPost';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -72,6 +73,8 @@ function App() {
         return <TutorInfo />;
       case 'booking':
         return <Booking />;
+      case 'mypost':
+        return <MyPost />;
       default:
         return <Home />;
     }
@@ -122,10 +125,15 @@ function App() {
                     การติวของฉัน
                   </button>
                 </li>
+
                 <li>
-                  <a href="#" className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
-                    <i className="bi bi-file-earmark-post font-bold text-2xl"></i> โพสต์ของฉัน
-                  </a>
+                  <button
+                    onClick={() => setCurrentPage('mypost')}
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
+                  >
+                    <i className="bi bi-file-earmark-post font-bold text-2xl"></i>
+                    โพสต์ของฉัน
+                  </button>
                 </li>
                 <li>
                   <a href="#" className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
