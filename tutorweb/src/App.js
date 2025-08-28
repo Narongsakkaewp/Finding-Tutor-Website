@@ -5,6 +5,7 @@ import Home from './components/Home';
 import Notification from './components/Notification';
 import StudentInfo from './pages/Student_Info';
 import TutorInfo from './pages/Tutor_Info';
+import Booking from './components/Booking';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -69,6 +70,8 @@ function App() {
         return <StudentInfo />;
       case 'tutor_info':
         return <TutorInfo />;
+      case 'booking':
+        return <Booking />;
       default:
         return <Home />;
     }
@@ -112,16 +115,12 @@ function App() {
                 </li>
                 <li>
                   <button
-                    onClick={() => goToProfileByRole(userType)}
+                    onClick={() => setCurrentPage('booking')}
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
                   >
-                    <i className="bi bi-person font-bold text-2xl"></i> โปรไฟล์ของฉัน
+                    <i className="bi bi-table font-bold text-2xl"></i>
+                    การติวของฉัน
                   </button>
-                </li>
-                <li>
-                  <a href="#" className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
-                    <i className="bi bi-table font-bold text-2xl"></i> ตารางการติว
-                  </a>
                 </li>
                 <li>
                   <a href="#" className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
@@ -133,14 +132,14 @@ function App() {
                     <i className="bi bi-star-fill font-bold text-2xl"></i> การรีวิว
                   </a>
                 </li>
-                <li className="pt-10">
+                {/* <li className="pt-24">
                   <button
                     onClick={handleLogout}
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
                   >
                     <i className="bi bi-box-arrow-right font-bold text-2xl"></i> ออกจากระบบ
                   </button>
-                </li>
+                </li> */}
               </ul>
             </div>
             {/* Content */}

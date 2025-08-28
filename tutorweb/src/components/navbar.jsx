@@ -19,7 +19,7 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
 
   // ดึงชื่อ/รูป/บทบาทจาก localStorage (และ API เป็นตัวเสริม)
   useEffect(() => {
-    // 1) โหลดจาก localStorage (เร็วสุด)
+
     try {
       const rawUser =
         localStorage.getItem("user") || localStorage.getItem("username"); // รองรับ key เก่า "username"

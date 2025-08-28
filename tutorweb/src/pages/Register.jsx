@@ -36,7 +36,6 @@ function Register() {
         if (data.success) {
             alert('สมัครสมาชิกสำเร็จ');
             localStorage.setItem('userType', type);
-            // อาจ redirect ไปหน้า login
         } else {
             alert(data.message || 'สมัครสมาชิกไม่สำเร็จ');
         }
