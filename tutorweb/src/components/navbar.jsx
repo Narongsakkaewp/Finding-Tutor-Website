@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 
-const BASE_URL = "http://localhost:5000"; // ให้ตรงกับ backend
+const BASE_URL = "http://localhost:5000"; // เปลี่ยนตามพอร์ต backend ของคุณ
 
+// map ชื่อบทบาทหลายแบบ -> ค่ามาตรฐาน
 const normalizeUserType = (t) => {
   const x = String(t || "").trim().toLowerCase();
   if (["student", "นักเรียน", "นักศึกษา", "std", "stu"].includes(x)) return "student";
@@ -14,15 +15,22 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
   const [userType, setUserType] = useState("");
   const [displayName, setDisplayName] = useState("User");
   const [avatar, setAvatar] = useState(null);
-
   const ddRef = useRef(null);
 
+  // ดึงชื่อ/รูป/บทบาทจาก localStorage (และ API เป็นตัวเสริม)
   useEffect(() => {
-    // 1) โหลดจาก localStorage ก่อน (เร็วสุด)
+    // 1) โหลดจาก localStorage (เร็วสุด)
     try {
-      const rawUser = localStorage.getItem("user");
+      const rawUser =
+        localStorage.getItem("user") || localStorage.getItem("username"); // รองรับ key เก่า "username"
       if (rawUser) {
-        const u = JSON.parse(rawUser);
+        let u;
+        try {
+          u = JSON.parse(rawUser); // ถ้าเป็น JSON
+        } catch {
+          u = { name: rawUser }; // ถ้าเป็น string ธรรมดา
+        }
+
         const name =
           u.nickname ||
           u.name ||
@@ -30,6 +38,7 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
           (u.email ? u.email.split("@")[0] : null) ||
           "User";
         setDisplayName(String(name));
+
         setAvatar(u.avatar || u.photo || u.profileImage || u.imageUrl || null);
 
         const ut =
@@ -39,31 +48,17 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
           normalizeUserType(localStorage.getItem("userType"));
         if (ut) setUserType(ut);
       } else {
-        // ถ้าไม่มี user แต่มี userType แยก
         const ut = normalizeUserType(localStorage.getItem("userType"));
         if (ut) setUserType(ut);
       }
     } catch {}
 
-    // 2) ถ้ายังไม่รู้ userType ให้ fallback ไปถาม API ด้วย userId
+    // 2) เติมข้อมูลจาก API ถ้ามี userId
     const userId = localStorage.getItem("userId");
-    if (userId && !userType) {
-      fetch(`${BASE_URL}/api/user/${userId}`)
-        .then((res) => res.json())
-        .then((data) => {
-          const ut = normalizeUserType(data.userType);
-          if (ut) {
-            setUserType(ut);
-            localStorage.setItem("userType", ut); // cache ไว้
-          }
-        })
-        .catch(() => {});
-    }
+    fetchUserFromApi(userId);
 
     // ปิด dropdown เมื่อคลิกนอก/กด ESC
-    const onDown = (e) => {
-      if (e.key === "Escape") setDropdownOpen(false);
-    };
+    const onDown = (e) => e.key === "Escape" && setDropdownOpen(false);
     const onClick = (e) => {
       if (ddRef.current && !ddRef.current.contains(e.target)) setDropdownOpen(false);
     };
@@ -76,12 +71,58 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const fetchUserFromApi = (userId) => {
+    if (!userId) return;
+    fetch(`${BASE_URL}/api/user/${userId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        // ✅ รองรับทั้ง {name,...} และ {user:{name,...}}
+        const u = data?.user ?? data ?? {};
+
+        // ตั้งชื่อถ้ายังเป็น "User"
+        if (!displayName || displayName === "User") {
+          const nameFromApi =
+            u.nickname ||
+            u.name ||
+            [u.firstname, u.lastname].filter(Boolean).join(" ") ||
+            (u.email ? u.email.split("@")[0] : null);
+          if (nameFromApi) setDisplayName(String(nameFromApi));
+        }
+
+        // ตั้งรูป
+        const apiAvatar = u.avatar || u.photo || u.profileImage || u.imageUrl;
+        if (apiAvatar) setAvatar(apiAvatar);
+
+        // ตั้งบทบาท
+        const ut = normalizeUserType(u.userType || u.role || u.type);
+        if (ut) {
+          setUserType(ut);
+          localStorage.setItem("userType", ut);
+        }
+
+        // แคช user object ไว้ จะได้อ่านได้รอบหน้าเร็ว ๆ
+        try {
+          const cached = {
+            name: u.name || undefined,
+            firstname: u.firstname,
+            lastname: u.lastname,
+            email: u.email,
+            avatar: apiAvatar,
+            userType: ut || u.userType,
+          };
+          localStorage.setItem("user", JSON.stringify(cached));
+        } catch {}
+      })
+      .catch(() => {});
+  };
+
   const handleLogout = () => {
     setIsAuthenticated(false);
     localStorage.removeItem("isAuthenticated");
     localStorage.removeItem("userId");
     localStorage.removeItem("userType");
     localStorage.removeItem("user");
+    localStorage.removeItem("username"); // เผื่อเคยใช้คีย์นี้
     localStorage.removeItem("token");
     setDropdownOpen(false);
     setCurrentPage("home");
