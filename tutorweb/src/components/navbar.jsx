@@ -10,7 +10,7 @@ const normalizeUserType = (t) => {
   return "";
 };
 
-const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
+const Navbar = ({ setIsAuthenticated, setCurrentPage, sidebarOpen, setSidebarOpen }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [userType, setUserType] = useState("");
   const [displayName, setDisplayName] = useState("User");
@@ -19,16 +19,15 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
 
   // ดึงชื่อ/รูป/บทบาทจาก localStorage (และ API เป็นตัวเสริม)
   useEffect(() => {
-
     try {
       const rawUser =
-        localStorage.getItem("user") || localStorage.getItem("username"); // รองรับ key เก่า "username"
+        localStorage.getItem("user") || localStorage.getItem("username");
       if (rawUser) {
         let u;
         try {
-          u = JSON.parse(rawUser); // ถ้าเป็น JSON
+          u = JSON.parse(rawUser);
         } catch {
-          u = { name: rawUser }; // ถ้าเป็น string ธรรมดา
+          u = { name: rawUser };
         }
 
         const name =
@@ -51,13 +50,11 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
         const ut = normalizeUserType(localStorage.getItem("userType"));
         if (ut) setUserType(ut);
       }
-    } catch {}
+    } catch { }
 
-    // 2) เติมข้อมูลจาก API ถ้ามี userId
     const userId = localStorage.getItem("userId");
     fetchUserFromApi(userId);
 
-    // ปิด dropdown เมื่อคลิกนอก/กด ESC
     const onDown = (e) => e.key === "Escape" && setDropdownOpen(false);
     const onClick = (e) => {
       if (ddRef.current && !ddRef.current.contains(e.target)) setDropdownOpen(false);
@@ -68,7 +65,6 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
       document.removeEventListener("keydown", onDown);
       document.removeEventListener("click", onClick);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchUserFromApi = (userId) => {
@@ -76,10 +72,8 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
     fetch(`${BASE_URL}/api/user/${userId}`)
       .then((res) => res.json())
       .then((data) => {
-        // ✅ รองรับทั้ง {name,...} และ {user:{name,...}}
         const u = data?.user ?? data ?? {};
 
-        // ตั้งชื่อถ้ายังเป็น "User"
         if (!displayName || displayName === "User") {
           const nameFromApi =
             u.nickname ||
@@ -89,18 +83,15 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
           if (nameFromApi) setDisplayName(String(nameFromApi));
         }
 
-        // ตั้งรูป
         const apiAvatar = u.avatar || u.photo || u.profileImage || u.imageUrl;
         if (apiAvatar) setAvatar(apiAvatar);
 
-        // ตั้งบทบาท
         const ut = normalizeUserType(u.userType || u.role || u.type);
         if (ut) {
           setUserType(ut);
           localStorage.setItem("userType", ut);
         }
 
-        // แคช user object ไว้ จะได้อ่านได้รอบหน้าเร็ว ๆ
         try {
           const cached = {
             name: u.name || undefined,
@@ -111,9 +102,9 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
             userType: ut || u.userType,
           };
           localStorage.setItem("user", JSON.stringify(cached));
-        } catch {}
+        } catch { }
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   const handleLogout = () => {
@@ -122,7 +113,7 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
     localStorage.removeItem("userId");
     localStorage.removeItem("userType");
     localStorage.removeItem("user");
-    localStorage.removeItem("username"); // เผื่อเคยใช้คีย์นี้
+    localStorage.removeItem("username");
     localStorage.removeItem("token");
     setDropdownOpen(false);
     setCurrentPage("home");
@@ -138,8 +129,16 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
 
   return (
     <nav className="flex items-center justify-between bg-white p-4 text-black shadow">
+      {/* Hamburger button (เฉพาะจอเล็ก) */}
+      <button
+        className="md:hidden mr-2 text-2xl"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+      >
+        <i className="bi bi-list"></i>
+      </button>
+
       {/* Logo */}
-      <div className="font-bold text-xl">Finding Tutor</div>
+      <div className="hidden md:flex font-bold text-xl">Finding Tutor</div>
 
       {/* Search + role badge */}
       <div className="flex-1 mx-4 flex items-center gap-4">
@@ -154,6 +153,7 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
           </span>
         )}
       </div>
+
 
       {/* User area */}
       <div className="relative" ref={ddRef}>
@@ -189,7 +189,7 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage }) => {
                   className="block w-full text-left px-4 py-2 hover:bg-gray-100"
                   role="menuitem"
                 >
-                  โปรไฟล์
+                  แก้ไขโปรไฟล์
                 </button>
               </li>
               <li>

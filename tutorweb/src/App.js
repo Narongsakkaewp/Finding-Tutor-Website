@@ -7,6 +7,7 @@ import StudentInfo from './pages/Student_Info';
 import TutorInfo from './pages/Tutor_Info';
 import Booking from './components/Booking';
 import MyPost from './components/MyPost';
+import Review from './components/Review';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -15,7 +16,6 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('home');
 
-  // เก็บ userType ไว้ใน state เพื่อใช้ซ้ำ
   const [userType, setUserType] = useState(() => {
     const raw = localStorage.getItem('userType');
     if (!raw) return null;
@@ -27,12 +27,10 @@ function App() {
     }
   });
 
-  // sync isAuthenticated -> localStorage
   useEffect(() => {
     localStorage.setItem('isAuthenticated', isAuthenticated ? 'true' : 'false');
   }, [isAuthenticated]);
 
-  // helper: เปลี่ยนหน้าโปรไฟล์ตามบทบาท
   const goToProfileByRole = (roleLike) => {
     const r = String(roleLike || '').toLowerCase();
     if (r === 'student') setCurrentPage('student_info');
@@ -40,21 +38,17 @@ function App() {
     else alert('ยังไม่ทราบบทบาทผู้ใช้ (student/tutor)...');
   };
 
-  // ถูกเรียกจากหน้า Login เมื่อสำเร็จ
   const handleLoginSuccess = (payload = {}) => {
     const role = (payload.userType || payload.role || payload.user?.role || '').toLowerCase();
     setIsAuthenticated(true);
     setUserType(role);
-    // เผื่ออยากไปหน้าโปรไฟล์ทันที:
     goToProfileByRole(role);
   };
 
-  // logout
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentPage('home');
     setUserType(null);
-    // ล้างค่าใน storage ที่เกี่ยวข้อง
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('userType');
     localStorage.removeItem('user');
@@ -75,6 +69,8 @@ function App() {
         return <Booking />;
       case 'mypost':
         return <MyPost />;
+      case 'review':
+        return <Review />;
       default:
         return <Home />;
     }
@@ -83,7 +79,6 @@ function App() {
   return (
     <div>
       {!isAuthenticated ? (
-        // ส่ง callback ให้หน้าล็อกอิน
         <Index setIsAuthenticated={setIsAuthenticated} onLoginSuccess={handleLoginSuccess} />
       ) : (
         <>
@@ -94,9 +89,23 @@ function App() {
             setCurrentPage={setCurrentPage}
             onLogout={handleLogout}
           />
+
           <div className="flex">
-            {/* Sidebar */}
-            <div className="hidden md:block w-64 bg-white border-r min-h-screen">
+            {/* Sidebar (มือถือ + เดสก์ท็อป) */}
+            {/* Overlay สำหรับ mobile */}
+            {sidebarOpen && (
+              <div
+                className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+                onClick={() => setSidebarOpen(false)}
+              />
+            )}
+
+            <div
+              className={`fixed z-50 top-0 left-0 h-full w-64 bg-white border-r transform 
+              ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
+              transition-transform duration-300 ease-in-out 
+              md:translate-x-0 md:static md:block`}
+            >
               <ul className="p-6 space-y-4">
                 <li>
                   <button
@@ -125,7 +134,6 @@ function App() {
                     การติวของฉัน
                   </button>
                 </li>
-
                 <li>
                   <button
                     onClick={() => setCurrentPage('mypost')}
@@ -136,20 +144,24 @@ function App() {
                   </button>
                 </li>
                 <li>
-                  <a href="#" className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
-                    <i className="bi bi-star-fill font-bold text-2xl"></i> การรีวิว
-                  </a>
-                </li>
-                {/* <li className="pt-24">
                   <button
-                    onClick={handleLogout}
+                    onClick={() => setCurrentPage('review')}
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
                   >
-                    <i className="bi bi-box-arrow-right font-bold text-2xl"></i> ออกจากระบบ
+                    <i className="bi bi-star-fill font-bold text-2xl"></i> การรีวิว
                   </button>
-                </li> */}
+                </li>
+                <li>
+                  <button
+                    onClick={() => setCurrentPage('home')}
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
+                  >
+                    <i className="bi bi-person-circle font-bold text-2xl"></i> โปรไฟล์ของคุณ
+                  </button>
+                </li>
               </ul>
             </div>
+
             {/* Content */}
             <div className="flex-1 px-8 pt-6">{renderPage()}</div>
           </div>

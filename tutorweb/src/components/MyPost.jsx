@@ -1,8 +1,6 @@
 import React, { useState } from "react";
 import { Image as ImageIcon, Clock, Heart, MessageCircle, MoreVertical } from "lucide-react";
 
-// TailwindCSS assumed; ถ้าไม่มีบอกได้ เดี๋ยวทำเวอร์ชัน CSS ให้
-
 function PostComposer({ onPost }) {
   const [text, setText] = useState("");
 
@@ -143,9 +141,9 @@ function MyPost() {
     );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       {/* ทำให้เต็มหน้า: ไม่มี max-w-*, ใช้ w-full max-w-none */}
-      <div className="w-full max-w-none px-6 md:px-10 py-6 md:py-10">
+      <div className="w-full max-w-none">
         <h1 className="text-2xl font-bold mb-4">โพสต์</h1>
 
         <PostComposer onPost={addPost} />
