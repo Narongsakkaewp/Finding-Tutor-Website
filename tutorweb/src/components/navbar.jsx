@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+// import logo from "../assets/logo/FindingTutor_Logo.png";
 
 const BASE_URL = "http://localhost:5000"; // เปลี่ยนตามพอร์ต backend ของคุณ
 
@@ -138,7 +139,9 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage, sidebarOpen, setSidebarOpe
       </button>
 
       {/* Logo */}
-      <div className="hidden md:flex font-bold text-xl">Finding Tutor</div>
+      <div>
+        {/* <img src={logo} alt="Logo" className="hidden md:flex font-bold text-xl h-16" /> */}
+      </div>
 
       {/* Search + role badge */}
       <div className="flex-1 mx-4 flex items-center gap-4">
