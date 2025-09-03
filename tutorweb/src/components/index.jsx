@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import Login from '../pages/Login';
 import Register from '../pages/Register';
+// import logo from "../assets/logo/FindingTutor_Logo.png"; 
 
 function Index({ setIsAuthenticated }) {
   const [showLogin, setShowLogin] = useState(false);
@@ -17,7 +18,7 @@ function Index({ setIsAuthenticated }) {
       {/* Navbar */}
       <div className="flex items-center justify-between px-8 py-4 bg-white">
         {/* Logo */}
-        <img src="" alt="Logo" className="h-12" />
+        {/* <img src={logo} alt="Logo" className="h-16" /> */}
         {/* Menu */}
         <div className="flex gap-4 items-center">
           <a href="#" className="font-bold text-black hover:text-blue-600">หน้าหลัก</a>
