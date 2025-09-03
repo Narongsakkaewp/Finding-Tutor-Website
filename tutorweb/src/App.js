@@ -69,7 +69,7 @@ function App() {
         return <Booking />;
       case 'mypost':
         return <MyPost />;
-      case 'review':
+      case 'favorite':
         return <Review />;
       default:
         return <Home />;
@@ -101,10 +101,10 @@ function App() {
             )}
 
             <div
-              className={`fixed z-50 top-0 left-0 h-full w-64 bg-white border-r transform 
-              ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
+            className={`fixed z-50 top-0 left-0 w-64 bg-white border-r transform 
+              ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
               transition-transform duration-300 ease-in-out 
-              md:translate-x-0 md:static md:block`}
+              md:translate-x-0 h-screen md:static md:block`}
             >
               <ul className="p-6 space-y-4">
                 <li>
@@ -145,10 +145,10 @@ function App() {
                 </li>
                 <li>
                   <button
-                    onClick={() => setCurrentPage('review')}
+                    onClick={() => setCurrentPage('favorite')}
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
                   >
-                    <i className="bi bi-star-fill font-bold text-2xl"></i> การรีวิว
+                    <i class="bi bi-heart-fill font-bold text-2xl"></i> รายการที่สนใจ
                   </button>
                 </li>
                 <li>
