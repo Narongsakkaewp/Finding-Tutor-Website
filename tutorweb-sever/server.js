@@ -196,7 +196,7 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
     const offset = (page - 1) * limit;
 
     const [rows] = await pool.execute(
-      `SELECT tutor_post_id, tutor_id, content,
+      `SELECT tutor_post_id, tutor_id, contact_info,
               COALESCE(created_at, NOW()) AS created_at
          FROM tutor_posts
         WHERE tutor_id = ?
