@@ -1,12 +1,14 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { Heart, MapPin, Calendar, Search, Star, BookOpen, Users, ChevronRight } from "lucide-react";
-
+ 
 /**
  * หน้าโฮมตัวอย่างสำหรับแพลตฟอร์มติวเตอร์/คอร์สเรียน
  * - เพิ่มส่วน "โพสต์ของนักเรียน" + "โพสต์ของติวเตอร์" ในโมดัล
  */
-
+ 
 // ---------------------- Mock Data ----------------------
+const API_BASE = import.meta.env?.VITE_API_BASE || "http://localhost:5000";
+ 
 const CATEGORIES = [
   { id: "math", label: "คณิตศาสตร์", icon: <BookOpen className="h-4 w-4" /> },
   { id: "sci", label: "วิทยาศาสตร์", icon: <BookOpen className="h-4 w-4" /> },
@@ -15,7 +17,7 @@ const CATEGORIES = [
   { id: "code", label: "เขียนโปรแกรม", icon: <BookOpen className="h-4 w-4" /> },
   { id: "art", label: "ศิลปะ/ดีไซน์", icon: <BookOpen className="h-4 w-4" /> },
 ];
-
+ 
 const TUTORS = [
   {
     id: "t1",
@@ -96,7 +98,7 @@ const TUTORS = [
     nextSlot: "จันทร์ 17:30",
   },
 ];
-
+ 
 const SUBJECTS = [
   {
     id: "s1",
@@ -147,10 +149,10 @@ const SUBJECTS = [
       "https://images.unsplash.com/photo-1581092795360-fd1ca04f0952?q=80&w=1200&auto=format&fit=crop",
   },
 ];
-
+ 
 // ---------------------- Utilities ----------------------
 const priceText = (p) => new Intl.NumberFormat("th-TH").format(p);
-
+ 
 // ---------------------- UI Subcomponents ----------------------
 function SectionHeader({ title, subtitle, actionLabel = "ดูทั้งหมด", onAction }) {
   return (
@@ -169,7 +171,7 @@ function SectionHeader({ title, subtitle, actionLabel = "ดูทั้งห�
     </div>
   );
 }
-
+ 
 function CategoryPill({ label, icon, active = false, onClick }) {
   return (
     <button
@@ -183,14 +185,14 @@ function CategoryPill({ label, icon, active = false, onClick }) {
     </button>
   );
 }
-
+ 
 function TutorCard({ item, onOpen, onToggleSave }) {
   const [liked, setLiked] = useState(false);
   const toggle = () => {
     setLiked((v) => !v);
     onToggleSave?.(item);
   };
-
+ 
   return (
     <div className="group bg-white rounded-2xl border shadow-sm hover:shadow-md transition overflow-hidden">
       <div className="relative h-40 md:h-44 w-full overflow-hidden">
@@ -210,21 +212,21 @@ function TutorCard({ item, onOpen, onToggleSave }) {
           <Heart className={`h-4 w-4 ${liked ? "fill-rose-500" : ""}`} />
         </button>
       </div>
-
+ 
       <div className="p-4">
         <div className="flex items-center gap-2 text-amber-500">
           <Star className="h-4 w-4" />
           <span className="text-sm font-medium">{item.rating.toFixed(1)}</span>
           <span className="text-xs text-gray-500">({item.reviews} รีวิว)</span>
         </div>
-
+ 
         <h3 className="mt-1 font-semibold text-lg leading-tight">{item.name}</h3>
         <p className="text-gray-600 text-sm line-clamp-1">{item.subject}</p>
-
+ 
         <div className="flex items-center gap-2 mt-3 text-sm text-gray-600">
           <MapPin className="h-4 w-4" /> {item.city}
         </div>
-
+ 
         <div className="flex items-center justify-between mt-3">
           <div className="text-sm text-gray-700 flex items-center gap-2">
             <Calendar className="h-4 w-4" />
@@ -232,7 +234,7 @@ function TutorCard({ item, onOpen, onToggleSave }) {
           </div>
           <div className="font-semibold">฿{priceText(item.price)}/ชม.</div>
         </div>
-
+ 
         <button
           onClick={() => onOpen?.(item)}
           className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 text-white py-2.5 text-sm hover:bg-black"
@@ -243,7 +245,7 @@ function TutorCard({ item, onOpen, onToggleSave }) {
     </div>
   );
 }
-
+ 
 function SubjectCard({ item, onOpen }) {
   return (
     <div className="group bg-white rounded-2xl border shadow-sm hover:shadow-md transition overflow-hidden">
@@ -271,7 +273,7 @@ function SubjectCard({ item, onOpen }) {
     </div>
   );
 }
-
+ 
 function Modal({ open, onClose, children, title }) {
   if (!open) return null;
   return (
@@ -291,7 +293,7 @@ function Modal({ open, onClose, children, title }) {
     </div>
   );
 }
-
+ 
 /* ---------------------- โพสต์ของนักเรียน (ดึงจาก Backend) ---------------------- */
 function StudentPosts({ subjectKey }) {
   const [posts, setPosts] = useState([]);
@@ -299,12 +301,12 @@ function StudentPosts({ subjectKey }) {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
+ 
   const key = subjectKey?.trim();
-
+ 
   useEffect(() => {
     let ignore = false;
-
+ 
     async function load(p = 1, append = false) {
       if (!key) { setPosts([]); setHasMore(false); setLoading(false); return; }
       try {
@@ -324,12 +326,12 @@ function StudentPosts({ subjectKey }) {
         if (!ignore) setLoading(false);
       }
     }
-
+ 
     setError(""); setPosts([]); setHasMore(false);
     load(1, false);
     return () => { ignore = true; };
   }, [key]);
-
+ 
   const loadMore = async () => {
     if (!hasMore || loading) return;
     const next = page + 1;
@@ -348,16 +350,16 @@ function StudentPosts({ subjectKey }) {
       setLoading(false);
     }
   };
-
+ 
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between">
         <h5 className="font-semibold">โพสต์ของนักเรียน</h5>
         {posts.length > 0 && <span className="text-xs text-gray-500">ทั้งหมด ~{posts.length}{hasMore ? "+" : ""}</span>}
       </div>
-
+ 
       {error && <div className="mt-3 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</div>}
-
+ 
       {loading && posts.length === 0 ? (
         <div className="mt-3 text-sm text-gray-500">กำลังโหลดโพสต์...</div>
       ) : posts.length === 0 ? (
@@ -377,9 +379,9 @@ function StudentPosts({ subjectKey }) {
                   <div className="text-[11px] text-gray-500">{new Date(p.createdAt).toLocaleString()}</div>
                 </div>
               </div>
-
+ 
               <p className="mt-2 text-sm text-gray-800 whitespace-pre-line">{p.content}</p>
-
+ 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-y-1 text-xs text-gray-600 mt-2">
                 <div>📅 {p.meta?.preferred_days}</div>
                 <div>⏰ {p.meta?.preferred_time}</div>
@@ -387,7 +389,7 @@ function StudentPosts({ subjectKey }) {
                 <div>👥 {p.meta?.group_size}</div>
                 <div>💸 ฿{Number(p.meta?.budget || 0).toFixed(2)}</div>
               </div>
-
+ 
               {Array.isArray(p.images) && p.images.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {p.images.map((img, i) => (
@@ -399,7 +401,7 @@ function StudentPosts({ subjectKey }) {
           ))}
         </ul>
       )}
-
+ 
       <div className="mt-3 flex justify-center">
         {hasMore && (
           <button onClick={loadMore} disabled={loading} className="px-4 py-2 rounded-lg border hover:bg-gray-50 text-sm">
@@ -410,7 +412,7 @@ function StudentPosts({ subjectKey }) {
     </div>
   );
 }
-
+ 
 /* ---------------------- โพสต์ของติวเตอร์ (ดึงจาก Backend) ---------------------- */
 function TutorPosts({ tutorId }) {
   const [posts, setPosts] = useState([]);
@@ -418,7 +420,7 @@ function TutorPosts({ tutorId }) {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
+ 
   useEffect(() => {
     let ignore = false;
     async function load(p = 1, append = false) {
@@ -444,7 +446,7 @@ function TutorPosts({ tutorId }) {
     load(1, false);
     return () => { ignore = true; };
   }, [tutorId]);
-
+ 
   const loadMore = async () => {
     if (!hasMore || loading) return;
     const next = page + 1;
@@ -463,16 +465,16 @@ function TutorPosts({ tutorId }) {
       setLoading(false);
     }
   };
-
+ 
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between">
         <h5 className="font-semibold">โพสต์จากติวเตอร์</h5>
         {posts.length > 0 && <span className="text-xs text-gray-500">ทั้งหมด ~{posts.length}{hasMore ? "+" : ""}</span>}
       </div>
-
+ 
       {error && <div className="mt-3 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</div>}
-
+ 
       {loading && posts.length === 0 ? (
         <div className="mt-3 text-sm text-gray-500">กำลังโหลดโพสต์...</div>
       ) : posts.length === 0 ? (
@@ -495,7 +497,7 @@ function TutorPosts({ tutorId }) {
           ))}
         </ul>
       )}
-
+ 
       <div className="mt-3 flex justify-center">
         {hasMore && (
           <button onClick={loadMore} disabled={loading} className="px-4 py-2 rounded-lg border hover:bg-gray-50 text-sm">
@@ -506,14 +508,14 @@ function TutorPosts({ tutorId }) {
     </div>
   );
 }
-
+ 
 // ---------------------- Main Component ----------------------
 function Home() {
   const [query, setQuery] = useState("");
   const [activeCat, setActiveCat] = useState(null);
   const [preview, setPreview] = useState(null); // tutor or subject
   const [previewType, setPreviewType] = useState(null); // "tutor" | "subject"
-
+ 
   const filteredTutors = useMemo(() => {
     return TUTORS.filter((t) => {
       const q = query.trim().toLowerCase();
@@ -528,15 +530,15 @@ function Home() {
       return matchQ && matchCat;
     });
   }, [query, activeCat]);
-
+ 
   const filteredSubjects = useMemo(() => {
     const q = query.trim().toLowerCase();
     return SUBJECTS.filter((s) => !q || s.title.toLowerCase().includes(q));
   }, [query]);
-
+ 
   const openTutor = (item) => { setPreview(item); setPreviewType("tutor"); };
   const openSubject = (item) => { setPreview(item); setPreviewType("subject"); };
-
+ 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Container */}
@@ -557,7 +559,7 @@ function Home() {
                   ค้นหาติวเตอร์มืออาชีพและคอร์สเรียนยอดนิยม ครอบคลุมทุกวิชา
                   ทั้งออนไลน์และตัวต่อตัว
                 </p>
-
+ 
                 <div className="mt-5 flex flex-col md:flex-row gap-3">
                   <div className="flex-1 relative">
                     <Search className="h-5 w-5 text-gray-400 absolute left-3 top-3.5" />
@@ -572,7 +574,7 @@ function Home() {
                     ค้นหา
                   </button>
                 </div>
-
+ 
                 {/* Categories */}
                 <div className="mt-4 flex flex-wrap gap-2">
                   {CATEGORIES.map((c) => (
@@ -586,7 +588,7 @@ function Home() {
                   ))}
                 </div>
               </div>
-
+ 
               {/* Hero Illustration */}
               <div className="hidden md:block">
                 <div className="relative aspect-[4/3] rounded-3xl bg-gray-100 border overflow-hidden">
@@ -600,7 +602,7 @@ function Home() {
             </div>
           </div>
         </div>
-
+ 
         {/* Featured Tutors */}
         <section className="mt-10 md:mt-14">
           <SectionHeader
@@ -615,7 +617,7 @@ function Home() {
             {filteredTutors.length === 0 && <EmptyState label="ไม่พบติวเตอร์ตามคำค้นหา" />}
           </div>
         </section>
-
+ 
         {/* Popular Subjects */}
         <section className="mt-12 md:mt-16">
           <SectionHeader
@@ -630,7 +632,7 @@ function Home() {
             {filteredSubjects.length === 0 && <EmptyState label="ไม่พบวิชาตามคำค้นหา" />}
           </div>
         </section>
-
+ 
         {/* CTA Banner */}
         <section className="mt-14 md:mt-20">
           <div className="rounded-3xl bg-gray-900 text-white p-6 md:p-10 flex flex-col md:flex-row items-center md:items-end justify-between shadow-lg">
@@ -651,7 +653,7 @@ function Home() {
           </div>
         </section>
       </div>
-
+ 
       {/* Quick Preview Modal */}
       <Modal
         open={!!preview}
@@ -683,13 +685,13 @@ function Home() {
                 <button className="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-black">จองเวลาเรียน</button>
                 <button className="px-4 py-2 rounded-lg border hover:bg-gray-50">คุยกับติวเตอร์</button>
               </div>
-
+ 
               {/* ✅ โพสต์จากติวเตอร์ */}
               <TutorPosts tutorId={preview.dbTutorId} />
             </div>
           </div>
         )}
-
+ 
         {preview && previewType === "subject" && (
           <div className="grid md:grid-cols-5 gap-4">
             <div className="md:col-span-2 rounded-xl overflow-hidden border">
@@ -703,10 +705,10 @@ function Home() {
                 <li>ตัวอย่างหัวข้อที่สอน และโจทย์ฝึก</li>
                 <li>ระดับชั้น: เริ่มต้น – ขั้นสูง</li>
               </ul>
-
+ 
               {/* ✅ โพสต์ของนักเรียน */}
               <StudentPosts subjectKey={preview.dbKey} />
-
+ 
               <div className="mt-5 flex gap-3">
                 <button className="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-black">ดูติวเตอร์ในวิชานี้</button>
                 <button className="px-4 py-2 rounded-lg border hover:bg-gray-50">เพิ่มลงรายการที่สนใจ</button>
@@ -718,7 +720,7 @@ function Home() {
     </div>
   );
 }
-
+ 
 function EmptyState({ label }) {
   return (
     <div className="col-span-full flex flex-col items-center justify-center py-16 bg-white rounded-2xl border">

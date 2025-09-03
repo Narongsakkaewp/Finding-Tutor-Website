@@ -63,7 +63,7 @@ function Badge({ children }) {
 
 function PostCard({ post, onToggleLike }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border p-5">
+    <div className="bg-white rounded-2xl shadow-sm border p-5 ">
       <div className="flex items-start gap-3">
         <div className="h-12 w-12 rounded-full bg-gray-200 shrink-0" />
         <div className="flex-1 min-w-0">
@@ -141,7 +141,7 @@ function MyPost() {
     );
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6 lg:p-8">
       {/* ทำให้เต็มหน้า: ไม่มี max-w-*, ใช้ w-full max-w-none */}
       <div className="w-full max-w-none">
         <h1 className="text-2xl font-bold mb-4">โพสต์</h1>

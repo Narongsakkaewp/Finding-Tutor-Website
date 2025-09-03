@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-// import logo from "../assets/logo/FindingTutor_Logo.png";
+import logo from "../assets/logo/FindingTutor_Logo.png"; 
 
-const BASE_URL = "http://localhost:5000"; // เปลี่ยนตามพอร์ต backend ของคุณ
+const BASE_URL = "http://localhost:5000";
 
 // map ชื่อบทบาทหลายแบบ -> ค่ามาตรฐาน
 const normalizeUserType = (t) => {
@@ -140,7 +140,7 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage, sidebarOpen, setSidebarOpe
 
       {/* Logo */}
       <div>
-        {/* <img src={logo} alt="Logo" className="hidden md:flex font-bold text-xl h-16" /> */}
+        <img src={logo} alt="Logo" className="hidden md:flex font-bold text-xl h-16" />
       </div>
 
       {/* Search + role badge */}
