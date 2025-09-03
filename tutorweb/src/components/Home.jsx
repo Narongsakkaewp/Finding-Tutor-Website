@@ -4,6 +4,7 @@ import { Heart, MapPin, Calendar, Search, Star, BookOpen, Users, ChevronRight } 
 /**
  * หน้าโฮมตัวอย่างสำหรับแพลตฟอร์มติวเตอร์/คอร์สเรียน
  * - เพิ่มส่วน "โพสต์ของนักเรียน" + "โพสต์ของติวเตอร์" ในโมดัล
+ * - เพิ่ม Section ใหม่ "โพสต์จากติวเตอร์ล่าสุด" บนหน้า Home
  */
 
 // ---------------------- Mock Data ----------------------
@@ -19,7 +20,7 @@ const CATEGORIES = [
 const TUTORS = [
   {
     id: "t1",
-    dbTutorId: 1, // 👈 แก้ให้ตรง user_id ของติวเตอร์ใน DB
+    dbTutorId: 1,
     name: "ครูโบว์",
     subject: "คณิตศาสตร์ ม.ปลาย",
     rating: 4.9,
@@ -32,7 +33,7 @@ const TUTORS = [
   },
   {
     id: "t2",
-    dbTutorId: 2, // 👈 แก้เลขตาม DB
+    dbTutorId: 2,
     name: "พี่มอส",
     subject: "ภาษาอังกฤษ Conversation",
     rating: 4.7,
@@ -100,7 +101,7 @@ const TUTORS = [
 const SUBJECTS = [
   {
     id: "s1",
-    dbKey: "Math 1", // ต้องตรงกับ subject ในตาราง student_posts
+    dbKey: "Math 1",
     title: "คณิตศาสตร์",
     tutors: 241,
     cover:
@@ -215,7 +216,6 @@ function TutorCard({ item, onOpen, onToggleSave }) {
         <div className="flex items-center gap-2 text-amber-500">
           <Star className="h-4 w-4" />
           <span className="text-sm font-medium">{item.rating.toFixed(1)}</span>
-          <span className="text-xs text-gray-500">({item.reviews} รีวิว)</span>
         </div>
 
         <h3 className="mt-1 font-semibold text-lg leading-tight">{item.name}</h3>
@@ -507,7 +507,100 @@ function TutorPosts({ tutorId }) {
   );
 }
 
-// ---------------------- Main Component ----------------------
+/* ===================== NEW: ฟีดโพสต์จากติวเตอร์ล่าสุด (หน้า Home) ===================== */
+const API_BASE = "http://localhost:5000";
+
+function TutorPostCard({ post }) {
+  return (
+    <div className="bg-white rounded-2xl border p-4 shadow-sm hover:shadow-md transition">
+      <div className="flex items-center gap-3">
+        <img
+          src={post.authorId?.avatarUrl || "https://via.placeholder.com/40"}
+          alt=""
+          className="w-9 h-9 rounded-full object-cover"
+        />
+        <div className="min-w-0">
+          <div className="text-sm font-medium truncate">
+            {post.authorId?.name || "ติวเตอร์"}
+          </div>
+          <div className="text-[11px] text-gray-500">
+            {new Date(post.createdAt).toLocaleString()}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-500">วิชา: {post.subject || "-"}</div>
+      <p className="mt-2 text-sm text-gray-800 line-clamp-3">{post.content}</p>
+
+      <div className="grid grid-cols-2 gap-y-1 text-xs text-gray-600 mt-3">
+        <div>📅 {post.meta?.teaching_days || "-"}</div>
+        <div>⏰ {post.meta?.teaching_time || "-"}</div>
+        <div>📍 {post.meta?.location || "-"}</div>
+        <div>💸 ฿{Number(post.meta?.price || 0).toFixed(2)}</div>
+      </div>
+
+      {post.meta?.contact_info && (
+        <div className="mt-2 text-xs text-gray-600">📞 {post.meta.contact_info}</div>
+      )}
+    </div>
+  );
+}
+
+function TutorBulletin() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+    async function load() {
+      try {
+        setLoading(true);
+        const res = await fetch(`${API_BASE}/api/tutor-posts?page=1&limit=6`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!ignore) setItems(data.items || []);
+      } catch (e) {
+        if (!ignore) setError(e.message || "โหลดโพสต์ไม่สำเร็จ");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+    load();
+    return () => { ignore = true; };
+  }, []);
+
+  return (
+    <section className="mt-12 md:mt-16">
+      <div className="flex items-end justify-between mb-4 md:mb-6">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">โพสต์จากติวเตอร์ล่าสุด</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            อัปเดตเวลาเรียน/กลุ่มเรียน/โปรฯ จากติวเตอร์จริง
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-3 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-3">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-sm text-gray-500">กำลังโหลด...</div>
+      ) : items.length === 0 ? (
+        <div className="text-sm text-gray-500">ยังไม่มีโพสต์</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+          {items.map((p) => <TutorPostCard key={p._id} post={p} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ===================== Main Component ===================== */
 function Home() {
   const [query, setQuery] = useState("");
   const [activeCat, setActiveCat] = useState(null);
@@ -630,6 +723,9 @@ function Home() {
             {filteredSubjects.length === 0 && <EmptyState label="ไม่พบวิชาตามคำค้นหา" />}
           </div>
         </section>
+
+        {/* === NEW: ฟีดโพสต์ติวเตอร์ล่าสุดบนหน้า Home === */}
+        <TutorBulletin />
 
         {/* CTA Banner */}
         <section className="mt-14 md:mt-20">

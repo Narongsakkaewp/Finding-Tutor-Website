@@ -187,48 +187,88 @@ app.get('/api/tutors', async (req, res) => {
   }
 });
 
-// ✅ ดึงโพสต์ของติวเตอร์รายคน (อย่าลืมสร้างตาราง tutor_posts)
-app.get('/api/tutors/:tutorId/posts', async (req, res) => {
+// ✅ GET /api/tutor-posts  (ดึงโพสต์ติวเตอร์ทั้งหมด/ล่าสุด พร้อมกรองบางเงื่อนไข)
+app.get('/api/tutor-posts', async (req, res) => {
   try {
-    const tutorId = req.params.tutorId;
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 5, 50);
+    const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
 
-    const [rows] = await pool.execute(
-      `SELECT tutor_post_id, tutor_id, contact_info,
-              COALESCE(created_at, NOW()) AS created_at
-         FROM tutor_posts
-        WHERE tutor_id = ?
-        ORDER BY tutor_post_id DESC
-        LIMIT ? OFFSET ?`,
-      [tutorId, limit, offset]
+    const tutorId = req.query.tutorId ? parseInt(req.query.tutorId, 10) : null;
+    const subject = (req.query.subject || '').trim();
+
+    const where = [];
+    const params = [];
+
+    if (Number.isInteger(tutorId)) {
+      where.push('tp.tutor_id = ?');
+      params.push(tutorId);
+    }
+    if (subject) {
+      where.push('tp.subject LIKE ?');
+      params.push(`%${subject}%`);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    // main rows
+    const [rows] = await pool.query(
+      `
+      SELECT
+        tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
+        tp.teaching_days, tp.teaching_time, tp.location, tp.price, tp.contact_info,
+        COALESCE(tp.created_at, NOW()) AS created_at,
+        r.name, r.lastname
+      FROM tutor_posts tp
+      LEFT JOIN register r ON r.user_id = tp.tutor_id
+      ${whereSql}
+      ORDER BY tp.created_at DESC, tp.tutor_post_id DESC
+      LIMIT ${limit} OFFSET ${offset}
+      `,
+      params
     );
 
+    // total
     const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM tutor_posts WHERE tutor_id = ?`,
-      [tutorId]
+      `
+      SELECT COUNT(*) AS total
+      FROM tutor_posts tp
+      ${whereSql}
+      `,
+      params
     );
 
     res.json({
       items: rows.map(r => ({
         _id: r.tutor_post_id,
-        authorId: { name: `ติวเตอร์ #${r.tutor_id}`, avatarUrl: '' },
-        content: r.content,
+        subject: r.subject,
+        content: r.description,
         createdAt: r.created_at,
+        authorId: {
+          id: r.tutor_id,
+          name: `${r.name || ''}${r.lastname ? ' ' + r.lastname : ''}`.trim() || `ติวเตอร์ #${r.tutor_id}`,
+          avatarUrl: ''
+        },
+        meta: {
+          teaching_days: r.teaching_days,
+          teaching_time: r.teaching_time,
+          location: r.location,
+          price: Number(r.price || 0),
+          contact_info: r.contact_info
+        },
         images: []
       })),
       pagination: {
         page, limit, total,
         pages: Math.ceil(total / limit),
-        hasMore: offset + rows.length < total,
+        hasMore: offset + rows.length < total
       }
     });
   } catch (e) {
-    console.error(e);
+    console.error('GET /api/tutor-posts error:', e);
     res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 
 
