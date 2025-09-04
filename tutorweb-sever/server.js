@@ -1,6 +1,6 @@
 // tutorweb-server/server.js
 const express = require('express');
-const mysql = require('mysql2/promise'); // ✅ ใช้ promise
+const mysql = require('mysql2/promise');        // ใช้ promise
 const cors = require('cors');
 require('dotenv').config();
 
@@ -8,17 +8,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ✅ ใช้ Pool เดียวทั้งระบบ
+// ---------- MySQL Pool ----------
 const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
+  host:     process.env.DB_HOST,
+  user:     process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
 });
 
-// ✅ ทดสอบเชื่อมต่อ
+// ทดสอบการเชื่อมต่อ
 (async () => {
   try {
     const conn = await pool.getConnection();
@@ -29,9 +29,9 @@ const pool = mysql.createPool({
   }
 })();
 
-// ------------------- APIs -------------------
+// ---------- APIs ----------
 
-// ดึงประเภทผู้ใช้
+// ประเภทผู้ใช้
 app.get('/api/user/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -46,14 +46,6 @@ app.get('/api/user/:userId', async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-
-// Helper
-function normalizeUserType(input) {
-  const t = String(input || '').trim().toLowerCase();
-  if (['student', 'นักเรียน', 'นักศึกษา', 'std', 'stu'].includes(t)) return 'student';
-  if (['tutor', 'teacher', 'ติวเตอร์', 'ครู', 'อาจารย์'].includes(t)) return 'tutor';
-  return '';
-}
 
 // ล็อกอิน
 app.post('/api/login', async (req, res) => {
@@ -81,36 +73,44 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// ✅ ดึงโพสต์นักเรียนตามวิชา (MySQL)
+// ---------- โพสต์นักเรียนตามวิชา (JOIN register เพื่อดึงชื่อจริง) ----------
 app.get('/api/subjects/:subject/posts', async (req, res) => {
   try {
     const subject = req.params.subject; // เช่น "Math 1"
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const page  = Math.max(parseInt(req.query.page)  || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 5, 50);
     const offset = (page - 1) * limit;
 
-    // ข้อมูลรายการ
+    // ใช้ NOW() เป็นค่า fallback เผื่อไม่มีคอลัมน์ created_at
     const [rows] = await pool.execute(
-      `SELECT student_post_id, student_id, subject, description,
-              preferred_days, preferred_time, location, group_size, budget,
-              COALESCE(created_at, NOW()) AS created_at
-       FROM student_posts
-       WHERE subject = ?
-       ORDER BY student_post_id DESC
+      `SELECT 
+          sp.student_post_id, sp.student_id, sp.subject, sp.description,
+          sp.preferred_days, sp.preferred_time, sp.location, sp.group_size, sp.budget,
+          COALESCE(sp.created_at, NOW()) AS created_at,
+          r.name       AS student_name,
+          r.lastname   AS student_lastname
+       FROM student_posts sp
+       LEFT JOIN register r ON r.user_id = sp.student_id
+       WHERE sp.subject = ?
+       ORDER BY sp.student_post_id DESC
        LIMIT ? OFFSET ?`,
       [subject, limit, offset]
     );
 
-    // นับทั้งหมด
     const [[{ total }]] = await pool.query(
       'SELECT COUNT(*) AS total FROM student_posts WHERE subject = ?',
       [subject]
     );
 
-    res.json({
-      items: rows.map(r => ({
+    const items = rows.map(r => {
+      const fullName =
+        `${r.student_name || ''}${r.student_lastname ? ' ' + r.student_lastname : ''}`.trim();
+      return {
         _id: r.student_post_id,
-        authorId: { name: `นักเรียน #${r.student_id}`, avatarUrl: '' },
+        authorId: {
+          name: fullName || `นักเรียน #${r.student_id}`,
+          avatarUrl: '' // หากยังไม่มีคอลัมน์รูป ให้ส่งค่าว่างไว้ก่อน
+        },
         content: r.description,
         meta: {
           preferred_days: r.preferred_days,
@@ -122,28 +122,30 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
         subject: r.subject,
         createdAt: r.created_at,
         images: [],
-      })),
+      };
+    });
+
+    res.json({
+      items,
       pagination: {
         page, limit, total,
         pages: Math.ceil(total / limit),
-        hasMore: offset + rows.length < total,
+        hasMore: offset + items.length < total,
       },
     });
   } catch (e) {
-    console.error(e);
+    console.error('GET /api/subjects/:subject/posts error:', e);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// ✅ ดึงโพสต์ของติวเตอร์ตาม tutorId (ตรงกับ register.user_id)
-// ✅ ดึงรายชื่อติวเตอร์จากตาราง register (type = tutor/teacher) แบบมี pagination
+// รายชื่อติวเตอร์จาก register (type = tutor/teacher)
 app.get('/api/tutors', async (req, res) => {
   try {
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const page  = Math.max(parseInt(req.query.page)  || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
 
-    // ถ้าคุณมีตารางโปรไฟล์อื่น ๆ ค่อย JOIN เพิ่มได้
     const [rows] = await pool.execute(
       `SELECT user_id, name, lastname, email
          FROM register
@@ -159,13 +161,12 @@ app.get('/api/tutors', async (req, res) => {
         WHERE LOWER(type) IN ('tutor','teacher')`
     );
 
-    // map ให้อยู่ในรูปแบบที่หน้า React ใช้ได้ทันที
     const items = rows.map(r => ({
       id: `t-${r.user_id}`,
-      dbTutorId: r.user_id,                         // <-- ใช้เรียก /api/tutors/:id/posts
+      dbTutorId: r.user_id,
       name: `${r.name || ''}${r.lastname ? ' ' + r.lastname : ''}`.trim() || `ติวเตอร์ #${r.user_id}`,
-      subject: 'วิชาที่ยังไม่ระบุ',                 // ถ้ามี field วิชา/โปรไฟล์ค่อยใส่จริง
-      rating: 4.8,
+      subject: 'วิชาที่ยังไม่ระบุ',
+      rating: 4.8,        // mock เริ่มต้น
       reviews: 0,
       price: 0,
       city: 'ออนไลน์',
@@ -187,7 +188,7 @@ app.get('/api/tutors', async (req, res) => {
   }
 });
 
-// ✅ GET /api/tutor-posts  (ดึงโพสต์ติวเตอร์ทั้งหมด/ล่าสุด พร้อมกรองบางเงื่อนไข)
+// โพสต์ติวเตอร์ทั้งหมด/ล่าสุด + กรองด้วย tutorId/subject ได้
 app.get('/api/tutor-posts', async (req, res) => {
   try {
     const page  = Math.max(parseInt(req.query.page)  || 1, 1);
@@ -199,7 +200,6 @@ app.get('/api/tutor-posts', async (req, res) => {
 
     const where = [];
     const params = [];
-
     if (Number.isInteger(tutorId)) {
       where.push('tp.tutor_id = ?');
       params.push(tutorId);
@@ -210,7 +210,6 @@ app.get('/api/tutor-posts', async (req, res) => {
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    // main rows
     const [rows] = await pool.query(
       `
       SELECT
@@ -227,7 +226,6 @@ app.get('/api/tutor-posts', async (req, res) => {
       params
     );
 
-    // total
     const [[{ total }]] = await pool.query(
       `
       SELECT COUNT(*) AS total
@@ -269,20 +267,73 @@ app.get('/api/tutor-posts', async (req, res) => {
   }
 });
 
+// alias: ให้เรียก /api/tutors/:tutorId/posts ได้เหมือนกัน
+app.get('/api/tutors/:tutorId/posts', async (req, res) => {
+  try {
+    const tutorId = Number(req.params.tutorId);
+    if (!Number.isFinite(tutorId)) {
+      return res.status(400).json({ message: 'Invalid tutorId' });
+    }
 
+    const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 5, 50);
+    const offset = (page - 1) * limit;
 
+    const [rows] = await pool.execute(
+      `SELECT tutor_post_id, tutor_id, subject, description,
+              teaching_days, teaching_time, location, price, contact_info,
+              COALESCE(created_at, NOW()) AS created_at
+       FROM tutor_posts
+       WHERE tutor_id = ?
+       ORDER BY tutor_post_id DESC
+       LIMIT ? OFFSET ?`,
+      [tutorId, limit, offset]
+    );
 
-// สมัครสมาชิก (เดิม) — เปลี่ยนมาใช้ pool
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM tutor_posts WHERE tutor_id = ?`,
+      [tutorId]
+    );
+
+    res.json({
+      items: rows.map(r => ({
+        _id: r.tutor_post_id,
+        authorId: { name: `ติวเตอร์ #${r.tutor_id}`, avatarUrl: '' },
+        content: r.description,
+        subject: r.subject,
+        createdAt: r.created_at,
+        images: [],
+        meta: {
+          teaching_days: r.teaching_days,
+          teaching_time: r.teaching_time,
+          location: r.location,
+          price: Number(r.price || 0),
+          contact_info: r.contact_info
+        }
+      })),
+      pagination: {
+        page, limit, total,
+        pages: Math.ceil(total / limit),
+        hasMore: offset + rows.length < total,
+      }
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// สมัครสมาชิก
 app.post('/api/register', async (req, res) => {
   try {
-    const { user_id, name, lastname, email, password, type } = req.body;
+    const { name, lastname, email, password, type } = req.body;
     const [dup] = await pool.execute('SELECT 1 FROM register WHERE email = ?', [email]);
     if (dup.length > 0) {
       return res.json({ success: false, message: 'อีเมลนี้ถูกใช้แล้ว' });
     }
     await pool.execute(
-      'INSERT INTO register (user_id, name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?, ?)',
-      [user_id, name, lastname, email, password, type]
+      'INSERT INTO register (name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?)',
+      [name, lastname, email, password, type]
     );
     res.json({ success: true, message: 'สมัครสมาชิกสำเร็จ' });
   } catch (err) {
