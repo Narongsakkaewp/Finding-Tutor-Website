@@ -8,6 +8,7 @@ import TutorInfo from './pages/Tutor_Info';
 import Booking from './components/Booking';
 import MyPost from './components/MyPost';
 import Review from './components/Review';
+import Profile from './components/Profile';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -71,6 +72,8 @@ function App() {
         return <MyPost />;
       case 'favorite':
         return <Review />;
+      case 'profile':
+        return <Profile />;
       default:
         return <Home />;
     }
@@ -153,7 +156,7 @@ function App() {
                 </li>
                 <li>
                   <button
-                    onClick={() => setCurrentPage('home')}
+                    onClick={() => setCurrentPage('profile')}
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
                   >
                     <i className="bi bi-person-circle font-bold text-2xl"></i> โปรไฟล์ของคุณ

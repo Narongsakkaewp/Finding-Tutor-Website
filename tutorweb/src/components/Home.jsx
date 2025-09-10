@@ -9,7 +9,6 @@ const CATEGORIES = [
   { id: "math", label: "คณิตศาสตร์", icon: <BookOpen className="h-4 w-4" /> },
   { id: "sci", label: "วิทยาศาสตร์", icon: <BookOpen className="h-4 w-4" /> },
   { id: "eng", label: "ภาษาอังกฤษ", icon: <BookOpen className="h-4 w-4" /> },
-  { id: "thai", label: "ภาษาไทย", icon: <BookOpen className="h-4 w-4" /> },
   { id: "code", label: "เขียนโปรแกรม", icon: <BookOpen className="h-4 w-4" /> },
   { id: "art", label: "ศิลปะ/ดีไซน์", icon: <BookOpen className="h-4 w-4" /> },
 ];
@@ -17,10 +16,10 @@ const CATEGORIES = [
 const SUBJECTS = [
   { id: "s1", dbKey: "Math 1", title: "คณิตศาสตร์", tutors: 241, cover: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?q=80&w=1200&auto=format&fit=crop" },
   { id: "s2", dbKey: "English", title: "ภาษาอังกฤษเพื่อการสื่อสาร", tutors: 198, cover: "https://images.unsplash.com/photo-1516534775068-ba3e7458af70?q=80&w=1200&auto=format&fit=crop" },
-  { id: "s3", dbKey: "Physics 1", title: "Physics ม.ปลาย", tutors: 121, cover: "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=1200&auto=format&fit=crop" },
+  { id: "s3", dbKey: "Physics 1", title: "Physics", tutors: 121, cover: "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=1200&auto=format&fit=crop" },
   { id: "s4", dbKey: "Python Beginner", title: "เขียนโปรแกรมด้วย Python", tutors: 302, cover: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?q=80&w=1200&auto=format&fit=crop" },
-  { id: "s5", dbKey: "UIUX", title: "ออกแบบ UI/UX", tutors: 74, cover: "https://images.unsplash.com/photo-1529336953121-a0ce99a0b2f1?q=80&w=1200&auto=format&fit=crop" },
-  { id: "s6", dbKey: "Biology 1", title: "ชีววิทยา ม.ปลาย", tutors: 97, cover: "https://images.unsplash.com/photo-1581092795360-fd1ca04f0952?q=80&w=1200&auto=format&fit=crop" },
+  { id: "s5", dbKey: "UIUX", title: "ออกแบบ UI/UX", tutors: 74, cover: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?q=80&w=1200&auto=format&fit=crop" },
+  { id: "s6", dbKey: "Biology 1", title: "ชีววิทยา", tutors: 97, cover: "https://images.unsplash.com/photo-1581092795360-fd1ca04f0952?q=80&w=1200&auto=format&fit=crop" },
 ];
 
 /** ---------------- Utils ----------------- */
