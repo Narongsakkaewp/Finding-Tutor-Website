@@ -61,20 +61,6 @@ function Index({ setIsAuthenticated }) {
           {/* Card 2 */}
           <div className="bg-white rounded border p-8 flex flex-col items-center">
             <div className="bg-gray-100 rounded p-6 mb-6">
-              <i className="bi bi-grid text-4xl text-gray-500"></i>
-            </div>
-            <h2 className="font-bold text-xl mb-2">ติวเตอร์ค้นหานักเรียน</h2>
-            <p className="text-gray-500 mb-2">Category</p>
-            <p className="text-gray-600 text-sm mb-8 text-center">
-              ค้นหานักเรียนที่ตรงกับวิชาที่คุณสอนได้อย่างง่ายดาย รวดเร็ว และฟรี
-            </p>
-            <button className="bg-gray-100 rounded-full p-2">
-              <i className="bi bi-arrow-left text-xl text-gray-500"></i>
-            </button>
-          </div>
-          {/* Card 3 */}
-          <div className="bg-white rounded border p-8 flex flex-col items-center">
-            <div className="bg-gray-100 rounded p-6 mb-6">
               <i className="bi bi-people text-4xl text-gray-500"></i>
             </div>
             <h2 className="font-bold text-xl mb-2">การติวแบบกลุ่ม</h2>

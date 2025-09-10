@@ -8,6 +8,7 @@ import TutorInfo from './pages/Tutor_Info';
 import Booking from './components/Booking';
 import MyPost from './components/MyPost';
 import Review from './components/Review';
+import Favorite from './components/Favorite';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -70,7 +71,7 @@ function App() {
       case 'mypost':
         return <MyPost />;
       case 'favorite':
-        return <Review />;
+        return <Favorite />;
       default:
         return <Home />;
     }
@@ -161,9 +162,8 @@ function App() {
                 </li>
               </ul>
             </div>
-
             {/* Content */}
-            <div className="flex-1 px-8 pt-6">{renderPage()}</div>
+            <div className="flex-1">{renderPage()}</div>
           </div>
         </>
       )}
