@@ -9,7 +9,7 @@ function PostComposer({ onPost }) {
     if (!value) return;
     onPost({
       id: crypto.randomUUID(),
-      author: "คุณ",
+      author: "",
       level: "Intermediate",
       body: value,
       meeting: "",

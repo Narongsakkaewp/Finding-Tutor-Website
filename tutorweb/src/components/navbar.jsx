@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import logo from "../assets/logo/FindingTutor_Logo.png"; 
+import logo from "../assets/logo/FindingTutor_Logo.png";
 
 const BASE_URL = "http://localhost:5000";
 
@@ -129,7 +129,7 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage, sidebarOpen, setSidebarOpe
   };
 
   return (
-    <nav className="flex items-center justify-between bg-white p-4 text-black shadow">
+    <nav className="flex items-center justify-between bg-white p-4 text-black shadow border-b">
       {/* Hamburger button (เฉพาะจอเล็ก) */}
       <button
         className="md:hidden mr-2 text-2xl"
@@ -144,17 +144,21 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage, sidebarOpen, setSidebarOpe
       </div>
 
       {/* Search + role badge */}
-      <div className="flex-1 mx-4 flex items-center gap-4">
-        <input
+      <div className="flex-1 mx-4 flex items-center gap-4 ">
+        {/* <input
           type="text"
           placeholder="ค้นหาติวเตอร์หรือวิชา..."
           className="w-full px-3 py-2 rounded text-black bg-gray-50"
-        />
-        {userType && (
-          <span className="text-gray-600 font-semibold whitespace-nowrap">
-            {userType === "student" ? "นักเรียน" : "ติวเตอร์"}
-          </span>
-        )}
+        /> */}
+
+        <div className="ml-auto">
+          {userType && (
+            <span className="text-gray-600 font-semibold whitespace-nowrap">
+              คุณคือ: {userType === "student" ? "นักเรียน" : "ติวเตอร์"}
+            </span>
+          )}
+        </div>
+
       </div>
 
 

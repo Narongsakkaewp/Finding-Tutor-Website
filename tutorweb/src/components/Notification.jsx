@@ -14,7 +14,7 @@ const Notification = ({
 
   return (
     <div
-      className={`border px-4 py-3 rounded relative mb-4 ${bgColor}`}
+      className={`border px-4 py-3 rounded relative mb-4 ${bgColor} m-4 md:m-6 lg:m-8`}
       role="alert"
     >
       <span className="block sm:inline">{message}</span>

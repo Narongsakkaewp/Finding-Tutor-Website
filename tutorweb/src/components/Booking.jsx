@@ -20,7 +20,7 @@ const Booking = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 p-4 md:p-6 lg:p-8 min-h-screen bg-gray-50">
       {/* Calendar */}
       <div className="grid-2">
         <FullCalendar
