@@ -8,6 +8,8 @@ import TutorInfo from './pages/Tutor_Info';
 import Booking from './components/Booking';
 import MyPost from './components/MyPost';
 import Review from './components/Review';
+import Favorite from './components/Favorite';
+import Profile from './components/Profile';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -70,7 +72,9 @@ function App() {
       case 'mypost':
         return <MyPost />;
       case 'favorite':
-        return <Review />;
+        return <Favorite />;
+      case 'profile':
+        return <Profile />;
       default:
         return <Home />;
     }
