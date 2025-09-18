@@ -144,7 +144,7 @@ function App() {
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
                   >
                     <i className="bi bi-file-earmark-post font-bold text-2xl"></i>
-                    โพสต์ของฉัน
+                    โพสต์
                   </button>
                 </li>
                 <li>

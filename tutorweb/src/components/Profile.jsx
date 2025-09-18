@@ -244,13 +244,13 @@ function Empty({ line = "ไม่พบข้อมูล" }) {
 const mockProfile = {
   avatarUrl:
     "https://images.unsplash.com/photo-1520975922284-9d08d6aa23ec?q=80&w=600&auto=format&fit=crop",
-  fullName: "ศุภกานต์ พิริยะพงศ์",
-  nickname: "น้ำผึ้ง",
+  fullName: "ณรงค์ศักดิ์ แก้วประทุม",
+  nickname: "เต้ย",
   gradeLevel: "ม.5",
   school: "สาธิตฯ",
   city: "Bangkok",
   bio: "อยากปูพื้นฐานคณิตและฟิสิกส์ให้แน่น เพื่อเตรียมสอบเข้ามหาวิทยาลัยสายวิศวะ ชอบเรียนแบบโจทย์เยอะ ๆ มีการบ้านและรีแคปหลังเรียน",
-  tags: ["ตั้งใจจริง", "ชอบฝึกโจทย์", "เรียนออนไลน์ได้"],
+  tags: ["ตั้งใจจริง", "ชอบฝึกโจทย์", "เรียนออนไซต์เท่านั้น"],
   contact: { email: "honey@example.com", phone: "08x-xxx-xxxx" },
   links: {
     website: "https://example.com/portfolio",
