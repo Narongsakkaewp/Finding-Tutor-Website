@@ -10,8 +10,8 @@ app.use(express.json());
 
 // ---------- MySQL Pool ----------
 const pool = mysql.createPool({
-  host:     process.env.DB_HOST,
-  user:     process.env.DB_USER,
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   waitForConnections: true,
@@ -77,7 +77,7 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/subjects/:subject/posts', async (req, res) => {
   try {
     const subject = req.params.subject; // เช่น "Math 1"
-    const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 5, 50);
     const offset = (page - 1) * limit;
 
@@ -142,7 +142,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
 // รายชื่อติวเตอร์จาก register (type = tutor/teacher)
 app.get('/api/tutors', async (req, res) => {
   try {
-    const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
 
@@ -191,7 +191,7 @@ app.get('/api/tutors', async (req, res) => {
 // โพสต์ติวเตอร์ทั้งหมด/ล่าสุด + กรองด้วย tutorId/subject ได้
 app.get('/api/tutor-posts', async (req, res) => {
   try {
-    const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
 
@@ -275,7 +275,7 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
       return res.status(400).json({ message: 'Invalid tutorId' });
     }
 
-    const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 5, 50);
     const offset = (page - 1) * limit;
 
@@ -342,5 +342,48 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
+// สร้างโพสต์ใหม่ (นักเรียน)
+app.post('/api/student_posts', async (req, res) => {
+  try {
+    const { subject, description, preferred_days, preferred_time, location, group_size, budget, contact_info } = req.body;
+
+    await pool.execute(
+      `INSERT INTO student_posts (student_id, subject, description, preferred_days, preferred_time, location, group_size, budget, contact_info, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [1, subject, description, preferred_days, preferred_time, location, group_size, budget, contact_info] // student_id แนะนำดึงจาก token session
+    );
+
+    res.json({ success: true, message: "โพสต์สำเร็จ" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Database error" });
+  }
+});
+
+// 📌 ดึงทุก student_posts พร้อมข้อมูล user
+app.get('/api/student_posts', async (req, res) => {
+  try {
+    const posts = await db.collection('student_posts')
+      .aggregate([
+        {
+          $lookup: {
+            from: "users",              // collection users
+            localField: "user_id",      // student_posts.user_id
+            foreignField: "user_id",    // users.user_id
+            as: "user"
+          }
+        },
+        { $unwind: "$user" }, // แตก array user ออกมาเป็น object
+        { $sort: { createdAt: -1 } } // โพสต์ล่าสุดขึ้นก่อน
+      ])
+      .toArray();
+
+    res.json({ success: true, items: posts });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+// ****** Server Start ******
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

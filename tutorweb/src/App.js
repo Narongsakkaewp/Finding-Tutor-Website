@@ -160,7 +160,7 @@ function App() {
                     onClick={() => setCurrentPage('profile')}
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
                   >
-                    <i className="bi bi-person-circle font-bold text-2xl"></i> โปรไฟล์ของคุณ
+                    <i className="bi bi-person-circle font-bold text-2xl"></i> โปรไฟล์ของฉัน
                   </button>
                 </li>
               </ul>
