@@ -342,48 +342,238 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// สร้างโพสต์ใหม่ (นักเรียน)
-app.post('/api/student_posts', async (req, res) => {
-  try {
-    const { subject, description, preferred_days, preferred_time, location, group_size, budget, contact_info } = req.body;
-
-    await pool.execute(
-      `INSERT INTO student_posts (student_id, subject, description, preferred_days, preferred_time, location, group_size, budget, contact_info, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [1, subject, description, preferred_days, preferred_time, location, group_size, budget, contact_info] // student_id แนะนำดึงจาก token session
-    );
-
-    res.json({ success: true, message: "โพสต์สำเร็จ" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Database error" });
-  }
-});
-
-// 📌 ดึงทุก student_posts พร้อมข้อมูล user
+// ===== GET: ดึงฟีดนักเรียนทั้งหมด =====
 app.get('/api/student_posts', async (req, res) => {
   try {
-    const posts = await db.collection('student_posts')
-      .aggregate([
-        {
-          $lookup: {
-            from: "users",              // collection users
-            localField: "user_id",      // student_posts.user_id
-            foreignField: "user_id",    // users.user_id
-            as: "user"
-          }
-        },
-        { $unwind: "$user" }, // แตก array user ออกมาเป็น object
-        { $sort: { createdAt: -1 } } // โพสต์ล่าสุดขึ้นก่อน
-      ])
-      .toArray();
+    const me = Number(req.query.me) || 0;
 
-    res.json({ success: true, items: posts });
+    const [rows] = await pool.query(`
+      SELECT
+        sp.student_post_id, sp.student_id, sp.subject, sp.description,
+        sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
+ sp.location, sp.group_size,
+        sp.budget, sp.contact_info, sp.created_at,
+        r.name, r.lastname,
+        COALESCE(jc.join_count, 0) AS join_count,
+        CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined
+      FROM student_posts sp
+      LEFT JOIN register r ON r.user_id = sp.student_id
+      LEFT JOIN (
+        SELECT student_post_id, COUNT(*) AS join_count
+        FROM student_post_joins GROUP BY student_post_id
+      ) jc ON jc.student_post_id = sp.student_post_id
+      LEFT JOIN student_post_joins jme
+        ON jme.student_post_id = sp.student_post_id AND jme.user_id = ?
+      ORDER BY sp.student_post_id DESC
+    `, [me]);
+
+    console.log(`[GET /api/student_posts] total= ${rows.length}`);
+
+    const posts = rows.map(r => ({
+      id: r.student_post_id,
+      owner_id: r.student_id,
+      subject: r.subject || '',
+      description: r.description || '',
+      preferred_days: r.preferred_days || '',
+      preferred_time: r.preferred_time || '',
+      location: r.location || '',
+      group_size: Number(r.group_size || 0),
+      budget: Number(r.budget || 0),
+      contact_info: r.contact_info || '',
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+      join_count: Number(r.join_count || 0),
+      joined: !!r.joined,
+      user: {
+        first_name: r.name || '',
+        last_name:  r.lastname || '',
+        profile_image: '/default-avatar.png',
+      },
+    }));
+
+    return res.json(posts);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error('FEED ERR', err);
+    return res.status(500).json({ success:false, message: err?.sqlMessage || err?.message || 'Database error' });
   }
 });
-// ****** Server Start ******
+
+
+
+// helper แปลงเวลาให้เป็น HH:MM:SS
+function toSqlTime(t) {
+  if (!t) return null;
+  // รับ 'HH:MM' หรือ 'HH:MM:SS'
+  if (/^\d{2}:\d{2}$/.test(t)) return `${t}:00`;
+  if (/^\d{2}:\d{2}:\d{2}$/.test(t)) return t;
+  return null;
+}
+
+function sendDbError(res, err) {
+  console.error('[DB ERROR]', err);
+  return res.status(500).json({
+    success: false,
+    message: err?.sqlMessage || err?.message || 'Database error',
+    code: err?.code || null,
+  });
+}
+
+// ===== POST: สร้างโพสต์ใหม่ =====
+app.post('/api/student_posts', async (req, res) => {
+  try {
+    const {
+      user_id,
+      subject,
+      description,
+      preferred_days,
+      preferred_time,
+      location,
+      group_size,
+      budget,
+      contact_info
+    } = req.body;
+
+    // ตรวจข้อมูลฝั่งเซิร์ฟเวอร์ให้ชัด ๆ
+    if (!user_id) return res.status(400).json({ success: false, message: 'user_id is required' });
+
+    const groupSizeNum = Number(group_size);
+    const budgetNum = Number(budget);
+    const timeSql = toSqlTime(preferred_time);
+
+    if (!Number.isFinite(groupSizeNum) || groupSizeNum <= 0)
+      return res.status(400).json({ success: false, message: 'group_size must be a positive number' });
+
+    if (!Number.isFinite(budgetNum) || budgetNum < 0)
+      return res.status(400).json({ success: false, message: 'budget must be a number' });
+
+    if (!timeSql)
+      return res.status(400).json({ success: false, message: 'preferred_time must be HH:MM or HH:MM:SS' });
+
+    // (ถ้ามี FK ไป register แนะนำเช็คก่อน)
+    const [userExists] = await pool.execute('SELECT 1 FROM register WHERE user_id = ?', [user_id]);
+    if (userExists.length === 0)
+      return res.status(400).json({ success: false, message: `user_id ${user_id} not found in register` });
+
+    const [result] = await pool.execute(
+      `INSERT INTO student_posts
+         (student_id, subject, description, preferred_days, preferred_time,
+          location, group_size, budget, contact_info, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [user_id, subject, description, preferred_days, timeSql,
+        location, groupSizeNum, budgetNum, contact_info]
+    );
+
+    const insertId = result.insertId;
+
+    const [rows] = await pool.query(
+      `SELECT
+         sp.student_post_id, sp.student_id, sp.subject, sp.description,
+         sp.preferred_days, sp.preferred_time, sp.location, sp.group_size,
+         sp.budget, sp.contact_info, sp.created_at,
+         r.name, r.lastname
+       FROM student_posts sp
+       LEFT JOIN register r ON r.user_id = sp.student_id
+       WHERE sp.student_post_id = ?`,
+      [insertId]
+    );
+
+    const r = rows[0];
+    const created = {
+      id: r.student_post_id,
+      owner_id: r.student_id,
+      subject: r.subject,
+      description: r.description,
+      preferred_days: r.preferred_days,
+      preferred_time: r.preferred_time,
+      location: r.location,
+      group_size: r.group_size,
+      budget: Number(r.budget),
+      contact_info: r.contact_info,
+      createdAt: r.created_at,
+      user: {
+        first_name: r.name || '',
+        last_name: r.lastname || '',
+        profile_image: '/default-avatar.png',
+      },
+    };
+
+
+    return res.status(201).json(created);
+  } catch (err) {
+    return sendDbError(res, err);
+  }
+});
+
+// ผู้ใช้กด Join โพสต์
+app.post('/api/student_posts/:id/join', async (req, res) => {
+  try {
+    const postId = Number(req.params.id);
+    const me     = Number(req.body.user_id);
+    if (!Number.isFinite(postId) || !Number.isFinite(me))
+      return res.status(400).json({ success:false, message:'invalid postId or user_id' });
+
+    // ตรวจโพสต์
+    const [[post]] = await pool.query(
+      'SELECT student_id, group_size FROM student_posts WHERE student_post_id = ?',
+      [postId]
+    );
+    if (!post) return res.status(404).json({ success:false, message:'post not found' });
+
+    // ห้ามเจ้าของโพสต์ join
+    if (post.student_id === me)
+      return res.status(400).json({ success:false, message:'คุณเป็นเจ้าของโพสต์นี้' });
+
+    // เต็มหรือยัง
+    const [[cnt]] = await pool.query(
+      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
+      [postId]
+    );
+    if (cnt.c >= post.group_size)
+      return res.status(409).json({ success:false, message:'กลุ่มนี้เต็มแล้ว' });
+
+    // ใส่ join (กันซ้ำด้วย UNIQUE/PRIMARY KEY)
+    await pool.query(
+      'INSERT IGNORE INTO student_post_joins (student_post_id, user_id) VALUES (?, ?)',
+      [postId, me]
+    );
+
+    const [[cnt2]] = await pool.query(
+      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
+      [postId]
+    );
+
+    return res.json({ success:true, joined:true, join_count: cnt2.c });
+  } catch (err) {
+    return sendDbError(res, err);
+  }
+});
+
+// ผู้ใช้ยกเลิก Join
+app.delete('/api/student_posts/:id/join', async (req, res) => {
+  try {
+    const postId = Number(req.params.id);
+    const me     = Number(req.body?.user_id || req.query.user_id);
+    if (!Number.isFinite(postId) || !Number.isFinite(me))
+      return res.status(400).json({ success:false, message:'invalid postId or user_id' });
+
+    await pool.query(
+      'DELETE FROM student_post_joins WHERE student_post_id = ? AND user_id = ?',
+      [postId, me]
+    );
+
+    const [[cnt]] = await pool.query(
+      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
+      [postId]
+    );
+
+    return res.json({ success:true, joined:false, join_count: cnt.c });
+  } catch (err) {
+    return sendDbError(res, err);
+  }
+});
+
+
+
+
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
