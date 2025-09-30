@@ -571,6 +571,51 @@ app.delete('/api/student_posts/:id/join', async (req, res) => {
   }
 });
 
+// GET: โปรไฟล์ของผู้ใช้ที่ล็อกอิน
+app.get('/api/profile/:userId', async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+
+    // ถ้ามีตารางโปรไฟล์แยก (เช่น student_profile) ให้ LEFT JOIN ด้วย
+    const [[u]] = await pool.query(`
+      SELECT r.user_id, r.name, r.lastname, r.email, r.type,
+             sp.nickname, sp.bio, sp.study_days, sp.study_time,
+             sp.budget_min, sp.budget_max, sp.location, sp.phone, sp.line, sp.website
+      FROM register r
+      LEFT JOIN student_profile sp ON sp.user_id = r.user_id   -- ถ้าไม่มีตารางนี้ก็ลบ LEFT JOIN ออกได้
+      WHERE r.user_id = ?`,
+      [userId]
+    );
+
+    if (!u) return res.status(404).json({ message: 'Profile not found' });
+
+    res.json({
+      user_id: u.user_id,
+      name: u.name || '',
+      lastname: u.lastname || '',
+      full_name: `${u.name || ''}${u.lastname ? ' ' + u.lastname : ''}`.trim(),
+      email: u.email,
+      role: (u.type || '').toLowerCase(),
+      // optional fields (มี/ไม่มีได้)
+      nickname: u.nickname || null,
+      bio: u.bio || '',
+      study_days: u.study_days || '',
+      study_time: u.study_time || '',
+      budget_min: u.budget_min ?? null,
+      budget_max: u.budget_max ?? null,
+      location: u.location || '',
+      phone: u.phone || '',
+      line: u.line || '',
+      website: u.website || ''
+    });
+  } catch (err) {
+    console.error('GET /api/profile/:userId', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 
 
