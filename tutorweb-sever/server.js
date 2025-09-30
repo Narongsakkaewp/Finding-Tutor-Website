@@ -571,9 +571,54 @@ app.delete('/api/student_posts/:id/join', async (req, res) => {
   }
 });
 
+app.get('/api/notifications/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const sql = `
+      SELECT n.notification_id, n.type, n.message, n.related_id,
+             n.is_read, n.created_at,
+             r.name AS firstname, r.lastname
+      FROM notifications n
+      JOIN register r ON n.user_id = r.user_id
+      WHERE n.user_id = ?
+      ORDER BY n.created_at DESC
+    `;
+    const [results] = await pool.execute(sql, [user_id]);
+    res.json(results);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Mark as read
+app.put('/api/notifications/read/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.execute('UPDATE notifications SET is_read = TRUE WHERE notification_id = ?', [id]);
+    res.json({ message: 'Marked as read' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Add new notification
+app.post('/api/notifications', async (req, res) => {
+  try {
+    const { user_id, type, message, related_id } = req.body;
+    const [result] = await pool.execute(
+      'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
+      [user_id, type, message, related_id || null]
+    );
+    res.json({ notification_id: result.insertId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
 
 
-
-
+// ****** Server Start ******
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

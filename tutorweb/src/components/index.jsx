@@ -22,8 +22,6 @@ function Index({ setIsAuthenticated }) {
         <img src={logo} alt="Logo" className="h-16" />
         {/* Menu */}
         <div className="flex gap-4 items-center">
-          <a href="#" className="font-bold text-black hover:text-blue-600">หน้าหลัก</a>
-          <a href="#" className="font-bold text-black hover:text-blue-600">เกี่ยวกับ</a>
           <button
             className="bg-gray-700 text-white font-bold px-4 py-2 rounded"
             onClick={() => setShowLogin(true)}

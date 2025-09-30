@@ -7,7 +7,6 @@ import StudentInfo from './pages/Student_Info';
 import TutorInfo from './pages/Tutor_Info';
 import Booking from './components/Booking';
 import MyPost from './components/MyPost';
-import Review from './components/Review';
 import Favorite from './components/Favorite';
 import Profile from './components/Profile';
 
@@ -17,6 +16,13 @@ function App() {
   );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('home');
+  const [newNotificationCount, setNewNotificationCount] = useState(0);
+
+  // ✅ โหลด user จาก localStorage
+  const [user, setUser] = useState(() => {
+    const raw = localStorage.getItem('user');
+    return raw ? JSON.parse(raw) : null;
+  });
 
   const [userType, setUserType] = useState(() => {
     const raw = localStorage.getItem('userType');
@@ -33,6 +39,18 @@ function App() {
     localStorage.setItem('isAuthenticated', isAuthenticated ? 'true' : 'false');
   }, [isAuthenticated]);
 
+  // ✅ fetch notification โดยใช้ user_id จริง
+  useEffect(() => {
+    if (!user?.user_id) return; // ใช้ user_id
+    fetch(`http://localhost:5000/api/notifications/${user.user_id}`)
+      .then(res => res.json())
+      .then(data => {
+        const newOnes = data.filter(n => !n.is_read);
+        setNewNotificationCount(newOnes.length);
+      })
+      .catch(err => console.error(err));
+  }, [user]);
+
   const goToProfileByRole = (roleLike) => {
     const r = String(roleLike || '').toLowerCase();
     if (r === 'student') setCurrentPage('student_info');
@@ -42,8 +60,17 @@ function App() {
 
   const handleLoginSuccess = (payload = {}) => {
     const role = (payload.userType || payload.role || payload.user?.role || '').toLowerCase();
+
     setIsAuthenticated(true);
     setUserType(role);
+
+    // ✅ เก็บ user ลง localStorage
+    if (payload.user) {
+      setUser(payload.user);
+      localStorage.setItem('user', JSON.stringify(payload.user));
+    }
+
+    localStorage.setItem('userType', role);
     goToProfileByRole(role);
   };
 
@@ -51,6 +78,8 @@ function App() {
     setIsAuthenticated(false);
     setCurrentPage('home');
     setUserType(null);
+    setUser(null);
+
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('userType');
     localStorage.removeItem('user');
@@ -62,7 +91,12 @@ function App() {
       case 'home':
         return <Home />;
       case 'notification':
-        return <Notification />;
+        return (
+          <Notification
+            userId={user?.user_id}
+            onReadAll={() => setNewNotificationCount(0)}
+          />
+        );
       case 'student_info':
         return <StudentInfo />;
       case 'tutor_info':
@@ -83,7 +117,10 @@ function App() {
   return (
     <div>
       {!isAuthenticated ? (
-        <Index setIsAuthenticated={setIsAuthenticated} onLoginSuccess={handleLoginSuccess} />
+        <Index
+          setIsAuthenticated={setIsAuthenticated}
+          onLoginSuccess={handleLoginSuccess}
+        />
       ) : (
         <>
           <Navbar
@@ -95,8 +132,6 @@ function App() {
           />
 
           <div className="flex">
-            {/* Sidebar (มือถือ + เดสก์ท็อป) */}
-            {/* Overlay สำหรับ mobile */}
             {sidebarOpen && (
               <div
                 className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
@@ -105,7 +140,7 @@ function App() {
             )}
 
             <div
-            className={`fixed z-50 top-0 left-0 w-64 bg-white border-r transform 
+              className={`fixed z-50 top-0 left-0 w-64 bg-white border-r transform 
               ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
               transition-transform duration-300 ease-in-out 
               md:translate-x-0 h-screen md:static md:block`}
@@ -123,19 +158,15 @@ function App() {
                 <li>
                   <button
                     onClick={() => setCurrentPage('notification')}
-                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2 relative"
                   >
                     <i className="bi bi-bell-fill font-bold text-2xl"></i>
                     การแจ้งเตือน
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setCurrentPage('booking')}
-                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
-                  >
-                    <i className="bi bi-table font-bold text-2xl"></i>
-                    การติวของฉัน
+                    {newNotificationCount > 0 && (
+                      <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                        {newNotificationCount}
+                      </span>
+                    )}
                   </button>
                 </li>
                 <li>
@@ -152,7 +183,7 @@ function App() {
                     onClick={() => setCurrentPage('favorite')}
                     className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
                   >
-                    <i class="bi bi-heart-fill font-bold text-2xl"></i> รายการที่สนใจ
+                    <i className="bi bi-heart-fill font-bold text-2xl"></i> รายการที่สนใจ
                   </button>
                 </li>
                 <li>
@@ -165,7 +196,7 @@ function App() {
                 </li>
               </ul>
             </div>
-            {/* Content */}
+
             <div className="flex-1">{renderPage()}</div>
           </div>
         </>
