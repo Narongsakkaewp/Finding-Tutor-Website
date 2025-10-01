@@ -342,17 +342,26 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// ===== GET: ดึงฟีดนักเรียนทั้งหมด =====
+// ===== GET: ดึงฟีดนักเรียนทั้งหมด (รองรับกรองเฉพาะของฉัน) =====
 app.get('/api/student_posts', async (req, res) => {
   try {
-    const me = Number(req.query.me) || 0;
+    const me    = Number(req.query.me) || 0; // ใช้เช็ค joined
+    const mine  = String(req.query.mine || '').toLowerCase() === '1' || String(req.query.mine || '').toLowerCase() === 'true';
+    const owner = mine ? me : Number(req.query.owner_id || 0); // ถ้า mine=1 ให้โชว์เฉพาะของตัวเอง
+
+    // สร้าง WHERE แบบเลือกได้
+    let whereSql = '';
+    const params = [me]; // ลำดับ params ต้องเรียงตามตำแหน่ง ? ใน SQL (jme.user_id มาก่อน WHERE)
+    if (owner) {
+      whereSql = 'WHERE sp.student_id = ?';
+      params.push(owner);
+    }
 
     const [rows] = await pool.query(`
       SELECT
         sp.student_post_id, sp.student_id, sp.subject, sp.description,
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
- sp.location, sp.group_size,
-        sp.budget, sp.contact_info, sp.created_at,
+        sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
         r.name, r.lastname,
         COALESCE(jc.join_count, 0) AS join_count,
         CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined
@@ -364,10 +373,9 @@ app.get('/api/student_posts', async (req, res) => {
       ) jc ON jc.student_post_id = sp.student_post_id
       LEFT JOIN student_post_joins jme
         ON jme.student_post_id = sp.student_post_id AND jme.user_id = ?
+      ${whereSql}
       ORDER BY sp.student_post_id DESC
-    `, [me]);
-
-    console.log(`[GET /api/student_posts] total= ${rows.length}`);
+    `, params);
 
     const posts = rows.map(r => ({
       id: r.student_post_id,
@@ -398,6 +406,7 @@ app.get('/api/student_posts', async (req, res) => {
 });
 
 
+// ===== helper =====
 
 // helper แปลงเวลาให้เป็น HH:MM:SS
 function toSqlTime(t) {
@@ -415,6 +424,24 @@ function sendDbError(res, err) {
     message: err?.sqlMessage || err?.message || 'Database error',
     code: err?.code || null,
   });
+}
+
+// >>> ใหม่: helper ดึงรายชื่อผู้เข้าร่วมของโพสต์
+async function getJoiners(postId) {
+  const [rows] = await pool.query(
+    `SELECT j.user_id, j.joined_at, r.name, r.lastname
+       FROM student_post_joins j
+       LEFT JOIN register r ON r.user_id = j.user_id
+      WHERE j.student_post_id = ?
+      ORDER BY j.joined_at ASC, j.user_id ASC`,
+    [postId]
+  );
+  return rows.map(x => ({
+    user_id: x.user_id,
+    joined_at: x.joined_at,
+    name: x.name || '',
+    lastname: x.lastname || ''
+  }));
 }
 
 // ===== POST: สร้างโพสต์ใหม่ =====
@@ -496,7 +523,6 @@ app.post('/api/student_posts', async (req, res) => {
       },
     };
 
-
     return res.status(201).json(created);
   } catch (err) {
     return sendDbError(res, err);
@@ -541,7 +567,10 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
       [postId]
     );
 
-    return res.json({ success:true, joined:true, join_count: cnt2.c });
+    // >>> ดึงรายชื่อผู้เข้าร่วมทั้งหมด (ชื่อ-สกุล)
+    const joiners = await getJoiners(postId);
+
+    return res.json({ success:true, joined:true, join_count: cnt2.c, joiners });
   } catch (err) {
     return sendDbError(res, err);
   }
@@ -565,9 +594,25 @@ app.delete('/api/student_posts/:id/join', async (req, res) => {
       [postId]
     );
 
-    return res.json({ success:true, joined:false, join_count: cnt.c });
+    // >>> ดึงรายชื่อผู้เข้าร่วมล่าสุดหลังยกเลิก
+    const joiners = await getJoiners(postId);
+
+    return res.json({ success:true, joined:false, join_count: cnt.c, joiners });
   } catch (err) {
     return sendDbError(res, err);
+  }
+});
+
+// >>> ใหม่: API ดึงรายชื่อผู้เข้าร่วมของโพสต์
+app.get('/api/student_posts/:id/joiners', async (req, res) => {
+  try {
+    const postId = Number(req.params.id);
+    if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
+    const rows = await getJoiners(postId);
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

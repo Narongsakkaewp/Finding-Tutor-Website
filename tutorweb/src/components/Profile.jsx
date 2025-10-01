@@ -6,7 +6,7 @@ import {
 
 /* ---------- helpers ---------- */
 
-// แปลงโพสต์ฝั่ง server -> รูปแบบที่การ์ดในหน้านี้ใช้
+// แปลงโพสต์จาก backend -> โครงสร้างที่การ์ดใช้
 const normalizePost = (p = {}) => ({
   _id: p._id ?? p.id ?? p.student_post_id,
   subject: p.subject || "",
@@ -15,15 +15,17 @@ const normalizePost = (p = {}) => ({
   meta: {
     preferred_days: p.meta?.preferred_days ?? p.preferred_days ?? "",
     preferred_time: p.meta?.preferred_time ?? p.preferred_time ?? "",
-    location:       p.meta?.location       ?? p.location       ?? "",
-    group_size:     p.meta?.group_size     ?? p.group_size     ?? "",
-    budget:         p.meta?.budget         ?? p.budget         ?? "",
+    location: p.meta?.location ?? p.location ?? "",
+    group_size: p.meta?.group_size ?? p.group_size ?? "",
+    budget: p.meta?.budget ?? p.budget ?? "",
   },
 });
 
 // ประกอบชื่อเต็มจากข้อมูลผู้ใช้
 const fullNameOf = (u) =>
-  [u?.name || u?.first_name || "", u?.lastname || u?.last_name || ""].join(" ").trim();
+  [u?.name || u?.first_name || "", u?.lastname || u?.last_name || ""]
+    .join(" ")
+    .trim();
 
 /* ---------- Subcomponents ---------- */
 
@@ -85,112 +87,118 @@ function Empty({ line = "ไม่พบข้อมูล" }) {
 function Profile() {
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
-  const [savedTutors, setSavedTutors] = useState([]); // เผื่อใช้ในอนาคต
+  const [savedTutors, setSavedTutors] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // ผู้ใช้ที่ล็อกอิน (เก็บตอนล็อกอินไว้ใน localStorage key: "user")
   const currentUser = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem("user")); }
-    catch { return null; }
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
   }, []);
 
+  // โหลดโปรไฟล์ + โพสต์ของ "ฉัน" เท่านั้น
   useEffect(() => {
-    const run = async () => {
+    let cancelled = false;
+
+    (async () => {
       try {
-        const me = currentUser?.user_id || currentUser?.id || 0;
+        const me = currentUser?.user_id || 0;
 
-        // 1) ดึงโพสต์ของนักเรียนจาก backend (ใช้ API ที่คุณมีอยู่แล้ว)
-        //    GET /api/student_posts?me=<user_id>
-        const postRes = await fetch(`http://localhost:5000/api/student_posts?me=${me}`);
-        const postJson = await postRes.json();
-        const list = Array.isArray(postJson)
-          ? postJson
-          : Array.isArray(postJson.items) ? postJson.items
-          : Array.isArray(postJson.data)  ? postJson.data
-          : [];
-        setPosts(list.map(normalizePost));
-
-        // 2) โปรไฟล์:
-        //    ถ้ายังไม่มี /api/profile/:id ให้ประกอบจากข้อมูลที่ล็อกอินก่อน
-        let baseProfile = {
+        // เริ่มจากข้อมูลพื้นฐานที่ดึงได้จาก localStorage ก่อน
+        let prof = {
           avatarUrl: currentUser?.profile_image || "/default-avatar.png",
           fullName: fullNameOf(currentUser) || currentUser?.email || "ผู้ใช้",
           nickname: currentUser?.nickname || "",
-          gradeLevel: currentUser?.grade || "",
+          gradeLevel: currentUser?.gradeLevel || "นักเรียน",
           school: currentUser?.school || "",
           city: currentUser?.city || "",
-          bio: currentUser?.bio || "",
-          tags: currentUser?.tags || [],
           contact: { email: currentUser?.email || "", phone: currentUser?.phone || "" },
-          links: currentUser?.links || {},
+          availability: currentUser?.availability || { days: [], time: "" },
+          budget: currentUser?.budget || null,
+          preferences: currentUser?.preferences || { mode: "online", maxDistance: 5 },
+          tags: currentUser?.tags || [],
           goals: currentUser?.goals || [],
           subjects: currentUser?.subjects || [],
-          availability: currentUser?.availability || {},
-          budget: currentUser?.budget || null,
-          preferences: currentUser?.preferences || {},
+          links: currentUser?.links || {},
         };
 
-        // ถ้ามี endpoint โปรไฟล์ก็ลองโหลดทับ
-        if (me) {
-          try {
-            const pfRes = await fetch(`http://localhost:5000/api/profile/${me}`);
-            if (pfRes.ok) {
-              const p = await pfRes.json();
-              // map minimal fields ให้ชื่อแสดงตรงกับ DB
-              baseProfile = {
-                ...baseProfile,
-                fullName: fullNameOf(p) || baseProfile.fullName,
-                nickname: p.nickname || baseProfile.nickname,
-                avatarUrl: p.avatarUrl || baseProfile.avatarUrl,
-                city: p.city || baseProfile.city,
-                school: p.school || baseProfile.school,
-                contact: {
-                  email: p.email || baseProfile.contact.email,
-                  phone: p.phone || baseProfile.contact.phone,
-                },
-                availability: p.availability || baseProfile.availability,
-                budget: p.budget || baseProfile.budget,
-                preferences: p.preferences || baseProfile.preferences,
-                tags: p.tags || baseProfile.tags,
-                goals: p.goals || baseProfile.goals,
-                subjects: p.subjects || baseProfile.subjects,
-                links: p.links || baseProfile.links,
-                bio: p.bio || baseProfile.bio,
-              };
-            }
-          } catch { /* ถ้าไม่มี route ก็ใช้ข้อมูลที่มี */ }
+        // ถ้ามี endpoint โปรไฟล์ ก็อัปเดตทับ
+        try {
+          const pfRes = await fetch(`http://localhost:5000/api/profile/${me}`);
+          if (pfRes.ok) {
+            const p = await pfRes.json();
+            prof = {
+              ...prof,
+              fullName: fullNameOf(p) || prof.fullName,
+              nickname: p.nickname ?? prof.nickname,
+              avatarUrl: p.avatarUrl || prof.avatarUrl,
+              city: p.city ?? prof.city,
+              school: p.school ?? prof.school,
+              contact: {
+                email: p.email ?? prof.contact.email,
+                phone: p.phone ?? prof.contact.phone,
+              },
+              availability: p.availability ?? prof.availability,
+              budget: p.budget ?? prof.budget,
+              preferences: p.preferences ?? prof.preferences,
+              tags: p.tags ?? prof.tags,
+              goals: p.goals ?? prof.goals,
+              subjects: p.subjects ?? prof.subjects,
+              links: p.links ?? prof.links,
+              gradeLevel: p.gradeLevel ?? prof.gradeLevel,
+            };
+          }
+        } catch {
+          // ไม่มี route นี้ก็ข้ามไป
         }
 
-        setProfile(baseProfile);
-        // saved tutors mock นิดหน่อย (คุณค่อยเปลี่ยนมาจาก backend ได้)
-        setSavedTutors([
-          {
-            id: "t1",
-            name: "ครูโบว์",
-            subject: "คณิตศาสตร์ ม.ปลาย",
-            rating: 4.9,
-            reviews: 128,
-            image:
-              "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=400&auto=format&fit=crop"
-          },
-          {
-            id: "t2",
-            name: "พี่มอส",
-            subject: "Physics ม.ปลาย",
-            rating: 4.7,
-            reviews: 89,
-            image:
-              "https://images.unsplash.com/photo-1527980965255-d3b416303d12?q=80&w=400&auto=format&fit=crop"
-          }
-        ]);
+        if (!cancelled) setProfile(prof);
+
+        // โหลดเฉพาะโพสต์ของฉัน
+        const r = await fetch(`http://localhost:5000/api/student_posts?me=${me}&mine=1`);
+        const data = await r.json();
+        const onlyMine = Array.isArray(data)
+          ? data.filter((p) => Number(p.owner_id) === Number(me))
+          : [];
+        const normalized = onlyMine.map(normalizePost);
+        if (!cancelled) setPosts(normalized);
+
+        // mock ติวเตอร์ที่บันทึก (ต่อไปคุณค่อยเปลี่ยนเป็นดึงจาก backend ได้)
+        if (!cancelled)
+          setSavedTutors([
+            {
+              id: "t1",
+              name: "ครูโบว์",
+              subject: "คณิตศาสตร์ ม.ปลาย",
+              rating: 4.9,
+              reviews: 128,
+              image:
+                "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=400&auto=format&fit=crop",
+            },
+            {
+              id: "t2",
+              name: "พี่มอส",
+              subject: "Physics ม.ปลาย",
+              rating: 4.7,
+              reviews: 89,
+              image:
+                "https://images.unsplash.com/photo-1527980965255-d3b416303d12?q=80&w=400&auto=format&fit=crop",
+            },
+          ]);
       } catch (e) {
         console.error(e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    run();
-  }, [currentUser]);
+  }, [currentUser?.user_id]);
 
   if (loading) {
     return (
@@ -211,7 +219,6 @@ function Profile() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-4 md:px-6 py-8 md:py-10">
-
         {/* Header card */}
         <div className="bg-white rounded-3xl shadow-sm border p-5 md:p-6">
           <div className="flex flex-col md:flex-row md:items-end gap-5">
@@ -255,21 +262,32 @@ function Profile() {
 
           {/* Quick info */}
           <div className="mt-5 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <InfoRow icon={<MapPin className="h-4 w-4" />}
+            <InfoRow
+              icon={<MapPin className="h-4 w-4" />}
               label="พื้นที่เรียน"
               value={
                 profile.preferences?.mode === "in-person"
                   ? `${profile.city || "พื้นที่"} (${profile.preferences?.maxDistance || 5} กม.)`
                   : profile.preferences?.mode === "online"
-                    ? "ออนไลน์"
-                    : "ออนไลน์/นัดพบ"
-              } />
-            <InfoRow icon={<Calendar className="h-4 w-4" />} label="วันสะดวก" value={(profile.availability?.days || []).join(", ")} />
+                  ? "ออนไลน์"
+                  : "ออนไลน์/นัดพบ"
+              }
+            />
+            <InfoRow
+              icon={<Calendar className="h-4 w-4" />}
+              label="วันสะดวก"
+              value={(profile.availability?.days || []).join(", ")}
+            />
             <InfoRow icon={<Clock className="h-4 w-4" />} label="เวลาสะดวก" value={profile.availability?.time} />
-            <InfoRow icon={<Coins className="h-4 w-4" />} label="งบประมาณ"
+            <InfoRow
+              icon={<Coins className="h-4 w-4" />}
+              label="งบประมาณ"
               value={
-                profile.budget ? `฿${profile.budget.min} - ฿${profile.budget.max}/${profile.budget.unit}` : "-"
-              } />
+                profile.budget
+                  ? `฿${profile.budget.min} - ฿${profile.budget.max}/${profile.budget.unit}`
+                  : "-"
+              }
+            />
             <InfoRow icon={<Mail className="h-4 w-4" />} label="อีเมล" value={profile.contact?.email} />
             <InfoRow icon={<Phone className="h-4 w-4" />} label="เบอร์โทร" value={profile.contact?.phone} />
           </div>
@@ -285,7 +303,9 @@ function Profile() {
                 <Empty line="ยังไม่ได้เพิ่มเป้าหมายการเรียน" />
               ) : (
                 <ul className="list-disc pl-5 space-y-1 text-gray-700">
-                  {profile.goals.map((g, i) => <li key={i}>{g}</li>)}
+                  {profile.goals.map((g, i) => (
+                    <li key={i}>{g}</li>
+                  ))}
                 </ul>
               )}
             </Card>
@@ -328,13 +348,15 @@ function Profile() {
                           className="w-9 h-9 rounded-full object-cover"
                         />
                         <div className="min-w-0">
-                          <div className="text-sm font-medium">{profile.fullName} {profile.nickname ? `(${profile.nickname})` : ""}</div>
-                          <div className="text-[11px] text-gray-500">{new Date(p.createdAt).toLocaleString()}</div>
+                          <div className="text-sm font-medium">
+                            {profile.fullName} {profile.nickname ? `(${profile.nickname})` : ""}
+                          </div>
+                          <div className="text-[11px] text-gray-500">
+                            {new Date(p.createdAt).toLocaleString()}
+                          </div>
                         </div>
                       </div>
-                      <div className="mt-2 text-sm text-gray-800 whitespace-pre-line">
-                        {p.content}
-                      </div>
+                      <div className="mt-2 text-sm text-gray-800 whitespace-pre-line">{p.content}</div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-y-1 text-xs text-gray-600 mt-2">
                         <div>📘 {p.subject || "-"}</div>
                         <div>📅 {p.meta?.preferred_days || "-"}</div>
@@ -355,9 +377,15 @@ function Profile() {
             {/* Social links */}
             <Card title="ลิงก์/ติดต่อเพิ่มเติม">
               <div className="flex flex-col gap-2">
-                {profile.links?.website && <LinkItem icon={<Link2 className="h-4 w-4" />} label="เว็บไซต์" value={profile.links.website} />}
-                {profile.links?.line && <LinkItem icon={<MessageSquare className="h-4 w-4" />} label="LINE" value={profile.links.line} />}
-                {profile.links?.facebook && <LinkItem icon={<User className="h-4 w-4" />} label="Facebook" value={profile.links.facebook} />}
+                {profile.links?.website && (
+                  <LinkItem icon={<Link2 className="h-4 w-4" />} label="เว็บไซต์" value={profile.links.website} />
+                )}
+                {profile.links?.line && (
+                  <LinkItem icon={<MessageSquare className="h-4 w-4" />} label="LINE" value={profile.links.line} />
+                )}
+                {profile.links?.facebook && (
+                  <LinkItem icon={<User className="h-4 w-4" />} label="Facebook" value={profile.links.facebook} />
+                )}
               </div>
             </Card>
 
@@ -368,7 +396,10 @@ function Profile() {
               ) : (
                 <div className="space-y-3">
                   {savedTutors.map((t) => (
-                    <button key={t.id} className="w-full text-left border rounded-xl p-3 hover:bg-gray-50 transition">
+                    <button
+                      key={t.id}
+                      className="w-full text-left border rounded-xl p-3 hover:bg-gray-50 transition"
+                    >
                       <div className="flex gap-3">
                         <img src={t.image} alt={t.name} className="h-12 w-12 rounded-lg object-cover" />
                         <div className="min-w-0 flex-1">
@@ -395,4 +426,5 @@ function Profile() {
     </div>
   );
 }
+
 export default Profile;
