@@ -200,11 +200,6 @@ const Navbar = ({ setIsAuthenticated, setCurrentPage, sidebarOpen, setSidebarOpe
                 </button>
               </li>
               <li>
-                <a href="#" className="block px-4 py-2 hover:bg-gray-100" role="menuitem">
-                  ตั้งค่า
-                </a>
-              </li>
-              <li>
                 <button
                   onClick={handleLogout}
                   className="block w-full text-left px-4 py-2 hover:bg-gray-100"

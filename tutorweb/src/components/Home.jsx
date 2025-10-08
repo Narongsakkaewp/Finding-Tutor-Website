@@ -451,7 +451,7 @@ function Home() {
               {/* Hero Illustration */}
               <div className="hidden md:block">
                 <div className="relative aspect-[4/3] rounded-3xl bg-gray-100 border overflow-hidden">
-                  <img alt="hero" className="object-cover w-full h-full" src="https://images.unsplash.com/photo-1584697964157-844c76d4d3ae?q=80&w=1600&auto=format&fit=crop" />
+                  <img alt="hero" className="object-cover w-full h-full" src="https://images.pexels.com/photos/5905709/pexels-photo-5905709.jpeg" />
                 </div>
               </div>
             </div>
