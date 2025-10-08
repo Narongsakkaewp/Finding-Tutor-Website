@@ -345,8 +345,8 @@ app.post('/api/register', async (req, res) => {
 // ===== GET: ดึงฟีดนักเรียนทั้งหมด (รองรับกรองเฉพาะของฉัน) =====
 app.get('/api/student_posts', async (req, res) => {
   try {
-    const me    = Number(req.query.me) || 0; // ใช้เช็ค joined
-    const mine  = String(req.query.mine || '').toLowerCase() === '1' || String(req.query.mine || '').toLowerCase() === 'true';
+    const me = Number(req.query.me) || 0; // ใช้เช็ค joined
+    const mine = String(req.query.mine || '').toLowerCase() === '1' || String(req.query.mine || '').toLowerCase() === 'true';
     const owner = mine ? me : Number(req.query.owner_id || 0); // ถ้า mine=1 ให้โชว์เฉพาะของตัวเอง
 
     // สร้าง WHERE แบบเลือกได้
@@ -393,7 +393,7 @@ app.get('/api/student_posts', async (req, res) => {
       joined: !!r.joined,
       user: {
         first_name: r.name || '',
-        last_name:  r.lastname || '',
+        last_name: r.lastname || '',
         profile_image: '/default-avatar.png',
       },
     }));
@@ -401,7 +401,7 @@ app.get('/api/student_posts', async (req, res) => {
     return res.json(posts);
   } catch (err) {
     console.error('FEED ERR', err);
-    return res.status(500).json({ success:false, message: err?.sqlMessage || err?.message || 'Database error' });
+    return res.status(500).json({ success: false, message: err?.sqlMessage || err?.message || 'Database error' });
   }
 });
 
@@ -537,7 +537,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     if (!Number.isFinite(postId) || !Number.isFinite(me))
       return res.status(400).json({ success:false, message:'invalid postId or user_id' });
 
-    // ตรวจโพสต์
+    // ดึงข้อมูลโพสต์ (เพื่อรู้ owner และ group_size)
     const [[post]] = await pool.query(
       'SELECT student_id, group_size FROM student_posts WHERE student_post_id = ?',
       [postId]
@@ -548,7 +548,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     if (post.student_id === me)
       return res.status(400).json({ success:false, message:'คุณเป็นเจ้าของโพสต์นี้' });
 
-    // เต็มหรือยัง
+    // เช็คเต็มหรือยัง
     const [[cnt]] = await pool.query(
       'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
       [postId]
@@ -556,21 +556,36 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     if (cnt.c >= post.group_size)
       return res.status(409).json({ success:false, message:'กลุ่มนี้เต็มแล้ว' });
 
-    // ใส่ join (กันซ้ำด้วย UNIQUE/PRIMARY KEY)
+    // ใส่ join (กันซ้ำด้วย INSERT IGNORE)
     await pool.query(
       'INSERT IGNORE INTO student_post_joins (student_post_id, user_id) VALUES (?, ?)',
       [postId, me]
     );
 
+    // นับใหม่
     const [[cnt2]] = await pool.query(
       'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
       [postId]
     );
 
-    // >>> ดึงรายชื่อผู้เข้าร่วมทั้งหมด (ชื่อ-สกุล)
-    const joiners = await getJoiners(postId);
+    // ---------- สร้าง Notification ให้ "เจ้าของโพสต์" ----------
+    // ดึงชื่อผู้ที่มากด join (me)
+    const [[actor]] = await pool.query(
+      'SELECT name, lastname FROM register WHERE user_id = ?',
+      [me]
+    );
+    const actorName = [actor?.name || '', actor?.lastname || ''].join(' ').trim() || `ผู้ใช้ #${me}`;
 
-    return res.json({ success:true, joined:true, join_count: cnt2.c, joiners });
+    // ข้อความแจ้งเตือนตัวอย่าง: "เต้ย นร.ม.5 เข้าร่วมโพสต์ของคุณ (โพสต์ #12)"
+    const message = `${actorName} เข้าร่วมโพสต์ของคุณ (โพสต์ #${postId})`;
+
+    await pool.execute(
+      'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
+      [post.student_id, 'join', message, postId]
+    );
+    // ----------------------------------------------
+
+    return res.json({ success:true, joined:true, join_count: cnt2.c });
   } catch (err) {
     return sendDbError(res, err);
   }
@@ -580,9 +595,9 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
 app.delete('/api/student_posts/:id/join', async (req, res) => {
   try {
     const postId = Number(req.params.id);
-    const me     = Number(req.body?.user_id || req.query.user_id);
+    const me = Number(req.body?.user_id || req.query.user_id);
     if (!Number.isFinite(postId) || !Number.isFinite(me))
-      return res.status(400).json({ success:false, message:'invalid postId or user_id' });
+      return res.status(400).json({ success: false, message: 'invalid postId or user_id' });
 
     await pool.query(
       'DELETE FROM student_post_joins WHERE student_post_id = ? AND user_id = ?',
@@ -597,7 +612,7 @@ app.delete('/api/student_posts/:id/join', async (req, res) => {
     // >>> ดึงรายชื่อผู้เข้าร่วมล่าสุดหลังยกเลิก
     const joiners = await getJoiners(postId);
 
-    return res.json({ success:true, joined:false, join_count: cnt.c, joiners });
+    return res.json({ success: true, joined: false, join_count: cnt.c, joiners });
   } catch (err) {
     return sendDbError(res, err);
   }

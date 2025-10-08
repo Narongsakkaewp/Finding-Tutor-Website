@@ -9,6 +9,7 @@ import Booking from './components/Booking';
 import MyPost from './components/MyPost';
 import Favorite from './components/Favorite';
 import Profile from './components/Profile';
+import MyPostDetails from './components/MyPostDetails'; // << เพิ่มไฟล์ใหม่
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -18,58 +19,47 @@ function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [newNotificationCount, setNewNotificationCount] = useState(0);
 
-  // ✅ โหลด user จาก localStorage
+  // ผู้ใช้ปัจจุบัน
   const [user, setUser] = useState(() => {
     const raw = localStorage.getItem('user');
     return raw ? JSON.parse(raw) : null;
   });
 
-  const [userType, setUserType] = useState(() => {
-    const raw = localStorage.getItem('userType');
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw);
-      return typeof parsed === 'string' ? parsed : String(raw);
-    } catch {
-      return String(raw);
-    }
-  });
+  // โพสต์ที่ต้องเปิดดูรายละเอียด + cache โพสต์
+  const [selectedPostId, setSelectedPostId] = useState(null);
+  const [postsCache, setPostsCache] = useState([]); // ให้ MyPost เติม cache นี้
 
   useEffect(() => {
     localStorage.setItem('isAuthenticated', isAuthenticated ? 'true' : 'false');
   }, [isAuthenticated]);
 
-  // ✅ fetch notification โดยใช้ user_id จริง
+  // นับแจ้งเตือนใหม่
   useEffect(() => {
-    if (!user?.user_id) return; // ใช้ user_id
+    if (!user?.user_id) return;
     fetch(`http://localhost:5000/api/notifications/${user.user_id}`)
       .then(res => res.json())
       .then(data => {
-        const newOnes = data.filter(n => !n.is_read);
+        const newOnes = Array.isArray(data) ? data.filter(n => !n.is_read) : [];
         setNewNotificationCount(newOnes.length);
       })
-      .catch(err => console.error(err));
+      .catch(console.error);
   }, [user]);
 
   const goToProfileByRole = (roleLike) => {
     const r = String(roleLike || '').toLowerCase();
     if (r === 'student') setCurrentPage('student_info');
     else if (r === 'tutor') setCurrentPage('tutor_info');
-    else alert('ยังไม่ทราบบทบาทผู้ใช้ (student/tutor)...');
+    else setCurrentPage('home');
   };
 
   const handleLoginSuccess = (payload = {}) => {
     const role = (payload.userType || payload.role || payload.user?.role || '').toLowerCase();
-
     setIsAuthenticated(true);
-    setUserType(role);
 
-    // ✅ เก็บ user ลง localStorage
     if (payload.user) {
       setUser(payload.user);
       localStorage.setItem('user', JSON.stringify(payload.user));
     }
-
     localStorage.setItem('userType', role);
     goToProfileByRole(role);
   };
@@ -77,13 +67,20 @@ function App() {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentPage('home');
-    setUserType(null);
     setUser(null);
-
+    setSelectedPostId(null);
+    setPostsCache([]);
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('userType');
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+  };
+
+  // 👈 ฟังก์ชันให้ Notification เรียก เมื่อคลิกแจ้งเตือนของโพสต์
+  const openPostDetails = (postId) => {
+    if (!postId) return;
+    setSelectedPostId(Number(postId));
+    setCurrentPage('mypost_details');
   };
 
   const renderPage = () => {
@@ -95,6 +92,7 @@ function App() {
           <Notification
             userId={user?.user_id}
             onReadAll={() => setNewNotificationCount(0)}
+            onOpenPost={openPostDetails}
           />
         );
       case 'student_info':
@@ -104,7 +102,22 @@ function App() {
       case 'booking':
         return <Booking />;
       case 'mypost':
-        return <MyPost />;
+        return (
+          <MyPost
+            onOpenDetails={openPostDetails}
+            postsCache={postsCache}
+            setPostsCache={setPostsCache}
+          />
+        );
+      case 'mypost_details':
+        return (
+          <MyPostDetails
+            postId={selectedPostId}
+            onBack={() => setCurrentPage('mypost')}
+            me={user?.user_id}
+            postsCache={postsCache}
+          />
+        );
       case 'favorite':
         return <Favorite />;
       case 'profile':
@@ -147,21 +160,15 @@ function App() {
             >
               <ul className="p-6 space-y-4">
                 <li>
-                  <button
-                    onClick={() => setCurrentPage('home')}
-                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
-                  >
-                    <i className="bi bi-house-door-fill font-bold text-2xl"></i>
-                    หน้าหลัก
+                  <button onClick={() => setCurrentPage('home')}
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
+                    <i className="bi bi-house-door-fill font-bold text-2xl"></i> หน้าหลัก
                   </button>
                 </li>
                 <li>
-                  <button
-                    onClick={() => setCurrentPage('notification')}
-                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2 relative"
-                  >
-                    <i className="bi bi-bell-fill font-bold text-2xl"></i>
-                    การแจ้งเตือน
+                  <button onClick={() => setCurrentPage('notification')}
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2 relative">
+                    <i className="bi bi-bell-fill font-bold text-2xl"></i> การแจ้งเตือน
                     {newNotificationCount > 0 && (
                       <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
                         {newNotificationCount}
@@ -170,27 +177,20 @@ function App() {
                   </button>
                 </li>
                 <li>
-                  <button
-                    onClick={() => setCurrentPage('mypost')}
-                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
-                  >
-                    <i className="bi bi-file-earmark-post font-bold text-2xl"></i>
-                    โพสต์
+                  <button onClick={() => setCurrentPage('mypost')}
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
+                    <i className="bi bi-file-earmark-post font-bold text-2xl"></i> โพสต์
                   </button>
                 </li>
                 <li>
-                  <button
-                    onClick={() => setCurrentPage('favorite')}
-                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
-                  >
+                  <button onClick={() => setCurrentPage('favorite')}
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
                     <i className="bi bi-heart-fill font-bold text-2xl"></i> รายการที่สนใจ
                   </button>
                 </li>
                 <li>
-                  <button
-                    onClick={() => setCurrentPage('profile')}
-                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2"
-                  >
+                  <button onClick={() => setCurrentPage('profile')}
+                    className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
                     <i className="bi bi-person-circle font-bold text-2xl"></i> โปรไฟล์ของฉัน
                   </button>
                 </li>
