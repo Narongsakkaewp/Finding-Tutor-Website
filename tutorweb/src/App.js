@@ -96,9 +96,9 @@ function App() {
           />
         );
       case 'student_info':
-        return <StudentInfo />;
+        return <StudentInfo user={user} />;
       case 'tutor_info':
-        return <TutorInfo />;
+        return <TutorInfo user={user} />;
       case 'booking':
         return <Booking />;
       case 'mypost':
@@ -121,7 +121,12 @@ function App() {
       case 'favorite':
         return <Favorite />;
       case 'profile':
-        return <Profile />;
+        return (
+          <Profile
+            setCurrentPage={setCurrentPage}
+            userType={userType}
+          />
+        );
       default:
         return <Home />;
     }
