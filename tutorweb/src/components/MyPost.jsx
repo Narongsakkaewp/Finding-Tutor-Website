@@ -1,5 +1,24 @@
 import React, { useState, useEffect, useCallback } from "react";
 
+/* ---------- แปลงวันที่ไทย -> ISO YYYY-MM-DD ---------- */
+function thaiDateToISO(s = "") {
+  if (!s) return null;
+  const months = {
+    "มกราคม":1, "กุมภาพันธ์":2, "มีนาคม":3, "เมษายน":4, "พฤษภาคม":5, "มิถุนายน":6,
+    "กรกฎาคม":7, "สิงหาคม":8, "กันยายน":9, "ตุลาคม":10, "พฤศจิกายน":11, "ธันวาคม":12,
+  };
+  const m = s.match(/(\d{1,2})\s*(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)\s*(\d{4})/);
+  if (!m) return null;
+  const day = parseInt(m[1], 10);
+  const month = months[m[2]];
+  const beYear = parseInt(m[3], 10);
+  const year = beYear > 2400 ? beYear - 543 : beYear;
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+/* ---------- normalize ---------- */
 const normalizePost = (p = {}) => ({
   id: p.id ?? p._id ?? p.student_post_id,
   owner_id: p.owner_id ?? p.student_id ?? p.user_id,
@@ -21,7 +40,7 @@ const normalizePost = (p = {}) => ({
   },
 });
 
-function MyPost({ onOpenDetails, postsCache, setPostsCache }) {
+function MyPost({ onOpenDetails, postsCache, setPostsCache, onAfterJoin }) {
   const [posts, setPosts] = useState([]);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -47,7 +66,7 @@ function MyPost({ onOpenDetails, postsCache, setPostsCache }) {
         : [];
       const normalized = list.map(normalizePost).filter(p => p.id != null);
       setPosts(normalized);
-      if (setPostsCache) setPostsCache(normalized); // << อัปเดต cache ขึ้น App
+      if (setPostsCache) setPostsCache(normalized);
     } catch (e) {
       console.error("fetchPosts error:", e);
       setPosts([]);
@@ -57,6 +76,7 @@ function MyPost({ onOpenDetails, postsCache, setPostsCache }) {
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
+  /* ---------- form handlers (ใช้งานใน JSX) ---------- */
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -109,7 +129,7 @@ function MyPost({ onOpenDetails, postsCache, setPostsCache }) {
     }
   };
 
-  /* join/unjoin คงเดิม (ย่อ) */
+  /* ---------- Join / Unjoin (ใช้งานใน JSX) ---------- */
   const handleJoin = async (post) => {
     const me = currentUser?.user_id;
     if (!me) return alert("กรุณาเข้าสู่ระบบ");
@@ -121,9 +141,13 @@ function MyPost({ onOpenDetails, postsCache, setPostsCache }) {
       });
       const data = await res.json();
       if (!res.ok) return alert(data?.message || "Join ไม่สำเร็จ");
+
       const updater = (arr) => arr.map(p => p.id === post.id ? { ...p, joined: true, join_count: data.join_count } : p);
       setPosts(updater);
       if (setPostsCache) setPostsCache(updater);
+
+      const iso = thaiDateToISO(post.preferred_days);
+      if (onAfterJoin) onAfterJoin(iso);
     } finally {
       setJoinLoading(s => ({ ...s, [post.id]: false }));
     }
@@ -147,33 +171,61 @@ function MyPost({ onOpenDetails, postsCache, setPostsCache }) {
 
   const currentUserName = currentUser?.name || currentUser?.first_name || "";
 
+  /* ================== UI ================== */
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="p-4 max-w-4xl mx-auto">
         <h1 className="text-xl font-bold mb-4">โพสต์</h1>
 
-        {/* ฟอร์มสร้างโพสต์ */}
+        {/* ฟอร์มสร้างโพสต์: ใช้ expanded/loading/handleChange/handleSubmit */}
         <div className="bg-white rounded-xl shadow p-4 mb-6">
           <div className="flex items-center gap-3">
-            <img src={currentUser?.profile_image || "/default-avatar.png"} alt="รูป" className="w-10 h-10 rounded-full" />
-            <div className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-gray-600 cursor-pointer hover:bg-gray-200" onClick={() => setExpanded(true)}>
+            <img
+              src={currentUser?.profile_image || "/default-avatar.png"}
+              alt="รูป"
+              className="w-10 h-10 rounded-full"
+            />
+            <div
+              className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-gray-600 cursor-pointer hover:bg-gray-200"
+              onClick={() => setExpanded(true)}
+            >
               {`สวัสดี, ${currentUserName}`}
             </div>
           </div>
 
           {expanded && (
             <form onSubmit={handleSubmit} className="mt-4 space-y-3">
-              <input type="text" name="subject" placeholder="วิชา" value={formData.subject} onChange={handleChange} required className="border rounded p-2 w-full" />
-              <textarea name="description" placeholder="รายละเอียด" value={formData.description} onChange={handleChange} required className="border rounded p-2 w-full" />
-              <input type="text" name="preferred_days" placeholder="วันสะดวก" value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-              <input type="time" name="preferred_time" value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
-              <input type="text" name="location" placeholder="สถานที่" value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-              <input type="number" name="group_size" placeholder="จำนวนคน" value={formData.group_size} onChange={handleChange} required className="border rounded p-2 w-full" />
-              <input type="number" name="budget" placeholder="งบประมาณ" value={formData.budget} onChange={handleChange} required className="border rounded p-2 w-full" />
-              <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ" value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
+              <input type="text" name="subject" placeholder="วิชา"
+                value={formData.subject} onChange={handleChange} required
+                className="border rounded p-2 w-full" />
+              <textarea name="description" placeholder="รายละเอียด"
+                value={formData.description} onChange={handleChange} required
+                className="border rounded p-2 w-full" />
+              <input type="text" name="preferred_days" placeholder="วันสะดวก"
+                value={formData.preferred_days} onChange={handleChange} required
+                className="border rounded p-2 w-full" />
+              <input type="time" name="preferred_time"
+                value={formData.preferred_time} onChange={handleChange} required
+                className="border rounded p-2 w-full" />
+              <input type="text" name="location" placeholder="สถานที่"
+                value={formData.location} onChange={handleChange} required
+                className="border rounded p-2 w-full" />
+              <input type="number" name="group_size" placeholder="จำนวนคน"
+                value={formData.group_size} onChange={handleChange} required
+                className="border rounded p-2 w-full" />
+              <input type="number" name="budget" placeholder="งบประมาณ"
+                value={formData.budget} onChange={handleChange} required
+                className="border rounded p-2 w-full" />
+              <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ"
+                value={formData.contact_info} onChange={handleChange} required
+                className="border rounded p-2 w-full" />
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setExpanded(false)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">ยกเลิก</button>
-                <button disabled={loading} type="submit" className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60">
+                <button type="button" onClick={() => setExpanded(false)}
+                  className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">
+                  ยกเลิก
+                </button>
+                <button disabled={loading} type="submit"
+                  className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60">
                   {loading ? "กำลังโพสต์..." : "โพสต์"}
                 </button>
               </div>
@@ -181,7 +233,7 @@ function MyPost({ onOpenDetails, postsCache, setPostsCache }) {
           )}
         </div>
 
-        {/* ลิสต์โพสต์ */}
+        {/* ลิสต์โพสต์: ใช้ posts/joinLoading/handleJoin/handleUnjoin */}
         {posts.length === 0 ? (
           <div className="text-sm text-gray-500">ยังไม่มีโพสต์</div>
         ) : (
@@ -224,7 +276,15 @@ function MyPost({ onOpenDetails, postsCache, setPostsCache }) {
                     </div>
 
                     <div className="flex gap-2">
-                      
+                      {typeof onOpenDetails === "function" && (
+                        <button
+                          onClick={() => onOpenDetails(post.id)}
+                          className="px-3 py-2 rounded-xl border hover:bg-gray-50"
+                        >
+                          รายละเอียด
+                        </button>
+                      )}
+
                       {isOwner ? (
                         <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">
                           คุณเป็นเจ้าของโพสต์

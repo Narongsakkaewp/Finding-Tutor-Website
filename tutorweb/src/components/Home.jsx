@@ -1,5 +1,8 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { Heart, MapPin, Calendar, Search, Star, BookOpen, Users, ChevronRight } from "lucide-react";
+import {
+  Heart, MapPin, Calendar, Search, Star, BookOpen, Users, ChevronRight,
+  MessageSquarePlus, CalendarCheck
+} from "lucide-react";
 
 /** ---------------- Config ---------------- */
 const API_BASE = "http://localhost:5000";
@@ -24,6 +27,11 @@ const SUBJECTS = [
 
 /** ---------------- Utils ----------------- */
 const priceText = (p) => new Intl.NumberFormat("th-TH").format(p);
+const getUserContext = () => {
+  const role = (localStorage.getItem("userType") || "").toLowerCase(); // 'student' | 'tutor'
+  const tutorId = localStorage.getItem("tutorId") || "";
+  return { role, tutorId };
+};
 
 /** ---------------- UI parts -------------- */
 function SectionHeader({ title, subtitle, actionLabel = "ดูทั้งหมด", onAction }) {
@@ -33,10 +41,12 @@ function SectionHeader({ title, subtitle, actionLabel = "ดูทั้งห�
         <h2 className="text-2xl md:text-3xl font-bold tracking-tight">{title}</h2>
         {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
       </div>
-      <button onClick={onAction} className="inline-flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-gray-900">
-        {actionLabel}
-        <ChevronRight className="h-4 w-4" />
-      </button>
+      {onAction && (
+        <button onClick={onAction} className="inline-flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-gray-900">
+          {actionLabel}
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -303,7 +313,7 @@ function TutorPosts({ tutorId }) {
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between">
-        <h5 className="font-semibold">โพสต์จากติวเตอร์</h5>
+        <h5 className="font-semibold">โพสต์จากติวเตอร์ (ของฉัน)</h5>
         {posts.length > 0 && <span className="text-xs text-gray-500">ทั้งหมด ~{posts.length}{hasMore ? "+" : ""}</span>}
       </div>
 
@@ -312,12 +322,12 @@ function TutorPosts({ tutorId }) {
       {loading && posts.length === 0 ? (
         <div className="mt-3 text-sm text-gray-500">กำลังโหลดโพสต์...</div>
       ) : posts.length === 0 ? (
-        <div className="mt-3 text-sm text-gray-500">ยังไม่มีโพสต์จากติวเตอร์</div>
+        <div className="mt-3 text-sm text-gray-500">ยังไม่มีโพสต์จากฉัน</div>
       ) : (
         <ul className="mt-4 space-y-3 max-h-[340px] overflow-auto pr-1">
           {posts.map((p) => (
             <li key={p._id} className="border rounded-xl p-3">
-              <div className="text-sm font-medium">{p.subject || "อัปเดตจากติวเตอร์"}</div>
+              <div className="text-sm font-medium">{p.subject || "อัปเดตจากฉัน"}</div>
               <div className="text-[11px] text-gray-500">{new Date(p.createdAt).toLocaleString()}</div>
               <p className="mt-2 text-sm text-gray-800 whitespace-pre-line">{p.content}</p>
 
@@ -344,8 +354,17 @@ function TutorPosts({ tutorId }) {
   );
 }
 
-/** ---------- Main page ---------- */
-function Home() {
+function EmptyState({ label }) {
+  return (
+    <div className="col-span-full flex flex-col items-center justify-center py-16 bg-white rounded-2xl border">
+      <Search className="h-6 w-6 text-gray-400" />
+      <p className="mt-2 text-gray-600 text-sm">{label}</p>
+    </div>
+  );
+}
+
+/** ========== STUDENT HOME (คงโครงเดิม) ========== */
+function HomeStudent() {
   const [query, setQuery] = useState("");
   const [activeCat, setActiveCat] = useState(null);
   const [preview, setPreview] = useState(null);      // tutor or subject object
@@ -354,7 +373,6 @@ function Home() {
   const [tutors, setTutors] = useState([]);          // ← ดึงจาก DB
   const [loadErr, setLoadErr] = useState("");
 
-  // ดึงติวเตอร์จาก backend มาแสดงในหน้าแรก
   useEffect(() => {
     let ignore = false;
     (async () => {
@@ -367,7 +385,7 @@ function Home() {
       } catch (e) {
         if (!ignore) {
           setLoadErr(e.message || "โหลดรายชื่อติวเตอร์ไม่สำเร็จ");
-          setTutors([]); // ถ้าต้องการ fallback เป็น mock ก็ใส่ได้
+          setTutors([]);
         }
       }
     })();
@@ -474,24 +492,10 @@ function Home() {
         <section className="mt-12 md:mt-16">
           <SectionHeader title="วิชาแนะนำ" subtitle="หัวข้อที่มีผู้เรียนสนใจมากที่สุด" onAction={() => {}} />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-            {filteredSubjects.map((s) => (
+            {SUBJECTS.map((s) => (
               <SubjectCard key={s.id} item={s} onOpen={openSubject} />
             ))}
-            {filteredSubjects.length === 0 && <EmptyState label="ไม่พบวิชาตามคำค้นหา" />}
-          </div>
-        </section>
-
-        {/* CTA */}
-        <section className="mt-14 md:mt-20">
-          <div className="rounded-3xl bg-gray-900 text-white p-6 md:p-10 flex flex-col md:flex-row items-center md:items-end justify-between shadow-lg">
-            <div>
-              <h3 className="text-2xl md:text-3xl font-bold leading-tight">เริ่มต้นเรียนกับติวเตอร์ที่เหมาะกับคุณ</h3>
-              <p className="text-gray-300 mt-2 max-w-prose">สร้างบัญชีภายใน 1 นาที เลือกวิชา เวลา และงบประมาณได้ตามต้องการ</p>
-            </div>
-            <div className="mt-4 md:mt-0 flex items-center gap-3">
-              <button className="px-5 py-3 rounded-xl bg-white text-gray-900 font-medium hover:bg-gray-100">สมัครบัญชีผู้เรียน</button>
-              <button className="px-5 py-3 rounded-xl bg-transparent border border-white/30 text-white font-medium hover:bg-white/10">สมัครเป็นติวเตอร์</button>
-            </div>
+            {SUBJECTS.length === 0 && <EmptyState label="ไม่พบวิชาตามคำค้นหา" />}
           </div>
         </section>
       </div>
@@ -555,13 +559,104 @@ function Home() {
   );
 }
 
-function EmptyState({ label }) {
+/** ========== TUTOR HOME (โหมดติวเตอร์) ========== */
+function HomeTutor() {
+  const { tutorId } = getUserContext();
+  const [subjectKey, setSubjectKey] = useState(SUBJECTS[0]?.dbKey || "");
+  const [query, setQuery] = useState("");
+
   return (
-    <div className="col-span-full flex flex-col items-center justify-center py-16 bg-white rounded-2xl border">
-      <Search className="h-6 w-6 text-gray-400" />
-      <p className="mt-2 text-gray-600 text-sm">{label}</p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8 pb-16">
+        {/* Hero */}
+        <div className="pt-8 md:pt-12">
+          <div className="bg-white rounded-3xl border shadow-sm p-5 md:p-8 relative overflow-hidden">
+            <div className="grid md:grid-cols-2 gap-6 items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 mb-3">
+                  <Star className="h-3.5 w-3.5" /> โอกาสใหม่ ๆ สำหรับติวเตอร์
+                </div>
+                <h1 className="text-3xl md:text-4xl font-extrabold leading-tight tracking-tight">
+                  จับคู่กับ <span className="underline decoration-gray-900 decoration-4 underline-offset-4">นักเรียนที่ตรงใจ</span> ได้เร็วขึ้น
+                </h1>
+                <p className="text-gray-600 mt-3 max-w-prose">
+                  ดูคำขอเรียนล่าสุด คัดกรองตามวิชา/เวลา/พื้นที่ แล้วส่งข้อเสนอให้ผู้เรียนทันที
+                </p>
+
+                {/* Quick actions */}
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-900 text-white hover:bg-black">
+                    <MessageSquarePlus className="h-4 w-4" /> สร้างโพสต์รับสอน
+                  </button>
+                  <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border hover:bg-gray-50">
+                    <CalendarCheck className="h-4 w-4" /> จัดตารางสอน
+                  </button>
+                </div>
+              </div>
+
+              <div className="hidden md:block">
+                <div className="relative aspect-[4/3] rounded-3xl bg-gray-100 border overflow-hidden">
+                  <img alt="hero" className="object-cover w-full h-full" src="https://images.pexels.com/photos/4144923/pexels-photo-4144923.jpeg" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Student Demand */}
+        <section className="mt-10 md:mt-14">
+          <SectionHeader title="นักเรียนกำลังมองหา" subtitle="คัดกรองคำขอเรียนตามวิชา" />
+          <div className="bg-white rounded-2xl border p-4 md:p-5">
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex-1 relative">
+                <Search className="h-5 w-5 text-gray-400 absolute left-3 top-3.5" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="ค้นหาคีย์เวิร์ดในคำขอเรียน (เช่น เวลา, ออนไลน์, งบฯ)..."
+                  className="w-full pl-10 pr-3 py-3 rounded-xl border bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
+              <div>
+                <select
+                  value={subjectKey}
+                  onChange={(e) => setSubjectKey(e.target.value)}
+                  className="w-full md:w-64 px-3 py-3 rounded-xl border bg-white"
+                >
+                  {SUBJECTS.map(s => (<option key={s.id} value={s.dbKey}>{s.title}</option>))}
+                </select>
+              </div>
+            </div>
+
+            {/* ฟีดนักเรียนตามวิชา */}
+            <StudentPosts subjectKey={subjectKey} />
+          </div>
+        </section>
+
+        {/* My Posts */}
+        <section className="mt-12 md:mt-16">
+          <SectionHeader title="โพสต์ของฉัน" subtitle="ประกาศรับสอนและอัปเดตล่าสุด" />
+          <div className="bg-white rounded-2xl border p-4 md:p-5">
+            <TutorPosts tutorId={tutorId} />
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
 
-export default Home;
+/** ========== ROUTER (เลือกหน้าตามบทบาท) ========== */
+function HomeRouter() {
+  const [{ role }, setCtx] = useState(getUserContext());
+
+  useEffect(() => {
+    const onStorage = () => setCtx(getUserContext());
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  if (role === "tutor") return <HomeTutor />;
+  return <HomeStudent />;
+}
+
+export default HomeRouter;

@@ -537,7 +537,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     if (!Number.isFinite(postId) || !Number.isFinite(me))
       return res.status(400).json({ success:false, message:'invalid postId or user_id' });
 
-    // ดึงข้อมูลโพสต์ (เพื่อรู้ owner และ group_size)
+    // ตรวจโพสต์
     const [[post]] = await pool.query(
       'SELECT student_id, group_size FROM student_posts WHERE student_post_id = ?',
       [postId]
@@ -548,7 +548,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     if (post.student_id === me)
       return res.status(400).json({ success:false, message:'คุณเป็นเจ้าของโพสต์นี้' });
 
-    // เช็คเต็มหรือยัง
+    // เต็มหรือยัง
     const [[cnt]] = await pool.query(
       'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
       [postId]
@@ -556,40 +556,46 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     if (cnt.c >= post.group_size)
       return res.status(409).json({ success:false, message:'กลุ่มนี้เต็มแล้ว' });
 
-    // ใส่ join (กันซ้ำด้วย INSERT IGNORE)
+    // ใส่ join (กันซ้ำด้วย UNIQUE/PRIMARY KEY)
     await pool.query(
       'INSERT IGNORE INTO student_post_joins (student_post_id, user_id) VALUES (?, ?)',
       [postId, me]
     );
 
-    // นับใหม่
     const [[cnt2]] = await pool.query(
       'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
       [postId]
     );
 
-    // ---------- สร้าง Notification ให้ "เจ้าของโพสต์" ----------
-    // ดึงชื่อผู้ที่มากด join (me)
-    const [[actor]] = await pool.query(
+    // ===== NEW: สร้างการแจ้งเตือน =====
+    // ชื่อผู้กด join
+    const [[joiner]] = await pool.query(
       'SELECT name, lastname FROM register WHERE user_id = ?',
       [me]
     );
-    const actorName = [actor?.name || '', actor?.lastname || ''].join(' ').trim() || `ผู้ใช้ #${me}`;
+    const joinerName = `${joiner?.name || ''}${joiner?.lastname ? ' ' + joiner.lastname : ''}`.trim() || `ผู้ใช้ #${me}`;
 
-    // ข้อความแจ้งเตือนตัวอย่าง: "เต้ย นร.ม.5 เข้าร่วมโพสต์ของคุณ (โพสต์ #12)"
-    const message = `${actorName} เข้าร่วมโพสต์ของคุณ (โพสต์ #${postId})`;
-
-    await pool.execute(
-      'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
-      [post.student_id, 'join', message, postId]
+    // ส่งแจ้งเตือนไป "เจ้าของโพสต์"
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, message, related_id, is_read, created_at)
+       VALUES (?, 'join_post', ?, ?, 0, NOW())`,
+      [post.student_id, `${joinerName} เข้าร่วมโพสต์ของคุณ (โพสต์ #${postId})`, postId]
     );
-    // ----------------------------------------------
+
+    // ส่งแจ้งเตือนไป "ผู้ที่กด join" ด้วย (เพื่อให้เห็นว่าตัวเองเข้าร่วมสำเร็จ)
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, message, related_id, is_read, created_at)
+       VALUES (?, 'join_success', ?, ?, 0, NOW())`,
+      [me, `คุณเข้าร่วมโพสต์ #${postId} แล้ว`, postId]
+    );
+    // ===== END NEW =====
 
     return res.json({ success:true, joined:true, join_count: cnt2.c });
   } catch (err) {
     return sendDbError(res, err);
   }
 });
+
 
 // ผู้ใช้ยกเลิก Join
 app.delete('/api/student_posts/:id/join', async (req, res) => {
