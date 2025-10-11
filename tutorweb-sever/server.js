@@ -1,12 +1,19 @@
 // tutorweb-server/server.js
 const express = require('express');
-const mysql = require('mysql2/promise');        // ใช้ promise
+const mysql = require('mysql2/promise');
 const cors = require('cors');
 require('dotenv').config();
+
+// ----- เพิ่ม Dependencies สำหรับ Upload -----
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+// -----------------------------------------
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
 
 // ---------- MySQL Pool ----------
 const pool = mysql.createPool({
@@ -28,6 +35,25 @@ const pool = mysql.createPool({
     console.error('DB Connection Failed:', err);
   }
 })();
+
+// ----- NEW: ตั้งค่า Multer สำหรับการอัปโหลดไฟล์ -----
+const uploadDir = 'public/uploads';
+// สร้างโฟลเดอร์ uploads ถ้ายังไม่มี
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir); // บอกให้ multer เก็บไฟล์ที่โฟลเดอร์ public/uploads
+  },
+  filename: function (req, file, cb) {
+    // สร้างชื่อไฟล์ใหม่ที่ไม่ซ้ำกัน -> timestamp-originalname.extension
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+const upload = multer({ storage: storage });
+// ----------------------------------------------------
 
 // ---------- APIs ----------
 
@@ -533,20 +559,20 @@ app.post('/api/student_posts', async (req, res) => {
 app.post('/api/student_posts/:id/join', async (req, res) => {
   try {
     const postId = Number(req.params.id);
-    const me     = Number(req.body.user_id);
+    const me = Number(req.body.user_id);
     if (!Number.isFinite(postId) || !Number.isFinite(me))
-      return res.status(400).json({ success:false, message:'invalid postId or user_id' });
+      return res.status(400).json({ success: false, message: 'invalid postId or user_id' });
 
     // ตรวจโพสต์
     const [[post]] = await pool.query(
       'SELECT student_id, group_size FROM student_posts WHERE student_post_id = ?',
       [postId]
     );
-    if (!post) return res.status(404).json({ success:false, message:'post not found' });
+    if (!post) return res.status(404).json({ success: false, message: 'post not found' });
 
     // ห้ามเจ้าของโพสต์ join
     if (post.student_id === me)
-      return res.status(400).json({ success:false, message:'คุณเป็นเจ้าของโพสต์นี้' });
+      return res.status(400).json({ success: false, message: 'คุณเป็นเจ้าของโพสต์นี้' });
 
     // เต็มหรือยัง
     const [[cnt]] = await pool.query(
@@ -554,7 +580,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
       [postId]
     );
     if (cnt.c >= post.group_size)
-      return res.status(409).json({ success:false, message:'กลุ่มนี้เต็มแล้ว' });
+      return res.status(409).json({ success: false, message: 'กลุ่มนี้เต็มแล้ว' });
 
     // ใส่ join (กันซ้ำด้วย UNIQUE/PRIMARY KEY)
     await pool.query(
@@ -590,7 +616,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     );
     // ===== END NEW =====
 
-    return res.json({ success:true, joined:true, join_count: cnt2.c });
+    return res.json({ success: true, joined: true, join_count: cnt2.c });
   } catch (err) {
     return sendDbError(res, err);
   }
@@ -682,6 +708,114 @@ app.post('/api/notifications', async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
   }
+});
+
+// 1. GET: ดึงข้อมูลโปรไฟล์ของนักเรียน
+app.get('/api/profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // เราจะ JOIN ตาราง register กับ student_profiles เพื่อดึงข้อมูลทั้งหมดในครั้งเดียว
+    const sql = `
+      SELECT
+        r.name,
+        r.lastname,
+        r.email,
+        sp.* FROM register r
+      LEFT JOIN student_profiles sp ON r.user_id = sp.user_id
+      WHERE r.user_id = ?
+    `;
+
+    const [rows] = await pool.execute(sql, [userId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // ส่งข้อมูลโปรไฟล์กลับไป (ถ้ายังไม่มีโปรไฟล์ใน student_profiles ค่าต่างๆ จะเป็น null)
+    res.json(rows[0]);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Database error' });
+  }
+});
+
+
+// 2. PUT: อัปเดต/สร้างข้อมูลโปรไฟล์ของนักเรียน (แก้ไขให้ตรงกับ DB)
+app.put('/api/profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // ดึงค่าจาก req.body โดยใช้ชื่อที่ถูกต้องจาก Frontend
+    // Frontend ของเราส่ง phone_number และ about_me มา
+    const {
+      nickname,
+      phone_number, // รับค่าจาก Frontend
+      address,
+      grade_level,
+      institution,
+      faculty,
+      major,
+      about_me,      // รับค่าจาก Frontend
+      profile_picture_url
+    } = req.body;
+
+    // เราจะใช้ "UPSERT" logic เหมือนเดิม
+    const sql = `
+      INSERT INTO student_profiles (
+        user_id, nickname, phone, address, grade_level,
+        institution, faculty, major, about, profile_picture_url
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        nickname = VALUES(nickname),
+        phone = VALUES(phone),
+        address = VALUES(address),
+        grade_level = VALUES(grade_level),
+        institution = VALUES(institution),
+        faculty = VALUES(faculty),
+        major = VALUES(major),
+        about = VALUES(about),
+        profile_picture_url = VALUES(profile_picture_url)
+    `;
+
+    // ส่งค่าไปยัง SQL ให้ตรงตามลำดับของเครื่องหมาย ?
+    await pool.execute(sql, [
+      userId,
+      nickname ?? null,
+      phone_number ?? null, // ใช้ค่า phone_number ที่รับมาสำหรับคอลัมน์ phone
+      address ?? null,
+      grade_level ?? null,
+      institution ?? null,
+      faculty ?? null,
+      major ?? null,
+      about_me ?? null,      // ใช้ค่า about_me ที่รับมาสำหรับคอลัมน์ about
+      profile_picture_url ?? null
+    ]);
+
+    res.json({ message: 'Profile updated successfully' });
+
+  } catch (err) {
+    console.error('Error updating profile:', err);
+    res.status(500).json({ message: 'Database error', error: err.message });
+  }
+});
+
+
+// 3. POST: อัปโหลดรูปภาพ
+// middleware `upload.single('image')` จะจัดการไฟล์ให้เรา
+app.post('/api/upload', upload.single('image'), (req, res) => {
+  // 'image' คือ key ที่เราตั้งใน FormData ของ Frontend
+  if (!req.file) {
+    return res.status(400).json({ message: 'No file uploaded' });
+  }
+
+  // สร้าง URL เต็มของไฟล์เพื่อให้ Frontend เรียกใช้ได้
+  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+  // ส่ง URL กลับไปให้ Frontend
+  res.status(200).json({ imageUrl: imageUrl });
 });
 
 

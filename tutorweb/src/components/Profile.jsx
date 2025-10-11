@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
 import { User, MapPin, Mail, Phone } from "lucide-react";
-
+/* Profile.jsx - หน้าข้อมูลโปรไฟล์ผู้ใช้ (student)*/
 /* ---------- helpers ---------- */
 
 // แปลงโพสต์จาก backend -> โครงสร้างที่การ์ดใช้
