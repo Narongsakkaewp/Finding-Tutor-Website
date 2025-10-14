@@ -201,7 +201,7 @@ function MyPost({ onOpenDetails, postsCache, setPostsCache, onAfterJoin }) {
               <textarea name="description" placeholder="รายละเอียด"
                 value={formData.description} onChange={handleChange} required
                 className="border rounded p-2 w-full" />
-              <input type="text" name="preferred_days" placeholder="วันสะดวก"
+              <input type="date" name="preferred_days" placeholder="วันสะดวก"
                 value={formData.preferred_days} onChange={handleChange} required
                 className="border rounded p-2 w-full" />
               <input type="time" name="preferred_time"

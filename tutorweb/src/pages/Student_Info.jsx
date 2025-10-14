@@ -181,27 +181,27 @@ export default function StudentInfoPage({ setCurrentPage }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700">ชื่อจริง</label>
-              <input type="text" value={user.name} disabled className="mt-1 w-full border-gray-300 rounded-md shadow-sm bg-gray-100 p-2" />
+              <input type="text" value={user.name} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">นามสกุล</label>
-              <input type="text" value={user.lastname} disabled className="mt-1 w-full border-gray-300 rounded-md shadow-sm bg-gray-100 p-2" />
+              <input type="text" value={user.lastname} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
             </div>
             <div>
               <label htmlFor="nickname" className="block text-sm font-medium text-gray-700">ชื่อเล่น</label>
-              <input type="text" id="nickname" name="nickname" value={formData.nickname} onChange={handleChange} className="mt-1 w-full border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
+              <input type="text" id="nickname" name="nickname" value={formData.nickname} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
             </div>
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700">เบอร์โทรศัพท์</label>
-              <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} className="mt-1 w-full border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
+              <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700">อีเมล</label>
-              <input type="email" value={user.email} disabled className="mt-1 w-full border-gray-300 rounded-md shadow-sm bg-gray-100 p-2" />
+              <input type="email" value={user.email} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
             </div>
             <div className="md:col-span-2">
               <label htmlFor="address" className="block text-sm font-medium text-gray-700">ที่อยู่ที่สามารถติดต่อได้</label>
-              <input type="text" id="address" name="address" value={formData.address} onChange={handleChange} className="mt-1 w-full border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
+              <input type="text" id="address" name="address" value={formData.address} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
             </div>
           </div>
 
@@ -218,9 +218,10 @@ export default function StudentInfoPage({ setCurrentPage }) {
                   name="gradeLevel"
                   value={formData.gradeLevel}
                   onChange={handleChange}
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="mt-1 block w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="" disabled>--- เลือกระดับชั้น ---</option>
+                  <option value="ประถมศึกษา">ประถมศึกษา</option>
                   <option value="ม.1">มัธยมศึกษาปีที่ 1</option>
                   <option value="ม.2">มัธยมศึกษาปีที่ 2</option>
                   <option value="ม.3">มัธยมศึกษาปีที่ 3</option>
@@ -234,21 +235,21 @@ export default function StudentInfoPage({ setCurrentPage }) {
 
               <div>
                 <label htmlFor="institution" className="block text-sm font-medium text-gray-700">สถานศึกษา</label>
-                <input type="text" id="institution" name="institution" value={formData.institution} onChange={handleChange} className="mt-1 w-full border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="text" id="institution" name="institution" value={formData.institution} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
               </div>
               <div>
                 <label htmlFor="faculty" className="block text-sm font-medium text-gray-700">คณะ</label>
-                <input type="text" id="faculty" name="faculty" value={formData.faculty} onChange={handleChange} className="mt-1 w-full border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="text" id="faculty" name="faculty" value={formData.faculty} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
               </div>
               <div>
                 <label htmlFor="major" className="block text-sm font-medium text-gray-700">สาขา</label>
-                <input type="text" id="major" name="major" value={formData.major} onChange={handleChange} className="mt-1 w-full border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="text" id="major" name="major" value={formData.major} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
               </div>
             </div>
           </div>
           <div>
             <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">เกี่ยวกับคุณ</h3>
-            <textarea id="about" name="about" rows="4" className="mt-1 w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำตัวเองสั้นๆ..." value={formData.about} onChange={handleChange}></textarea>
+            <textarea id="about" name="about" rows="4" className="mt-1 w-full border border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำตัวเองสั้นๆ..." value={formData.about} onChange={handleChange}></textarea>
           </div>
 
           {/* --- Action Buttons & Messages --- */}
@@ -258,7 +259,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
               {error && <div className="text-red-600 text-sm">{error}</div>}
             </div>
             <div className="flex space-x-4">
-              <button type="button" onClick={() => setCurrentPage('profile')} className="px-6 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+              <button type="button" onClick={() => setCurrentPage('profile')} className="px-6 py-2 border border rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                 ยกเลิก
               </button>
               <button type="submit" disabled={isSubmitting} className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300">

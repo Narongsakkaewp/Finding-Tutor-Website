@@ -165,39 +165,52 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
   }
 });
 
-// รายชื่อติวเตอร์จาก register (type = tutor/teacher)
 app.get('/api/tutors', async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
 
+    // ✅ 1. แก้ไขคำสั่ง SQL ให้ JOIN ตาราง tutor_profiles เพื่อดึงข้อมูลจริง
     const [rows] = await pool.execute(
-      `SELECT user_id, name, lastname, email
-         FROM register
-        WHERE LOWER(type) IN ('tutor','teacher')
-        ORDER BY user_id DESC
-        LIMIT ? OFFSET ?`,
+      `SELECT 
+          r.user_id, r.name, r.lastname,
+          tp.nickname,
+          tp.can_teach_subjects,
+          tp.profile_picture_url,
+          tp.address,
+          tp.hourly_rate
+       FROM register r
+       LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+       WHERE LOWER(r.type) IN ('tutor','teacher')
+       ORDER BY r.user_id DESC
+       LIMIT ? OFFSET ?`,
       [limit, offset]
     );
 
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total
-         FROM register
-        WHERE LOWER(type) IN ('tutor','teacher')`
+       FROM register
+       WHERE LOWER(type) IN ('tutor','teacher')`
     );
 
+    // ✅ 2. แก้ไขการสร้าง object ให้ใช้ข้อมูลจริงจาก Database
     const items = rows.map(r => ({
       id: `t-${r.user_id}`,
       dbTutorId: r.user_id,
       name: `${r.name || ''}${r.lastname ? ' ' + r.lastname : ''}`.trim() || `ติวเตอร์ #${r.user_id}`,
-      subject: 'วิชาที่ยังไม่ระบุ',
-      rating: 4.8,        // mock เริ่มต้น
+
+      // --- ส่วนที่ดึงข้อมูลจริงมาใช้ ---
+      nickname: r.nickname || null,
+      subject: r.can_teach_subjects || 'ยังไม่ระบุวิชาที่สอน',
+      image: r.profile_picture_url || 'https://via.placeholder.com/400', // รูปโปรไฟล์จริง
+      city: r.address || 'ยังไม่ระบุที่อยู่',
+      price: r.hourly_rate || 0,
+
+      // --- ส่วนนี้ยังเป็นข้อมูลจำลอง (mock) อยู่ ---
+      rating: 4.8,
       reviews: 0,
-      price: 0,
-      city: 'ออนไลน์',
-      image: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=800&auto=format&fit=crop',
-      nextSlot: 'ติดต่อกำหนดเวลา'
+      // nextSlot: 'ติดต่อกำหนดเวลา'
     }));
 
     res.json({
@@ -209,7 +222,7 @@ app.get('/api/tutors', async (req, res) => {
       }
     });
   } catch (e) {
-    console.error(e);
+    console.error('API /api/tutors Error:', e); // เพิ่ม console.error เพื่อดู error ที่นี่
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -555,6 +568,71 @@ app.post('/api/student_posts', async (req, res) => {
   }
 });
 
+// สร้างโพสต์ Tutor
+app.post('/api/tutor-posts', async (req, res) => {
+  console.log('--- ได้รับคำขอ POST ไปยัง /api/tutor-posts ---');
+
+  try {
+    console.log('ข้อมูลที่ได้รับ (req.body):', req.body);
+
+    if (!req.body) {
+      console.error('!!! ERROR: req.body เป็น undefined! ตรวจสอบว่ามี app.use(express.json()) ในไฟล์ server.js หรือไม่');
+      return res.status(400).json({ success: false, message: 'ไม่พบข้อมูลใน body ของคำขอ' });
+    }
+
+    const {
+      tutor_id,
+      subject,
+      description,
+      target_student_level,
+      teaching_days,
+      teaching_time,
+      location,
+      price,
+      contact_info
+    } = req.body;
+
+    // --- หน่วยสอดแนม 3: เช็คค่าหลังดึงออกมาจาก req.body ---
+    console.log('ดึงข้อมูล tutor_id:', tutor_id);
+    console.log('ดึงข้อมูล subject:', subject);
+
+    if (!tutor_id || !subject) {
+      console.warn('!!! คำเตือน: ข้อมูลไม่ครบ, tutor_id หรือ subject เป็นค่าว่าง');
+      return res.status(400).json({ success: false, message: 'Tutor ID และ Subject เป็นข้อมูลที่จำเป็น' });
+    }
+
+    const params = [
+      tutor_id,
+      subject,
+      description || null,
+      target_student_level || null,
+      teaching_days || null,
+      teaching_time || null,
+      location || null,
+      Number(price) || 0,
+      contact_info || null
+    ];
+
+    // --- หน่วยสอดแนม 4: เช็คข้อมูลก่อนส่งให้ฐานข้อมูล ---
+    console.log('กำลังจะรัน SQL ด้วยข้อมูล:', params);
+
+    const [result] = await pool.execute(
+      `INSERT INTO tutor_posts
+         (tutor_id, subject, description, target_student_level, teaching_days, teaching_time, location, price, contact_info, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      params
+    );
+
+    console.log('✅ สร้างโพสต์สำเร็จ! Insert ID:', result.insertId);
+    res.status(201).json({ success: true, insertId: result.insertId });
+
+  } catch (err) {
+    // --- หน่วยสอดแนม 5: ถ้ามี Error ในฐานข้อมูล มันจะแสดงที่นี่ ---
+    console.error('!!! ERROR ภายใน CATCH BLOCK:', err);
+    res.status(500).json({ success: false, message: 'Database error', error: err.message });
+  }
+});
+
 // ผู้ใช้กด Join โพสต์
 app.post('/api/student_posts/:id/join', async (req, res) => {
   try {
@@ -818,6 +896,104 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
   res.status(200).json({ imageUrl: imageUrl });
 });
 
+// 4. GET: ดึงข้อมูลโปรไฟล์ของติวเตอร์
+app.get('/api/tutor-profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // JOIN ตาราง register กับ tutor_profiles
+    const sql = `
+      SELECT
+        r.name,
+        r.lastname,
+        r.email,
+        tp.* FROM register r
+      LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+      WHERE r.user_id = ?
+    `;
+
+    const [rows] = await pool.execute(sql, [userId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Tutor not found' });
+    }
+
+    // แปลง JSON string กลับเป็น JavaScript object/array ก่อนส่งไป Frontend
+    const profile = rows[0];
+    if (profile.education) profile.education = JSON.parse(profile.education);
+    if (profile.teaching_experience) profile.teaching_experience = JSON.parse(profile.teaching_experience);
+    // can_teach_grades และ can_teach_subjects จะส่งเป็น string ไปก่อน
+
+    res.json(profile);
+
+  } catch (err) {
+    console.error('Error fetching tutor profile:', err);
+    res.status(500).json({ message: 'Database error', error: err.message });
+  }
+});
+
+
+// 5. PUT: อัปเดต/สร้างข้อมูลโปรไฟล์ของติวเตอร์
+app.put('/api/tutor-profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const body = req.body;
+
+    console.log('Tutor Profile Data received for update:', body);
+
+    // แปลง Array ของ Education และ Experience เป็น JSON string ก่อนบันทึกลง DB
+    const educationJson = body.education ? JSON.stringify(body.education) : null;
+    const teachingExperienceJson = body.teaching_experience ? JSON.stringify(body.teaching_experience) : null;
+
+    // can_teach_grades และ can_teach_subjects จะถูกส่งมาเป็น string หรือ array แล้วแต่ Frontend
+    // ถ้า Frontend ส่งเป็น array ให้ join ด้วย comma
+    const canTeachGrades = Array.isArray(body.can_teach_grades) ? body.can_teach_grades.join(',') : (body.can_teach_grades ?? null);
+    const canTeachSubjects = Array.isArray(body.can_teach_subjects) ? body.can_teach_subjects.join(',') : (body.can_teach_subjects ?? null);
+
+
+    const params = [
+      userId,
+      body.nickname ?? null,
+      body.phone ?? null,
+      body.address ?? null,
+      body.about_me ?? null,
+      educationJson,
+      teachingExperienceJson,
+      canTeachGrades,
+      canTeachSubjects,
+      body.hourly_rate ?? null, // อัตราค่าสอน
+      body.profile_picture_url ?? null
+    ];
+
+    const sql = `
+      INSERT INTO tutor_profiles (
+        user_id, nickname, phone, address, about_me,
+        education, teaching_experience, can_teach_grades, can_teach_subjects,
+        hourly_rate, profile_picture_url
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        nickname = VALUES(nickname),
+        phone = VALUES(phone),
+        address = VALUES(address),
+        about_me = VALUES(about_me),
+        education = VALUES(education),
+        teaching_experience = VALUES(teaching_experience),
+        can_teach_grades = VALUES(can_teach_grades),
+        can_teach_subjects = VALUES(can_teach_subjects),
+        hourly_rate = VALUES(hourly_rate),
+        profile_picture_url = VALUES(profile_picture_url)
+    `;
+
+    await pool.execute(sql, params);
+
+    res.json({ message: 'Tutor profile updated successfully' });
+
+  } catch (err) {
+    console.error('Error updating tutor profile:', err);
+    res.status(500).json({ message: 'Database error', error: err.message });
+  }
+});
 
 // ****** Server Start ******
 const PORT = process.env.PORT || 5000;
