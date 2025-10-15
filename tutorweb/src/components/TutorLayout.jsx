@@ -2,7 +2,6 @@ import React from "react";
 import { Link, NavLink } from "react-router-dom";
 import { GraduationCap, Home, PlusSquare, CalendarDays } from "lucide-react";
 
-
 const cls = (...arr) => arr.filter(Boolean).join(" ");
 
 
@@ -14,8 +13,6 @@ function TutorLayout({ children }) {
                     <Link to="/" className="inline-flex items-center gap-2 font-bold">
                         <GraduationCap className="h-5 w-5" /> TutorDash
                     </Link>
-
-
                     <nav className="flex items-center gap-1 text-sm">
                         <NavLink
                             to="/tutor"
@@ -38,17 +35,6 @@ function TutorLayout({ children }) {
                         >
                             <span className="inline-flex items-center gap-2">
                                 <PlusSquare className="h-4 w-4" /> สร้างโพสต์รับสอน
-                            </span>
-                        </NavLink>
-                        <NavLink
-                            to="/tutor/schedule"
-                            className={({ isActive }) => cls(
-                                "px-3 py-2 rounded-lg",
-                                isActive ? "bg-gray-900 text-white" : "hover:bg-gray-100"
-                            )}
-                        >
-                            <span className="inline-flex items-center gap-2">
-                                <CalendarDays className="h-4 w-4" /> ตารางสอน
                             </span>
                         </NavLink>
                     </nav>
