@@ -236,6 +236,7 @@ app.get('/api/tutor-posts', async (req, res) => {
 
     const tutorId = req.query.tutorId ? parseInt(req.query.tutorId, 10) : null;
     const subject = (req.query.subject || '').trim();
+    const me = Number(req.query.me) || 0;
 
     const where = [];
     const params = [];
@@ -255,14 +256,24 @@ app.get('/api/tutor-posts', async (req, res) => {
         tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
         tp.teaching_days, tp.teaching_time, tp.location, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
-        r.name, r.lastname
+        r.name, r.lastname,
+        COALESCE(fvc.c,0) AS fav_count,
+        CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited
       FROM tutor_posts tp
       LEFT JOIN register r ON r.user_id = tp.tutor_id
+      LEFT JOIN (
+        SELECT post_id, COUNT(*) AS c
+        FROM posts_favorites
+        WHERE post_type='tutor'
+        GROUP BY post_id
+      ) fvc ON fvc.post_id = tp.tutor_post_id
+      LEFT JOIN posts_favorites fme
+        ON fme.post_id = tp.tutor_post_id AND fme.post_type='tutor' AND fme.user_id = ?
       ${whereSql}
       ORDER BY tp.created_at DESC, tp.tutor_post_id DESC
       LIMIT ${limit} OFFSET ${offset}
       `,
-      params
+      [me, ...params]
     );
 
     const [[{ total }]] = await pool.query(
@@ -292,6 +303,8 @@ app.get('/api/tutor-posts', async (req, res) => {
           price: Number(r.price || 0),
           contact_info: r.contact_info
         },
+        fav_count: Number(r.fav_count || 0),
+        favorited: !!r.favorited,
         images: []
       })),
       pagination: {
@@ -393,24 +406,31 @@ app.get('/api/student_posts', async (req, res) => {
         r.name, r.lastname,
         COALESCE(jc.join_count, 0) AS join_count,
         CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined,
-        CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me
+        CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me,
+        COALESCE(fvc.c,0) AS fav_count,
+        CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited
       FROM student_posts sp
       LEFT JOIN register r ON r.user_id = sp.student_id
-      -- นับเฉพาะ approved
       LEFT JOIN (
         SELECT student_post_id, COUNT(*) AS join_count
         FROM student_post_joins
         WHERE status='approved'
         GROUP BY student_post_id
       ) jc ON jc.student_post_id = sp.student_post_id
-      -- แสดงว่า me ได้รับการ approve แล้วหรือยัง
       LEFT JOIN student_post_joins jme
         ON jme.student_post_id = sp.student_post_id AND jme.user_id = ? AND jme.status='approved'
-      -- me เคยส่งคำขอ pending มั้ย
       LEFT JOIN student_post_joins jme_pending
         ON jme_pending.student_post_id = sp.student_post_id AND jme_pending.user_id = ? AND jme_pending.status='pending'
+      LEFT JOIN (
+        SELECT post_id, COUNT(*) AS c
+        FROM posts_favorites
+        WHERE post_type='student'
+        GROUP BY post_id
+      ) fvc ON fvc.post_id = sp.student_post_id
+      LEFT JOIN posts_favorites fme
+        ON fme.post_id = sp.student_post_id AND fme.post_type='student' AND fme.user_id = ?
       ORDER BY sp.student_post_id DESC
-    `, [me, me]);
+    `, [me, me, me]);
 
     const posts = rows.map(r => ({
       id: r.student_post_id,
@@ -425,8 +445,10 @@ app.get('/api/student_posts', async (req, res) => {
       contact_info: r.contact_info || '',
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
       join_count: Number(r.join_count || 0),
-      joined: !!r.joined,             // อนุมัติแล้วเท่านั้น
-      pending_me: !!r.pending_me,     // ส่งคำขอไว้ รอเจ้าของอนุมัติ
+      joined: !!r.joined,
+      pending_me: !!r.pending_me,
+      fav_count: Number(r.fav_count || 0),
+      favorited: !!r.favorited,
       user: { first_name: r.name || '', last_name: r.lastname || '', profile_image: '/default-avatar.png' },
     }));
 
@@ -634,18 +656,15 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     if (!Number.isFinite(postId) || !Number.isFinite(me))
       return res.status(400).json({ success: false, message: 'invalid postId or user_id' });
 
-    // โพสต์ต้องมีอยู่
     const [[post]] = await pool.query(
       'SELECT student_id, group_size FROM student_posts WHERE student_post_id = ?',
       [postId]
     );
     if (!post) return res.status(404).json({ success: false, message: 'post not found' });
 
-    // ห้ามเจ้าของโพสต์ join
     if (post.student_id === me)
       return res.status(400).json({ success: false, message: 'คุณเป็นเจ้าของโพสต์นี้' });
 
-    // เต็มหรือยัง
     const [[cnt]] = await pool.query(
       'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
       [postId]
@@ -653,37 +672,31 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     if (cnt.c >= post.group_size)
       return res.status(409).json({ success: false, message: 'กลุ่มนี้เต็มแล้ว' });
 
-    // ใส่ join (กันซ้ำด้วย UNIQUE/PRIMARY KEY)
-    await pool.query(
+    const [upsertResult] = await pool.query(
       'INSERT IGNORE INTO student_post_joins (student_post_id, user_id) VALUES (?, ?)',
-//>>>>>>> 39f521a583d5c30aab4de576ee61831e0263bed7
       [postId, me]
     );
-    console.log('[JOIN] upsert result:', result);
+    console.log('[JOIN] upsert result:', upsertResult);
 
-    // นับเฉพาะ approved เพื่อแสดงผล
     const [[cntApproved]] = await pool.query(
       'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status = "approved"',
       [postId]
     );
 
-    // ส่งแจ้งเตือนให้เจ้าของโพสต์ (ถ้ายังไม่มีหรือคุณอยากแจ้งทุกครั้งก็ได้)
     await pool.query(
       'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
       [post.student_id, 'join_request', `มีคำขอเข้าร่วมโพสต์ #${postId}`, postId]
     );
-
-    // ส่งแจ้งเตือนไป "ผู้ที่กด join" ด้วย (เพื่อให้เห็นว่าตัวเองเข้าร่วมสำเร็จ)
     await pool.query(
       `INSERT INTO notifications (user_id, type, message, related_id, is_read, created_at)
        VALUES (?, 'join_success', ?, ?, 0, NOW())`,
       [me, `คุณเข้าร่วมโพสต์ #${postId} แล้ว`, postId]
     );
-    // ===== END NEW =====
 
-    return res.json({ success: true, joined: true, join_count: cnt2.c });
+    return res.json({ success: true, joined: true, join_count: cntApproved.c });
   } catch (err) {
-    return sendDbError(res, err);
+    console.error(err);
+    return res.status(500).json({ success:false, message: err?.sqlMessage || err?.message || 'Database error' });
   }
 });
 
@@ -982,6 +995,120 @@ app.put('/api/tutor-profile/:userId', async (req, res) => {
     res.status(500).json({ message: 'Database error', error: err.message });
   }
 });
+
+// ---------- Favorites ----------
+/**
+ * ใช้ตาราง:
+ *   posts_favorites(user_id INT, post_type ENUM('student','tutor'), post_id INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ *                   UNIQUE KEY uniq_user_post (user_id, post_type, post_id))
+ * และคอลัมน์นับยอด:
+ *   student_posts.fav_count INT DEFAULT 0
+ *   tutor_posts.fav_count   INT DEFAULT 0
+ */
+
+// POST /api/favorites/toggle : กดถูกใจ/ยกเลิก
+app.post('/api/favorites/toggle', async (req, res) => {
+  try {
+    const { user_id, post_id, post_type } = req.body || {};
+    if (!user_id || !post_id || !['student', 'tutor'].includes(post_type)) {
+      return res.status(400).json({ success: false, message: 'invalid payload' });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [have] = await conn.query(
+        'SELECT fav_id FROM posts_favorites WHERE user_id=? AND post_type=? AND post_id=?',
+        [user_id, post_type, post_id]
+      );
+
+      let action = 'added';
+      if (have.length) {
+        await conn.query(
+          'DELETE FROM posts_favorites WHERE user_id=? AND post_type=? AND post_id=?',
+          [user_id, post_type, post_id]
+        );
+        action = 'removed';
+      } else {
+        await conn.query(
+          'INSERT INTO posts_favorites (user_id, post_type, post_id) VALUES (?,?,?)',
+          [user_id, post_type, post_id]
+        );
+      }
+
+      // คำนวณยอดล่าสุด
+      const [cntRows] = await conn.query(
+        'SELECT COUNT(*) AS c FROM posts_favorites WHERE post_type=? AND post_id=?',
+        [post_type, post_id]
+      );
+      const fav_count = Number(cntRows?.[0]?.c || 0);
+
+      // sync ลงตารางโพสต์
+      if (post_type === 'student') {
+        await conn.query('UPDATE student_posts SET fav_count=? WHERE student_post_id=?', [fav_count, post_id]);
+      } else {
+        await conn.query('UPDATE tutor_posts SET fav_count=? WHERE tutor_post_id=?', [fav_count, post_id]);
+      }
+
+      await conn.commit();
+      return res.json({ success: true, action, fav_count });
+    } catch (e) {
+      await conn.rollback();
+      console.error('[favorites/toggle] txn error:', e);
+      return res.status(500).json({ success: false, message: e.message || 'db error' });
+    } finally {
+      conn.release();
+    }
+  } catch (e) {
+    console.error('[favorites/toggle] error:', e);
+    return res.status(500).json({ success: false, message: 'server error' });
+  }
+});
+
+// (optional) GET รายการที่สนใจของผู้ใช้
+// ✅ GET: ดึงรายการที่ผู้ใช้ถูกใจไว้ทั้งหมด
+app.get('/api/favorites/user/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    // ดึงรายการที่ถูกใจจากตาราง favorites
+    const [rows] = await pool.query(`
+      SELECT 
+        f.post_type, 
+        f.post_id, 
+        f.created_at,
+        CASE 
+          WHEN f.post_type='student' THEN sp.subject
+          ELSE tp.subject 
+        END AS subject,
+        CASE 
+          WHEN f.post_type='student' THEN sp.description
+          ELSE tp.description 
+        END AS description,
+        CASE 
+          WHEN f.post_type='student' THEN r.name
+          ELSE t.name 
+        END AS author
+      FROM posts_favorites f
+      LEFT JOIN student_posts sp ON f.post_type='student' AND f.post_id = sp.student_post_id
+      LEFT JOIN tutor_posts tp   ON f.post_type='tutor' AND f.post_id = tp.tutor_post_id
+      LEFT JOIN register r ON sp.student_id = r.user_id
+      LEFT JOIN register t ON tp.tutor_id = t.user_id
+      WHERE f.user_id = ?
+      ORDER BY f.created_at DESC
+    `, [user_id]);
+
+    res.json({ success: true, items: rows });
+  } catch (err) {
+    console.error('GET /api/favorites/user error:', err);
+    res.status(500).json({ success: false, message: 'Database error' });
+  }
+});
+
+
+app.get('/health', (req,res)=>res.json({ok:true,time:new Date()}));
+
 
 // ****** Server Start ******
 const PORT = process.env.PORT || 5000;
