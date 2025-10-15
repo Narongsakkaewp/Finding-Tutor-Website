@@ -1,12 +1,19 @@
 // tutorweb-server/server.js
 const express = require('express');
-const mysql = require('mysql2/promise');        // ใช้ promise
+const mysql = require('mysql2/promise');
 const cors = require('cors');
 require('dotenv').config();
+
+// ----- เพิ่ม Dependencies สำหรับ Upload -----
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+// -----------------------------------------
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
 
 // ---------- MySQL Pool ----------
 const pool = mysql.createPool({
@@ -28,6 +35,25 @@ const pool = mysql.createPool({
     console.error('DB Connection Failed:', err);
   }
 })();
+
+// ----- NEW: ตั้งค่า Multer สำหรับการอัปโหลดไฟล์ -----
+const uploadDir = 'public/uploads';
+// สร้างโฟลเดอร์ uploads ถ้ายังไม่มี
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir); // บอกให้ multer เก็บไฟล์ที่โฟลเดอร์ public/uploads
+  },
+  filename: function (req, file, cb) {
+    // สร้างชื่อไฟล์ใหม่ที่ไม่ซ้ำกัน -> timestamp-originalname.extension
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+const upload = multer({ storage: storage });
+// ----------------------------------------------------
 
 // ---------- APIs ----------
 
@@ -139,39 +165,52 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
   }
 });
 
-// รายชื่อติวเตอร์จาก register (type = tutor/teacher)
 app.get('/api/tutors', async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
 
+    // ✅ 1. แก้ไขคำสั่ง SQL ให้ JOIN ตาราง tutor_profiles เพื่อดึงข้อมูลจริง
     const [rows] = await pool.execute(
-      `SELECT user_id, name, lastname, email
-         FROM register
-        WHERE LOWER(type) IN ('tutor','teacher')
-        ORDER BY user_id DESC
-        LIMIT ? OFFSET ?`,
+      `SELECT 
+          r.user_id, r.name, r.lastname,
+          tp.nickname,
+          tp.can_teach_subjects,
+          tp.profile_picture_url,
+          tp.address,
+          tp.hourly_rate
+       FROM register r
+       LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+       WHERE LOWER(r.type) IN ('tutor','teacher')
+       ORDER BY r.user_id DESC
+       LIMIT ? OFFSET ?`,
       [limit, offset]
     );
 
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total
-         FROM register
-        WHERE LOWER(type) IN ('tutor','teacher')`
+       FROM register
+       WHERE LOWER(type) IN ('tutor','teacher')`
     );
 
+    // ✅ 2. แก้ไขการสร้าง object ให้ใช้ข้อมูลจริงจาก Database
     const items = rows.map(r => ({
       id: `t-${r.user_id}`,
       dbTutorId: r.user_id,
       name: `${r.name || ''}${r.lastname ? ' ' + r.lastname : ''}`.trim() || `ติวเตอร์ #${r.user_id}`,
-      subject: 'วิชาที่ยังไม่ระบุ',
-      rating: 4.8,        // mock เริ่มต้น
+
+      // --- ส่วนที่ดึงข้อมูลจริงมาใช้ ---
+      nickname: r.nickname || null,
+      subject: r.can_teach_subjects || 'ยังไม่ระบุวิชาที่สอน',
+      image: r.profile_picture_url || 'https://via.placeholder.com/400', // รูปโปรไฟล์จริง
+      city: r.address || 'ยังไม่ระบุที่อยู่',
+      price: r.hourly_rate || 0,
+
+      // --- ส่วนนี้ยังเป็นข้อมูลจำลอง (mock) อยู่ ---
+      rating: 4.8,
       reviews: 0,
-      price: 0,
-      city: 'ออนไลน์',
-      image: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=800&auto=format&fit=crop',
-      nextSlot: 'ติดต่อกำหนดเวลา'
+      // nextSlot: 'ติดต่อกำหนดเวลา'
     }));
 
     res.json({
@@ -183,7 +222,7 @@ app.get('/api/tutors', async (req, res) => {
       }
     });
   } catch (e) {
-    console.error(e);
+    console.error('API /api/tutors Error:', e); // เพิ่ม console.error เพื่อดู error ที่นี่
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -342,20 +381,9 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// ===== GET: ดึงฟีดนักเรียนทั้งหมด (รองรับกรองเฉพาะของฉัน) =====
 app.get('/api/student_posts', async (req, res) => {
   try {
-    const me = Number(req.query.me) || 0; // ใช้เช็ค joined
-    const mine = String(req.query.mine || '').toLowerCase() === '1' || String(req.query.mine || '').toLowerCase() === 'true';
-    const owner = mine ? me : Number(req.query.owner_id || 0); // ถ้า mine=1 ให้โชว์เฉพาะของตัวเอง
-
-    // สร้าง WHERE แบบเลือกได้
-    let whereSql = '';
-    const params = [me]; // ลำดับ params ต้องเรียงตามตำแหน่ง ? ใน SQL (jme.user_id มาก่อน WHERE)
-    if (owner) {
-      whereSql = 'WHERE sp.student_id = ?';
-      params.push(owner);
-    }
+    const me = Number(req.query.me) || 0;
 
     const [rows] = await pool.query(`
       SELECT
@@ -364,18 +392,25 @@ app.get('/api/student_posts', async (req, res) => {
         sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
         r.name, r.lastname,
         COALESCE(jc.join_count, 0) AS join_count,
-        CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined
+        CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined,
+        CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me
       FROM student_posts sp
       LEFT JOIN register r ON r.user_id = sp.student_id
+      -- นับเฉพาะ approved
       LEFT JOIN (
         SELECT student_post_id, COUNT(*) AS join_count
-        FROM student_post_joins GROUP BY student_post_id
+        FROM student_post_joins
+        WHERE status='approved'
+        GROUP BY student_post_id
       ) jc ON jc.student_post_id = sp.student_post_id
+      -- แสดงว่า me ได้รับการ approve แล้วหรือยัง
       LEFT JOIN student_post_joins jme
-        ON jme.student_post_id = sp.student_post_id AND jme.user_id = ?
-      ${whereSql}
+        ON jme.student_post_id = sp.student_post_id AND jme.user_id = ? AND jme.status='approved'
+      -- me เคยส่งคำขอ pending มั้ย
+      LEFT JOIN student_post_joins jme_pending
+        ON jme_pending.student_post_id = sp.student_post_id AND jme_pending.user_id = ? AND jme_pending.status='pending'
       ORDER BY sp.student_post_id DESC
-    `, params);
+    `, [me, me]);
 
     const posts = rows.map(r => ({
       id: r.student_post_id,
@@ -390,12 +425,9 @@ app.get('/api/student_posts', async (req, res) => {
       contact_info: r.contact_info || '',
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
       join_count: Number(r.join_count || 0),
-      joined: !!r.joined,
-      user: {
-        first_name: r.name || '',
-        last_name: r.lastname || '',
-        profile_image: '/default-avatar.png',
-      },
+      joined: !!r.joined,             // อนุมัติแล้วเท่านั้น
+      pending_me: !!r.pending_me,     // ส่งคำขอไว้ รอเจ้าของอนุมัติ
+      user: { first_name: r.name || '', last_name: r.lastname || '', profile_image: '/default-avatar.png' },
     }));
 
     return res.json(posts);
@@ -533,11 +565,11 @@ app.post('/api/student_posts', async (req, res) => {
 app.post('/api/student_posts/:id/join', async (req, res) => {
   try {
     const postId = Number(req.params.id);
-    const me     = Number(req.body.user_id);
+    const me = Number(req.body.user_id);
     if (!Number.isFinite(postId) || !Number.isFinite(me))
       return res.status(400).json({ success:false, message:'invalid postId or user_id' });
 
-    // ตรวจโพสต์
+    // โพสต์ต้องมีอยู่
     const [[post]] = await pool.query(
       'SELECT student_id, group_size FROM student_posts WHERE student_post_id = ?',
       [postId]
@@ -546,7 +578,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
 
     // ห้ามเจ้าของโพสต์ join
     if (post.student_id === me)
-      return res.status(400).json({ success:false, message:'คุณเป็นเจ้าของโพสต์นี้' });
+      return res.status(400).json({ success: false, message: 'คุณเป็นเจ้าของโพสต์นี้' });
 
     // เต็มหรือยัง
     const [[cnt]] = await pool.query(
@@ -554,32 +586,26 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
       [postId]
     );
     if (cnt.c >= post.group_size)
-      return res.status(409).json({ success:false, message:'กลุ่มนี้เต็มแล้ว' });
+      return res.status(409).json({ success: false, message: 'กลุ่มนี้เต็มแล้ว' });
 
     // ใส่ join (กันซ้ำด้วย UNIQUE/PRIMARY KEY)
     await pool.query(
       'INSERT IGNORE INTO student_post_joins (student_post_id, user_id) VALUES (?, ?)',
+//>>>>>>> 39f521a583d5c30aab4de576ee61831e0263bed7
       [postId, me]
     );
+    console.log('[JOIN] upsert result:', result);
 
-    const [[cnt2]] = await pool.query(
-      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
+    // นับเฉพาะ approved เพื่อแสดงผล
+    const [[cntApproved]] = await pool.query(
+      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status = "approved"',
       [postId]
     );
 
-    // ===== NEW: สร้างการแจ้งเตือน =====
-    // ชื่อผู้กด join
-    const [[joiner]] = await pool.query(
-      'SELECT name, lastname FROM register WHERE user_id = ?',
-      [me]
-    );
-    const joinerName = `${joiner?.name || ''}${joiner?.lastname ? ' ' + joiner.lastname : ''}`.trim() || `ผู้ใช้ #${me}`;
-
-    // ส่งแจ้งเตือนไป "เจ้าของโพสต์"
+    // ส่งแจ้งเตือนให้เจ้าของโพสต์ (ถ้ายังไม่มีหรือคุณอยากแจ้งทุกครั้งก็ได้)
     await pool.query(
-      `INSERT INTO notifications (user_id, type, message, related_id, is_read, created_at)
-       VALUES (?, 'join_post', ?, ?, 0, NOW())`,
-      [post.student_id, `${joinerName} เข้าร่วมโพสต์ของคุณ (โพสต์ #${postId})`, postId]
+      'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
+      [post.student_id, 'join_request', `มีคำขอเข้าร่วมโพสต์ #${postId}`, postId]
     );
 
     // ส่งแจ้งเตือนไป "ผู้ที่กด join" ด้วย (เพื่อให้เห็นว่าตัวเองเข้าร่วมสำเร็จ)
@@ -595,6 +621,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     return sendDbError(res, err);
   }
 });
+
 
 
 // ผู้ใช้ยกเลิก Join
