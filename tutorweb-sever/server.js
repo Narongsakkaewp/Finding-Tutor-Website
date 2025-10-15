@@ -561,20 +561,85 @@ app.post('/api/student_posts', async (req, res) => {
   }
 });
 
+// สร้างโพสต์ Tutor
+app.post('/api/tutor-posts', async (req, res) => {
+  console.log('--- ได้รับคำขอ POST ไปยัง /api/tutor-posts ---');
+
+  try {
+    console.log('ข้อมูลที่ได้รับ (req.body):', req.body);
+
+    if (!req.body) {
+      console.error('!!! ERROR: req.body เป็น undefined! ตรวจสอบว่ามี app.use(express.json()) ในไฟล์ server.js หรือไม่');
+      return res.status(400).json({ success: false, message: 'ไม่พบข้อมูลใน body ของคำขอ' });
+    }
+
+    const {
+      tutor_id,
+      subject,
+      description,
+      target_student_level,
+      teaching_days,
+      teaching_time,
+      location,
+      price,
+      contact_info
+    } = req.body;
+
+    // --- หน่วยสอดแนม 3: เช็คค่าหลังดึงออกมาจาก req.body ---
+    console.log('ดึงข้อมูล tutor_id:', tutor_id);
+    console.log('ดึงข้อมูล subject:', subject);
+
+    if (!tutor_id || !subject) {
+      console.warn('!!! คำเตือน: ข้อมูลไม่ครบ, tutor_id หรือ subject เป็นค่าว่าง');
+      return res.status(400).json({ success: false, message: 'Tutor ID และ Subject เป็นข้อมูลที่จำเป็น' });
+    }
+
+    const params = [
+      tutor_id,
+      subject,
+      description || null,
+      target_student_level || null,
+      teaching_days || null,
+      teaching_time || null,
+      location || null,
+      Number(price) || 0,
+      contact_info || null
+    ];
+
+    // --- หน่วยสอดแนม 4: เช็คข้อมูลก่อนส่งให้ฐานข้อมูล ---
+    console.log('กำลังจะรัน SQL ด้วยข้อมูล:', params);
+
+    const [result] = await pool.execute(
+      `INSERT INTO tutor_posts
+         (tutor_id, subject, description, target_student_level, teaching_days, teaching_time, location, price, contact_info, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      params
+    );
+
+    console.log('✅ สร้างโพสต์สำเร็จ! Insert ID:', result.insertId);
+    res.status(201).json({ success: true, insertId: result.insertId });
+
+  } catch (err) {
+    // --- หน่วยสอดแนม 5: ถ้ามี Error ในฐานข้อมูล มันจะแสดงที่นี่ ---
+    console.error('!!! ERROR ภายใน CATCH BLOCK:', err);
+    res.status(500).json({ success: false, message: 'Database error', error: err.message });
+  }
+});
+
 // ผู้ใช้กด Join โพสต์
 app.post('/api/student_posts/:id/join', async (req, res) => {
   try {
     const postId = Number(req.params.id);
     const me = Number(req.body.user_id);
     if (!Number.isFinite(postId) || !Number.isFinite(me))
-      return res.status(400).json({ success:false, message:'invalid postId or user_id' });
+      return res.status(400).json({ success: false, message: 'invalid postId or user_id' });
 
     // โพสต์ต้องมีอยู่
     const [[post]] = await pool.query(
       'SELECT student_id, group_size FROM student_posts WHERE student_post_id = ?',
       [postId]
     );
-    if (!post) return res.status(404).json({ success:false, message:'post not found' });
+    if (!post) return res.status(404).json({ success: false, message: 'post not found' });
 
     // ห้ามเจ้าของโพสต์ join
     if (post.student_id === me)
@@ -616,7 +681,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     );
     // ===== END NEW =====
 
-    return res.json({ success:true, joined:true, join_count: cnt2.c });
+    return res.json({ success: true, joined: true, join_count: cnt2.c });
   } catch (err) {
     return sendDbError(res, err);
   }
@@ -711,6 +776,212 @@ app.post('/api/notifications', async (req, res) => {
   }
 });
 
+// 1. GET: ดึงข้อมูลโปรไฟล์ของนักเรียน
+app.get('/api/profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // เราจะ JOIN ตาราง register กับ student_profiles เพื่อดึงข้อมูลทั้งหมดในครั้งเดียว
+    const sql = `
+      SELECT
+        r.name,
+        r.lastname,
+        r.email,
+        sp.* FROM register r
+      LEFT JOIN student_profiles sp ON r.user_id = sp.user_id
+      WHERE r.user_id = ?
+    `;
+
+    const [rows] = await pool.execute(sql, [userId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // ส่งข้อมูลโปรไฟล์กลับไป (ถ้ายังไม่มีโปรไฟล์ใน student_profiles ค่าต่างๆ จะเป็น null)
+    res.json(rows[0]);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Database error' });
+  }
+});
+
+
+// 2. PUT: อัปเดต/สร้างข้อมูลโปรไฟล์ของนักเรียน (แก้ไขให้ตรงกับ DB)
+app.put('/api/profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // ดึงค่าจาก req.body โดยใช้ชื่อที่ถูกต้องจาก Frontend
+    // Frontend ของเราส่ง phone_number และ about_me มา
+    const {
+      nickname,
+      phone_number, // รับค่าจาก Frontend
+      address,
+      grade_level,
+      institution,
+      faculty,
+      major,
+      about_me,      // รับค่าจาก Frontend
+      profile_picture_url
+    } = req.body;
+
+    // เราจะใช้ "UPSERT" logic เหมือนเดิม
+    const sql = `
+      INSERT INTO student_profiles (
+        user_id, nickname, phone, address, grade_level,
+        institution, faculty, major, about, profile_picture_url
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        nickname = VALUES(nickname),
+        phone = VALUES(phone),
+        address = VALUES(address),
+        grade_level = VALUES(grade_level),
+        institution = VALUES(institution),
+        faculty = VALUES(faculty),
+        major = VALUES(major),
+        about = VALUES(about),
+        profile_picture_url = VALUES(profile_picture_url)
+    `;
+
+    // ส่งค่าไปยัง SQL ให้ตรงตามลำดับของเครื่องหมาย ?
+    await pool.execute(sql, [
+      userId,
+      nickname ?? null,
+      phone_number ?? null, // ใช้ค่า phone_number ที่รับมาสำหรับคอลัมน์ phone
+      address ?? null,
+      grade_level ?? null,
+      institution ?? null,
+      faculty ?? null,
+      major ?? null,
+      about_me ?? null,      // ใช้ค่า about_me ที่รับมาสำหรับคอลัมน์ about
+      profile_picture_url ?? null
+    ]);
+
+    res.json({ message: 'Profile updated successfully' });
+
+  } catch (err) {
+    console.error('Error updating profile:', err);
+    res.status(500).json({ message: 'Database error', error: err.message });
+  }
+});
+
+
+// 3. POST: อัปโหลดรูปภาพ
+// middleware `upload.single('image')` จะจัดการไฟล์ให้เรา
+app.post('/api/upload', upload.single('image'), (req, res) => {
+  // 'image' คือ key ที่เราตั้งใน FormData ของ Frontend
+  if (!req.file) {
+    return res.status(400).json({ message: 'No file uploaded' });
+  }
+
+  // สร้าง URL เต็มของไฟล์เพื่อให้ Frontend เรียกใช้ได้
+  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+  // ส่ง URL กลับไปให้ Frontend
+  res.status(200).json({ imageUrl: imageUrl });
+});
+
+// 4. GET: ดึงข้อมูลโปรไฟล์ของติวเตอร์
+app.get('/api/tutor-profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // JOIN ตาราง register กับ tutor_profiles
+    const sql = `
+      SELECT
+        r.name,
+        r.lastname,
+        r.email,
+        tp.* FROM register r
+      LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+      WHERE r.user_id = ?
+    `;
+
+    const [rows] = await pool.execute(sql, [userId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Tutor not found' });
+    }
+
+    // แปลง JSON string กลับเป็น JavaScript object/array ก่อนส่งไป Frontend
+    const profile = rows[0];
+    if (profile.education) profile.education = JSON.parse(profile.education);
+    if (profile.teaching_experience) profile.teaching_experience = JSON.parse(profile.teaching_experience);
+    // can_teach_grades และ can_teach_subjects จะส่งเป็น string ไปก่อน
+
+    res.json(profile);
+
+  } catch (err) {
+    console.error('Error fetching tutor profile:', err);
+    res.status(500).json({ message: 'Database error', error: err.message });
+  }
+});
+
+
+// 5. PUT: อัปเดต/สร้างข้อมูลโปรไฟล์ของติวเตอร์
+app.put('/api/tutor-profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const body = req.body;
+
+    console.log('Tutor Profile Data received for update:', body);
+
+    // แปลง Array ของ Education และ Experience เป็น JSON string ก่อนบันทึกลง DB
+    const educationJson = body.education ? JSON.stringify(body.education) : null;
+    const teachingExperienceJson = body.teaching_experience ? JSON.stringify(body.teaching_experience) : null;
+
+    // can_teach_grades และ can_teach_subjects จะถูกส่งมาเป็น string หรือ array แล้วแต่ Frontend
+    // ถ้า Frontend ส่งเป็น array ให้ join ด้วย comma
+    const canTeachGrades = Array.isArray(body.can_teach_grades) ? body.can_teach_grades.join(',') : (body.can_teach_grades ?? null);
+    const canTeachSubjects = Array.isArray(body.can_teach_subjects) ? body.can_teach_subjects.join(',') : (body.can_teach_subjects ?? null);
+
+
+    const params = [
+      userId,
+      body.nickname ?? null,
+      body.phone ?? null,
+      body.address ?? null,
+      body.about_me ?? null,
+      educationJson,
+      teachingExperienceJson,
+      canTeachGrades,
+      canTeachSubjects,
+      body.hourly_rate ?? null, // อัตราค่าสอน
+      body.profile_picture_url ?? null
+    ];
+
+    const sql = `
+      INSERT INTO tutor_profiles (
+        user_id, nickname, phone, address, about_me,
+        education, teaching_experience, can_teach_grades, can_teach_subjects,
+        hourly_rate, profile_picture_url
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        nickname = VALUES(nickname),
+        phone = VALUES(phone),
+        address = VALUES(address),
+        about_me = VALUES(about_me),
+        education = VALUES(education),
+        teaching_experience = VALUES(teaching_experience),
+        can_teach_grades = VALUES(can_teach_grades),
+        can_teach_subjects = VALUES(can_teach_subjects),
+        hourly_rate = VALUES(hourly_rate),
+        profile_picture_url = VALUES(profile_picture_url)
+    `;
+
+    await pool.execute(sql, params);
+
+    res.json({ message: 'Tutor profile updated successfully' });
+
+  } catch (err) {
+    console.error('Error updating tutor profile:', err);
+    res.status(500).json({ message: 'Database error', error: err.message });
+  }
+});
 
 // ****** Server Start ******
 const PORT = process.env.PORT || 5000;
