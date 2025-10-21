@@ -457,39 +457,39 @@ function MyPost({ setPostsCache }) {
                     className="border rounded p-2 w-full"
                   />
 
-                  {feedType === "student" ? (
-                    <>
-                      <input type="text" name="preferred_days" placeholder="วันสะดวก (เช่น จ-พ หรือ 10 ตุลาคม 2568)"
-                        value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="time" name="preferred_time"
-                        value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="text" name="location" placeholder="สถานที่"
+                {feedType === "student" ? (
+                  <>
+                    <input type="text" name="preferred_days" placeholder="วันสะดวก (เช่น จ-พ หรือ 10 ตุลาคม 2568)"
+                      value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    <input type="time" name="preferred_time"
+                      value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    <input type="text" name="location" placeholder="สถานที่"
+                      value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    <input type="number" name="group_size" placeholder="จำนวนคน"
+                      value={formData.group_size} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    <input type="number" name="budget" placeholder="งบประมาณ (บาท)"
+                      value={formData.budget} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ"
+                      value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
+                  </>
+                ) : (
+                  <>
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <input type="text" name="teaching_days" placeholder="วันที่สอน (เช่น เสาร์-อาทิตย์)"
+                        value={formData.teaching_days} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <input type="text" name="teaching_time" placeholder="ช่วงเวลา (เช่น 18:00-20:00)"
+                        value={formData.teaching_time} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <input type="text" name="location" placeholder="สถานที่ (ออนไลน์/ออนไซต์)"
                         value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="number" name="group_size" placeholder="จำนวนคน"
-                        value={formData.group_size} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="number" name="budget" placeholder="งบประมาณ (บาท)"
-                        value={formData.budget} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ"
-                        value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    </>
-                  ) : (
-                    <>
-                      <div className="grid md:grid-cols-2 gap-3">
-                        <input type="text" name="teaching_days" placeholder="วันที่สอน (เช่น เสาร์-อาทิตย์)"
-                          value={formData.teaching_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-                        <input type="text" name="teaching_time" placeholder="ช่วงเวลา (เช่น 18:00-20:00)"
-                          value={formData.teaching_time} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      </div>
-                      <div className="grid md:grid-cols-2 gap-3">
-                        <input type="text" name="location" placeholder="สถานที่ (ออนไลน์/ออนไซต์)"
-                          value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-                        <input type="number" name="price" placeholder="ราคา (บาท/ชม.)"
-                          value={formData.price} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      </div>
-                      <input type="text" name="contact_info" placeholder="ช่องทางติดต่อ (LINE/เบอร์/อีเมล)"
-                        value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    </>
-                  )}
+                      <input type="number" name="price" placeholder="ราคา (บาท/ชม.)"
+                        value={formData.price} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    </div>
+                    <input type="text" name="contact_info" placeholder="ช่องทางติดต่อ (LINE/เบอร์/อีเมล)"
+                      value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
+                  </>
+                )}
 
                   <div className="flex justify-end gap-2">
                     <button type="button" onClick={() => setExpanded(false)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">

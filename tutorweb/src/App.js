@@ -9,7 +9,7 @@ import Booking from './components/Booking';
 import MyPost from './components/MyPost';
 import Favorite from './components/Favorite';
 import Profile from './components/Profile';
-import TutorProfile from './components/TutorProfile'; // ตรวจสอบว่า import TutorProfile มาแล้ว
+import TutorProfile from './components/TutorProfile';
 import MyPostDetails from './components/MyPostDetails';
 import TutorLayout from './components/TutorLayout';
 
@@ -89,8 +89,6 @@ function App() {
     setBackPage(from);
     setCurrentPage('mypost_details');
   };
-
-  // ✅✅✅ เพิ่มฟังก์ชันที่ขาดหายไปตรงนี้ ✅✅✅
   const handleEditProfile = () => {
     if (userType === 'student') {
       setCurrentPage('student_info');

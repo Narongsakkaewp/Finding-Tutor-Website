@@ -159,14 +159,14 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                             </div>
                         </div>
 
-                        <div className="md:ml-auto flex flex-col items-end gap-3">
+                        <div className="md:ml-auto grid grid-cols items-end gap-3">
                             <button
                                 onClick={onEditProfile}
                                 className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
                             >
                                 <Edit size={16} /> แก้ไขโปรไฟล์
                             </button>
-                            <Stat label="โพสต์" value={String(tutorPosts.length)} />
+                            <Stat label="โพสต์ทั้งหมด" value={String(tutorPosts.length)} />
                         </div>
                     </div>
                 </div>

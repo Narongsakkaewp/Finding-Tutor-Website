@@ -185,9 +185,9 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                 </button>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Stat label="โพสต์" value={String(posts.length)} />
-                <Stat label="ติวเตอร์ที่บันทึก" value={String(savedTutors.length)} />
-                <Stat label="วิชาที่สนใจ" value={String(profile.subjects?.length || 0)} />
+                <Stat label="โพสต์ทั้งหมด" value={String(posts.length)} />
+                <Stat label="โพสต์ติวเตอร์ที่สนใจ" value={String(savedTutors.length)} />
+                <Stat label="โพสต์นักเรียนที่สนใจ" value={String(profile.subjects?.length || 0)} />
               </div>
             </div>
           </div>
