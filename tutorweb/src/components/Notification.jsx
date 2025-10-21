@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 
 /**
  * props:
- * - userId: number             // user_id ที่ล็อกอิน
- * - onOpenPost?: (id:number)=>void  // เรียกเมื่อคลิกแจ้งเตือนของโพสต์
+ * - userId: number                  // user_id ที่ล็อกอิน
+ * - onOpenPost?: (id:number)=>void  // เรียกเมื่อคลิกเพื่อไปหน้าโพสต์/จัดการคำขอ
  * - onReadAll?: ()=>void            // (ออปชัน) เรียกเมื่อมาร์คว่าอ่านทั้งหมด
  */
 function Notification({ userId, onOpenPost, onReadAll }) {
@@ -17,7 +17,9 @@ function Notification({ userId, onOpenPost, onReadAll }) {
     setLoading(true);
     fetch(`http://localhost:5000/api/notifications/${userId}`)
       .then((r) => r.json())
-      .then((data) => Array.isArray(data) ? setNotifications(data) : setNotifications([]))
+      .then((data) =>
+        Array.isArray(data) ? setNotifications(data) : setNotifications([])
+      )
       .catch((e) => console.error("fetch notifications error:", e))
       .finally(() => setLoading(false));
   }, [userId]);
@@ -29,7 +31,11 @@ function Notification({ userId, onOpenPost, onReadAll }) {
     const older = [];
 
     const now = new Date();
-    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
     const startYesterday = new Date(startToday);
     startYesterday.setDate(startToday.getDate() - 1);
 
@@ -40,20 +46,19 @@ function Notification({ userId, onOpenPost, onReadAll }) {
       else older.push(item);
     });
 
-    // ล่าสุด = ตัวแรกของทั้งลิสต์ (เรียงมาจาก backend แล้ว)
+    // ล่าสุด = ตัวแรกของทั้งลิสต์ (เรียงจาก backend แล้ว)
     const latest = notifications?.length ? [notifications[0]] : [];
 
     return { latest, today, yesterday, older };
   }, [notifications]);
 
-  // มาร์คว่่าอ่าน + เปิดโพสต์
+  // มาร์คว่าอ่าน + เปิดโพสต์
   const handleOpen = async (item) => {
     if (!item) return;
     try {
       await fetch(`http://localhost:5000/api/notifications/read/${item.notification_id}`, {
         method: "PUT",
       });
-      // อัปเดตสถานะในจอ
       setNotifications((prev) =>
         prev.map((x) =>
           x.notification_id === item.notification_id ? { ...x, is_read: 1 } : x
@@ -62,19 +67,58 @@ function Notification({ userId, onOpenPost, onReadAll }) {
     } catch (e) {
       console.error("mark read error:", e);
     }
+
+    // ✅ ถ้ามี related_id ให้เปิดโพสต์นั้น
+    if (item.related_id) {
+      window.location.href = `http://localhost:3000/post/${item.related_id}`;
+      // 👆 หรือเปลี่ยน URL ตามโครงสร้างเว็บของคุณ เช่น:
+      // window.location.href = `/post/${item.related_id}`;
+    }
+  };
+
+
+  // มาร์คว่าอ่านอย่างเดียว (ไม่เปิดโพสต์)
+  const handleMarkReadOnly = async (e, item) => {
+    e.stopPropagation();
+    try {
+      await fetch(
+        `http://localhost:5000/api/notifications/read/${item.notification_id}`,
+        { method: "PUT" }
+      );
+      setNotifications((prev) =>
+        prev.map((x) =>
+          x.notification_id === item.notification_id ? { ...x, is_read: 1 } : x
+        )
+      );
+    } catch (err) {
+      console.error("mark single read error:", err);
+    }
+  };
+
+  // ปุ่มไปดูโพสต์
+  const handleGoPost = (e, item) => {
+    e.stopPropagation();
     if (typeof onOpenPost === "function" && item.related_id) {
-      onOpenPost(item.related_id); // จะพาไป MyPostDetails ผ่าน App
+      onOpenPost(item.related_id);
+    }
+  };
+
+  // ปุ่มจัดการคำขอ (ตอนนี้พาไปหน้าโพสต์เช่นกัน — ไปเปิดแท็บจัดการในหน้านั้น)
+  const handleManageRequest = (e, item) => {
+    e.stopPropagation();
+    if (typeof onOpenPost === "function" && item.related_id) {
+      onOpenPost(item.related_id);
     }
   };
 
   const handleReadAll = async () => {
-    // มาร์คทั้งหมดทีละตัว (ตรงไปตรงมา)
     const unread = notifications.filter((x) => !x.is_read);
     await Promise.all(
       unread.map((x) =>
-        fetch(`http://localhost:5000/api/notifications/read/${x.notification_id}`, {
-          method: "PUT",
-        }).catch(() => {})
+        fetch(
+          `http://localhost:5000/api/notifications/read/${x.notification_id}`,
+          { method: "PUT" }
+        ).catch(() => { })
       )
     );
     setNotifications((prev) => prev.map((x) => ({ ...x, is_read: 1 })));
@@ -88,19 +132,49 @@ function Notification({ userId, onOpenPost, onReadAll }) {
     return (
       <div className="mb-6">
         <h2 className="font-semibold mb-2">{title}</h2>
+
         {visible.map((item) => (
           <button
             key={item.notification_id}
             onClick={() => handleOpen(item)}
-            className={`w-full text-left p-3 rounded-xl border mb-2 transition ${
-              variant === "highlight"
+            className={`relative w-full text-left p-3 rounded-xl border mb-2 transition ${variant === "highlight"
                 ? "bg-blue-100 border-blue-300 hover:bg-blue-200"
                 : "bg-white hover:bg-gray-50"
-            } ${!item.is_read ? "ring-1 ring-amber-300" : ""}`}
+              } ${!item.is_read ? "ring-1 ring-amber-300" : ""}`}
           >
+            {/* จุด unread มุมซ้ายบน */}
+            {!item.is_read && (
+              <span className="absolute left-2 top-2 inline-block h-2 w-2 rounded-full bg-rose-500" />
+            )}
+
             <div className="text-sm">{item.message}</div>
             <div className="text-xs text-gray-500 mt-1">
               {new Date(item.created_at).toLocaleString()}
+            </div>
+
+            {/* ปุ่มแอ็กชัน */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {/* ไปดูโพสต์ */}
+              {item.related_id && (
+                <button
+                  onClick={(e) => handleGoPost(e, item)}
+                  className="px-3 py-1.5 rounded-lg border text-sm bg-white hover:bg-gray-100"
+                  title="เปิดโพสต์ที่เกี่ยวข้อง"
+                >
+                  ไปดูโพสต์
+                </button>
+              )}
+
+              {/* จัดการคำขอ (เฉพาะแจ้งเตือน join) */}
+              {item.type === "join_request" && item.related_id && (
+                <button
+                  onClick={(e) => handleManageRequest(e, item)}
+                  className="px-3 py-1.5 rounded-lg border text-sm bg-gray-900 text-white hover:bg-gray-800 "
+                  title="ไปจัดการคำขอเข้าร่วม"
+                >
+                  จัดการคำขอ
+                </button>
+              )}
             </div>
           </button>
         ))}
@@ -131,11 +205,14 @@ function Notification({ userId, onOpenPost, onReadAll }) {
           {/* ล่าสุด: แสดง 1 อัน */}
           <Section title="ล่าสุด" items={groups.latest} variant="highlight" />
 
-          {/* วันนี้ (ยกเว้นตัวล่าสุด ถ้ามันอยู่วันนี้ด้วย) */}
+          {/* วันนี้ (ยกเว้นตัวล่าสุด) */}
           <Section
             title="วันนี้"
             items={groups.today.filter(
-              (x) => !groups.latest.some((l) => l.notification_id === x.notification_id)
+              (x) =>
+                !groups.latest.some(
+                  (l) => l.notification_id === x.notification_id
+                )
             )}
           />
 

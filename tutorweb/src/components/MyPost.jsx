@@ -36,12 +36,12 @@ const normalizeStudentPost = (p = {}) => ({
   preferred_days: p.preferred_days || p.days || p.available_days || "",
   preferred_time: p.preferred_time || p.time || p.available_time || "",
   contact_info: p.contact_info || p.contact || p.email || "",
-  join_count: Number(p.join_count ?? 0),               // อนุมัติแล้วเท่านั้น
-  joined: !!p.joined,                                   // ฉันถูกอนุมัติแล้ว
-  pending_me: !!p.pending_me,                           // ฉันกำลังรออนุมัติ
-  fav_count: Number(p.fav_count ?? 0),                  // ★ Favorite
-  favorited: !!p.favorited,                             // ★ Favorite
-  post_type: "student",                                 // ★ ชนิดโพสต์ (ใช้ตอนยิง API)
+  join_count: Number(p.join_count ?? 0),
+  joined: !!p.joined,
+  pending_me: !!p.pending_me,
+  fav_count: Number(p.fav_count ?? 0),
+  favorited: !!p.favorited,
+  post_type: "student",
   user: p.user || {
     first_name: p.first_name || p.name || "",
     last_name: p.last_name || "",
@@ -49,16 +49,16 @@ const normalizeStudentPost = (p = {}) => ({
   },
 });
 
-// แทนที่ normalizeTutorPost เดิมทั้งก้อน (เหมือนเวอร์ชันก่อนหน้า)
+
 const normalizeTutorPost = (p = {}) => {
   const full = (p.authorId?.name || p.name || "").trim();
   let first = p.first_name || "";
-  let last  = p.last_name  || "";
+  let last = p.last_name || "";
 
   if (!first && full) {
     const parts = full.split(" ");
     first = parts.shift() || "";
-    last  = parts.join(" ");
+    last = parts.join(" ");
   }
 
   return {
@@ -77,9 +77,9 @@ const normalizeTutorPost = (p = {}) => {
           : Number(p.meta?.price ?? p.price ?? 0),
       contact_info: p.meta?.contact_info ?? p.contact_info ?? "",
     },
-    fav_count: Number(p.fav_count ?? 0),                // ★ Favorite
-    favorited: !!p.favorited,                           // ★ Favorite
-    post_type: "tutor",                                 // ★ ชนิดโพสต์ (ใช้ตอนยิง API)
+    fav_count: Number(p.fav_count ?? 0),
+    favorited: !!p.favorited,
+    post_type: "tutor",
     user: p.user || {
       first_name: first,
       last_name: last,
@@ -88,21 +88,23 @@ const normalizeTutorPost = (p = {}) => {
   };
 };
 
+
 /* ---------- component ---------- */
 function MyPost({ setPostsCache }) {
   const user = pickUser();
   const userType = pickUserType();               // 'student' | 'tutor' | ''
+  const isTutor = userType === "tutor";          // ★ ใช้ตรวจว่าผู้ใช้เป็นติวเตอร์
   const meId = user.user_id || 0;
   const tutorId = useMemo(() => pickTutorId(), []);
 
-  // แท็บมุมมอง (ค่าเริ่มต้น: นักเรียน)
+  // ให้ค่าเริ่มต้นเหมือนเดิม (student) และยังคงมีปุ่มสลับแท็บ
   const [feedType, setFeedType] = useState("student"); // 'student' | 'tutor'
 
   const [posts, setPosts] = useState([]);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState({});
-  const [favLoading, setFavLoading] = useState({});      // ★ Favorite
+  const [favLoading, setFavLoading] = useState({});
   const [error, setError] = useState("");
 
   // ฟอร์ม
@@ -134,7 +136,7 @@ function MyPost({ setPostsCache }) {
         setPosts(normalized);
         setPostsCache?.(normalized);
       } else {
-        // tutor feed — แนบ me เพื่อให้ backend คืน favorited/fav_count ให้ถูก (เหมือนฝั่ง student)
+        // tutor feed — แนบ me เพื่อให้ backend คืน favorited/fav_count ให้ถูก
         const url = `${API_BASE}/api/tutor-posts?page=1&limit=20&me=${meId}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -165,10 +167,10 @@ function MyPost({ setPostsCache }) {
 
     // ตรวจค่าว่างตามประเภทแบบฟอร์ม
     if (feedType === "student") {
-      const required = ["subject","description","preferred_days","preferred_time","location","group_size","budget","contact_info"];
+      const required = ["subject", "description", "preferred_days", "preferred_time", "location", "group_size", "budget", "contact_info"];
       for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
     } else {
-      const required = ["subject","description","teaching_days","teaching_time","location","price","contact_info"];
+      const required = ["subject", "description", "teaching_days", "teaching_time", "location", "price", "contact_info"];
       for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
     }
 
@@ -209,9 +211,9 @@ function MyPost({ setPostsCache }) {
         setPostsCache?.(prev => [created, ...(Array.isArray(prev) ? prev : [])]);
         setExpanded(false);
         setFormData({
-          subject:"", description:"", preferred_days:"", preferred_time:"",
-          location:"", group_size:"", budget:"", contact_info:"",
-          teaching_days:"", teaching_time:"", price:""
+          subject: "", description: "", preferred_days: "", preferred_time: "",
+          location: "", group_size: "", budget: "", contact_info: "",
+          teaching_days: "", teaching_time: "", price: ""
         });
       } else {
         if (userType !== "tutor") {
@@ -253,9 +255,9 @@ function MyPost({ setPostsCache }) {
         setPostsCache?.(prev => [created, ...(Array.isArray(prev) ? prev : [])]);
         setExpanded(false);
         setFormData({
-          subject:"", description:"", preferred_days:"", preferred_time:"",
-          location:"ออนไลน์", group_size:"", budget:"", contact_info:"",
-          teaching_days:"", teaching_time:"", price:""
+          subject: "", description: "", preferred_days: "", preferred_time: "",
+          location: "ออนไลน์", group_size: "", budget: "", contact_info: "",
+          teaching_days: "", teaching_time: "", price: ""
         });
       }
     } catch {
@@ -318,7 +320,7 @@ function MyPost({ setPostsCache }) {
   };
 
   /* ---------- Favorite (student & tutor feed) ---------- */
-  const toggleFavorite = async (post) => { // ★ Favorite
+  const toggleFavorite = async (post) => {
     if (!meId) return alert("กรุณาเข้าสู่ระบบ");
     const postType = post.post_type || (feedType === "student" ? "student" : "tutor");
 
@@ -341,13 +343,12 @@ function MyPost({ setPostsCache }) {
         body: JSON.stringify({
           user_id: meId,
           post_id: post.id,
-          post_type: postType, // ใช้ตามชนิดโพสต์จริง
+          post_type: postType,
         })
       });
 
       const data = await res.json().catch(() => ({}));
 
-      // ถ้า backend คืน action/fav_count มา ให้ sync ให้ตรงเซิร์ฟเวอร์
       if (res.ok && (data?.action || typeof data?.fav_count === "number")) {
         const sync = (arr) => arr.map(p => {
           if (p.id !== post.id) return p;
@@ -365,7 +366,7 @@ function MyPost({ setPostsCache }) {
       // rollback
       const rollback = (arr) => arr.map(p => {
         if (p.id !== post.id) return p;
-        const weTurnedOn = !post.favorited; // สถานะก่อนหน้า
+        const weTurnedOn = !post.favorited;
         const nextCount = Math.max(0, (Number(p.fav_count) || 0) + (weTurnedOn ? -1 : 1));
         return { ...p, favorited: post.favorited, fav_count: nextCount };
       });
@@ -384,24 +385,25 @@ function MyPost({ setPostsCache }) {
     <div className="min-h-screen bg-gray-50">
       <div className="p-4 max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-2">
-          <h1 className="text-xl font-bold">
-            ฟีดโพสต์
-          </h1>
+          <h1 className="text-xl font-bold">ฟีดโพสต์</h1>
+
+          {/* ปุ่มแท็บ: คงไว้ทั้ง "นักเรียน" และ "ติวเตอร์" ตามที่ต้องการ */}
           <div className="inline-flex rounded-xl border overflow-hidden">
             <button
-              className={`px-4 py-2 text-sm ${feedType==='student'?'bg-blue-600 text-white':'bg-white'}`}
+              className={`px-4 py-2 text-sm ${feedType === 'student' ? 'bg-blue-600 text-white' : 'bg-white'}`}
               onClick={() => setFeedType('student')}
             >
               นักเรียน
             </button>
             <button
-              className={`px-4 py-2 text-sm ${feedType==='tutor'?'bg-blue-600 text-white':'bg-white'}`}
+              className={`px-4 py-2 text-sm ${feedType === 'tutor' ? 'bg-blue-600 text-white' : 'bg-white'}`}
               onClick={() => setFeedType('tutor')}
             >
               ติวเตอร์
             </button>
           </div>
         </div>
+
         <p className="text-sm text-gray-500 mb-4">
           {feedType === "student" ? "แสดงโพสต์ของนักเรียน" : "แสดงโพสต์ของติวเตอร์"}
         </p>
@@ -413,88 +415,94 @@ function MyPost({ setPostsCache }) {
         )}
 
         {/* compose box */}
-        {(feedType === "student" || userType === "tutor") && (
-          <div className="bg-white rounded-xl shadow p-4 mb-6">
-            <div className="flex items-center gap-3">
-              <img
-                src={user?.profile_image || "/default-avatar.png"}
-                alt="avatar"
-                className="w-10 h-10 rounded-full"
-              />
-              <div
-                className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-gray-600 cursor-pointer hover:bg-gray-200"
-                onClick={() => setExpanded(true)}
-              >
-                {`สวัสดี, ${currentUserName} — ${feedType==='student' ? 'สร้างโพสต์ของคุณเลย' : 'สร้างโพสต์ของคุณเลย'}`}
-              </div>
-            </div>
-
-            {expanded && (
-              <form onSubmit={handleSubmit} className="mt-4 space-y-3">
-                <input
-                  type="text"
-                  name="subject"
-                  placeholder="วิชา/หัวข้อ"
-                  value={formData.subject}
-                  onChange={handleChange}
-                  required
-                  className="border rounded p-2 w-full"
+        {(
+          // ★ เงื่อนไขใหม่:
+          // - ถ้าอยู่แท็บนักเรียน: แสดงเฉพาะ "ไม่ใช่ติวเตอร์"
+          // - ถ้าอยู่แท็บติวเตอร์: แสดงเฉพาะ "เป็นติวเตอร์"
+          (feedType === "student" && !isTutor) ||
+          (feedType === "tutor" && isTutor)
+        ) && (
+            <div className="bg-white rounded-xl shadow p-4 mb-6">
+              <div className="flex items-center gap-3">
+                <img
+                  src={user?.profile_image || "/default-avatar.png"}
+                  alt="avatar"
+                  className="w-10 h-10 rounded-full"
                 />
-                <textarea
-                  name="description"
-                  placeholder={feedType === "student" ? "รายละเอียดความต้องการเรียน" : "รายละเอียดคอร์ส/แนวทางการสอน"}
-                  value={formData.description}
-                  onChange={handleChange}
-                  required
-                  className="border rounded p-2 w-full"
-                />
-
-                {feedType === "student" ? (
-                  <>
-                    <input type="text" name="preferred_days" placeholder="วันสะดวก (เช่น จ-พ หรือ 10 ตุลาคม 2568)"
-                      value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    <input type="time" name="preferred_time"
-                      value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    <input type="text" name="location" placeholder="สถานที่"
-                      value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    <input type="number" name="group_size" placeholder="จำนวนคน"
-                      value={formData.group_size} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    <input type="number" name="budget" placeholder="งบประมาณ (บาท)"
-                      value={formData.budget} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ"
-                      value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
-                  </>
-                ) : (
-                  <>
-                    <div className="grid md:grid-cols-2 gap-3">
-                      <input type="text" name="teaching_days" placeholder="วันที่สอน (เช่น เสาร์-อาทิตย์)"
-                        value={formData.teaching_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="text" name="teaching_time" placeholder="ช่วงเวลา (เช่น 18:00-20:00)"
-                        value={formData.teaching_time} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    </div>
-                    <div className="grid md:grid-cols-2 gap-3">
-                      <input type="text" name="location" placeholder="สถานที่ (ออนไลน์/ออนไซต์)"
-                        value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="number" name="price" placeholder="ราคา (บาท/ชม.)"
-                        value={formData.price} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    </div>
-                    <input type="text" name="contact_info" placeholder="ช่องทางติดต่อ (LINE/เบอร์/อีเมล)"
-                      value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
-                  </>
-                )}
-
-                <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setExpanded(false)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">
-                    ยกเลิก
-                  </button>
-                  <button disabled={loading} type="submit" className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60">
-                    {loading ? "กำลังโพสต์..." : "โพสต์"}
-                  </button>
+                <div
+                  className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-gray-600 cursor-pointer hover:bg-gray-200"
+                  onClick={() => setExpanded(true)}
+                >
+                  {`สวัสดี, ${currentUserName} — สร้างโพสต์ของคุณเลย`}
                 </div>
-              </form>
-            )}
-          </div>
-        )}
+              </div>
+
+              {expanded && (
+                <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+                  <input
+                    type="text"
+                    name="subject"
+                    placeholder="วิชา/หัวข้อ"
+                    value={formData.subject}
+                    onChange={handleChange}
+                    required
+                    className="border rounded p-2 w-full"
+                  />
+                  <textarea
+                    name="description"
+                    placeholder={feedType === "student" ? "รายละเอียดความต้องการเรียน" : "รายละเอียดคอร์ส/แนวทางการสอน"}
+                    value={formData.description}
+                    onChange={handleChange}
+                    required
+                    className="border rounded p-2 w-full"
+                  />
+
+                  {feedType === "student" ? (
+                    <>
+                      <input type="text" name="preferred_days" placeholder="วันสะดวก (เช่น จ-พ หรือ 10 ตุลาคม 2568)"
+                        value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <input type="time" name="preferred_time"
+                        value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <input type="text" name="location" placeholder="สถานที่"
+                        value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <input type="number" name="group_size" placeholder="จำนวนคน"
+                        value={formData.group_size} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <input type="number" name="budget" placeholder="งบประมาณ (บาท)"
+                        value={formData.budget} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ"
+                        value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid md:grid-cols-2 gap-3">
+                        <input type="text" name="teaching_days" placeholder="วันที่สอน (เช่น เสาร์-อาทิตย์)"
+                          value={formData.teaching_days} onChange={handleChange} required className="border rounded p-2 w-full" />
+                        <input type="text" name="teaching_time" placeholder="ช่วงเวลา (เช่น 18:00-20:00)"
+                          value={formData.teaching_time} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      </div>
+                      <div className="grid md:grid-cols-2 gap-3">
+                        <input type="text" name="location" placeholder="สถานที่ (ออนไลน์/ออนไซต์)"
+                          value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
+                        <input type="number" name="price" placeholder="ราคา (บาท/ชม.)"
+                          value={formData.price} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      </div>
+                      <input type="text" name="contact_info" placeholder="ช่องทางติดต่อ (LINE/เบอร์/อีเมล)"
+                        value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    </>
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setExpanded(false)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">
+                      ยกเลิก
+                    </button>
+                    <button disabled={loading} type="submit" className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60">
+                      {loading ? "กำลังโพสต์..." : "โพสต์"}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
 
         {/* list */}
         {posts.length === 0 ? (
@@ -504,9 +512,9 @@ function MyPost({ setPostsCache }) {
             {posts.map((post) => {
               const isOwner = meId === post.owner_id;
               const busy = !!joinLoading[post.id];
-              const favBusy = !!favLoading[post.id];                   // ★ Favorite
+              const favBusy = !!favLoading[post.id];
               const isFull =
-                feedType === "student"
+                post.post_type === "student"
                   ? Number(post.join_count) >= Number(post.group_size || 0)
                   : false;
 
@@ -545,15 +553,12 @@ function MyPost({ setPostsCache }) {
                       <p>📅 วันที่สอน: {post.meta?.teaching_days}</p>
                       <p>⏰ ช่วงเวลา: {post.meta?.teaching_time}</p>
                       <p>📍 สถานที่: {post.meta?.location}</p>
-                      <p>
-                        💸 ราคา: {Number(post.meta?.price || 0).toFixed(2)} บาท/ชม.
-                      </p>
+                      <p>💸 ราคา: {Number(post.meta?.price || 0).toFixed(2)} บาท/ชม.</p>
                       <p className="md:col-span-2">☎️ ติดต่อ: {post.meta?.contact_info}</p>
                     </div>
                   )}
 
                   <div className="mt-4 flex items-center justify-between pt-3">
-                    {/* ซ้าย: แท็กสถานะ + จำนวนคน/นัด */}
                     <div className="text-sm text-gray-600">
                       {post.post_type === "student" ? (
                         <>
@@ -576,9 +581,8 @@ function MyPost({ setPostsCache }) {
                       )}
                     </div>
 
-                    {/* ขวา: ปุ่มถูกใจ + ปุ่ม Join/อื่นๆ */}
                     <div className="flex items-center gap-2">
-                      {/* ★ Favorite button */}
+                      {/* Favorite */}
                       <button
                         disabled={favBusy}
                         onClick={() => toggleFavorite(post)}
@@ -587,9 +591,8 @@ function MyPost({ setPostsCache }) {
                           disabled:opacity-60`}
                         title={post.favorited ? 'นำออกจากที่สนใจ' : 'เพิ่มในที่สนใจ'}
                       >
-                        {/* heart icon */}
                         <svg width="16" height="16" viewBox="0 0 24 24" fill={post.favorited ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/>
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" />
                         </svg>
                         <span className="text-sm">{Number(post.fav_count || 0)}</span>
                       </button>
@@ -620,9 +623,8 @@ function MyPost({ setPostsCache }) {
                           <button
                             disabled={busy || isFull}
                             onClick={() => handleJoin(post)}
-                            className={`px-4 py-2 rounded-xl text-white disabled:opacity-60 ${
-                              isFull ? "bg-gray-400" : "bg-emerald-600 hover:bg-emerald-700"
-                            }`}
+                            className={`px-4 py-2 rounded-xl text-white disabled:opacity-60 ${isFull ? "bg-gray-400" : "bg-emerald-600 hover:bg-emerald-700"
+                              }`}
                           >
                             {isFull ? "เต็มแล้ว" : busy ? "กำลังส่งคำขอ..." : "Join"}
                           </button>

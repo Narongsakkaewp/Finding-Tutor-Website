@@ -653,52 +653,70 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
   try {
     const postId = Number(req.params.id);
     const me = Number(req.body.user_id);
-    if (!Number.isFinite(postId) || !Number.isFinite(me))
+    if (!Number.isFinite(postId) || !Number.isFinite(me)) {
       return res.status(400).json({ success: false, message: 'invalid postId or user_id' });
+    }
 
+    // โพสต์ต้องมีอยู่
     const [[post]] = await pool.query(
       'SELECT student_id, group_size FROM student_posts WHERE student_post_id = ?',
       [postId]
     );
     if (!post) return res.status(404).json({ success: false, message: 'post not found' });
 
-    if (post.student_id === me)
+    // ห้ามเจ้าของโพสต์ join
+    if (post.student_id === me) {
       return res.status(400).json({ success: false, message: 'คุณเป็นเจ้าของโพสต์นี้' });
+    }
 
+    // เต็มหรือยัง (นับเฉพาะ approved)
     const [[cnt]] = await pool.query(
-      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
+      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status="approved"',
       [postId]
     );
-    if (cnt.c >= post.group_size)
+    if (cnt.c >= post.group_size) {
       return res.status(409).json({ success: false, message: 'กลุ่มนี้เต็มแล้ว' });
+    }
 
-    const [upsertResult] = await pool.query(
-      'INSERT IGNORE INTO student_post_joins (student_post_id, user_id) VALUES (?, ?)',
-      [postId, me]
+    // ✅ บันทึกชื่อ-นามสกุลเข้า student_post_joins ด้วย
+    //   - ดึงมาจาก register r
+    //   - ถ้าเคยมีแถวนี้ (unique โดย (student_post_id, user_id)) ให้อัปเดตชื่อ/นามสกุล และสถานะกลับเป็น pending
+    await pool.query(
+      `
+      INSERT INTO student_post_joins
+        (student_post_id, user_id, status, requested_at, name, lastname)
+      SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
+      FROM register r
+      WHERE r.user_id = ?
+      ON DUPLICATE KEY UPDATE
+        status       = IF(VALUES(status)='pending' AND status <> 'approved', 'pending', status),
+        requested_at = VALUES(requested_at),
+        name         = VALUES(name),
+        lastname     = VALUES(lastname)
+      `,
+      [postId, me, me]
     );
-    console.log('[JOIN] upsert result:', upsertResult);
 
+    // ยอดที่อนุมัติแล้ว (ไว้แสดงในการ์ด)
     const [[cntApproved]] = await pool.query(
-      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status = "approved"',
+      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status="approved"',
       [postId]
     );
 
+    // แจ้งเตือนเจ้าของโพสต์
     await pool.query(
       'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
       [post.student_id, 'join_request', `มีคำขอเข้าร่วมโพสต์ #${postId}`, postId]
     );
-    await pool.query(
-      `INSERT INTO notifications (user_id, type, message, related_id, is_read, created_at)
-       VALUES (?, 'join_success', ?, ?, 0, NOW())`,
-      [me, `คุณเข้าร่วมโพสต์ #${postId} แล้ว`, postId]
-    );
 
     return res.json({ success: true, joined: true, join_count: cntApproved.c });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success:false, message: err?.sqlMessage || err?.message || 'Database error' });
+    console.error('[JOIN ERROR]', err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
+
+
 
 
 
