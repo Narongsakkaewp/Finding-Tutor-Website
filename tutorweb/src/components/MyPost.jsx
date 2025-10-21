@@ -451,7 +451,7 @@ function MyPost({ setPostsCache }) {
 
                 {feedType === "student" ? (
                   <>
-                    <input type="text" name="preferred_days" placeholder="วันสะดวก (เช่น จ-พ หรือ 10 ตุลาคม 2568)"
+                    <input type="date" name="preferred_days" placeholder="วันสะดวก (เช่น จ-พ หรือ 10 ตุลาคม 2568)"
                       value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
                     <input type="time" name="preferred_time"
                       value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
@@ -467,7 +467,7 @@ function MyPost({ setPostsCache }) {
                 ) : (
                   <>
                     <div className="grid md:grid-cols-2 gap-3">
-                      <input type="text" name="teaching_days" placeholder="วันที่สอน (เช่น เสาร์-อาทิตย์)"
+                      <input type="date" name="teaching_days" placeholder="วันที่สอน (เช่น เสาร์-อาทิตย์)"
                         value={formData.teaching_days} onChange={handleChange} required className="border rounded p-2 w-full" />
                       <input type="text" name="teaching_time" placeholder="ช่วงเวลา (เช่น 18:00-20:00)"
                         value={formData.teaching_time} onChange={handleChange} required className="border rounded p-2 w-full" />

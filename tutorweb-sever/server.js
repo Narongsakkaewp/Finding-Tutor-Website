@@ -377,20 +377,52 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
 
 // สมัครสมาชิก
 app.post('/api/register', async (req, res) => {
+  let connection; // ประกาศ connection ไว้ข้างนอก
   try {
     const { name, lastname, email, password, type } = req.body;
+
+    // (ส่วนตรวจสอบข้อมูลเหมือนเดิม)
     const [dup] = await pool.execute('SELECT 1 FROM register WHERE email = ?', [email]);
     if (dup.length > 0) {
       return res.json({ success: false, message: 'อีเมลนี้ถูกใช้แล้ว' });
     }
-    await pool.execute(
+
+    // ✅ 1. เริ่ม Transaction
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [result] = await connection.execute(
       'INSERT INTO register (name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?)',
       [name, lastname, email, password, type]
     );
-    res.json({ success: true, message: 'สมัครสมาชิกสำเร็จ' });
+
+    const newUserId = result.insertId; // <-- ID ของผู้ใช้ใหม่
+
+    // ✅ 2. หลังจาก INSERT สำเร็จ ให้ SELECT ข้อมูลผู้ใช้คนนั้นกลับมาทันที
+    const [rows] = await connection.execute(
+      'SELECT user_id, name, lastname, email, type FROM register WHERE user_id = ?',
+      [newUserId]
+    );
+    const newUser = rows[0];
+
+    // ✅ 3. Commit Transaction
+    await connection.commit();
+
+    // ✅ 4. ส่งข้อมูลผู้ใช้ใหม่ทั้งหมดกลับไปให้ Frontend
+    // ทำให้ Response เหมือนกับของ /api/login เป๊ะๆ
+    res.status(201).json({
+      success: true,
+      message: 'สมัครสมาชิกสำเร็จ',
+      user: newUser, // <--- ส่ง user object กลับไป
+      userType: newUser.type // <--- ส่ง userType กลับไปด้วย
+    });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).send(err);
+    if (connection) await connection.rollback(); // ถ้าเกิด Error ให้ Rollback
+    console.error('Register API Error:', err);
+    res.status(500).json({ success: false, message: 'Database error' });
+  } finally {
+    if (connection) connection.release(); // คืน connection กลับสู่ pool
   }
 });
 
@@ -696,7 +728,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     return res.json({ success: true, joined: true, join_count: cntApproved.c });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ success:false, message: err?.sqlMessage || err?.message || 'Database error' });
+    return res.status(500).json({ success: false, message: err?.sqlMessage || err?.message || 'Database error' });
   }
 });
 
@@ -1107,7 +1139,7 @@ app.get('/api/favorites/user/:user_id', async (req, res) => {
 });
 
 
-app.get('/health', (req,res)=>res.json({ok:true,time:new Date()}));
+app.get('/health', (req, res) => res.json({ ok: true, time: new Date() }));
 
 
 // ****** Server Start ******
