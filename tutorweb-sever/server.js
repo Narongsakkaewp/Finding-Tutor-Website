@@ -165,13 +165,37 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
   }
 });
 
+// ในไฟล์ server.js
+
 app.get('/api/tutors', async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
 
-    // ✅ 1. แก้ไขคำสั่ง SQL ให้ JOIN ตาราง tutor_profiles เพื่อดึงข้อมูลจริง
+    // ✅ 1. รับคำค้นหา (search query) จาก Frontend
+    const searchQuery = (req.query.search || '').trim();
+
+    // ✅ 2. สร้างเงื่อนไข WHERE แบบไดนามิก
+    let whereClause = `WHERE LOWER(r.type) IN ('tutor','teacher')`;
+    const params = [];
+
+    if (searchQuery) {
+      const searchTerm = `%${searchQuery}%`;
+      // เพิ่ม OR สำหรับคำที่คาดว่าจะเจอ
+      whereClause += ` AND (
+        LOWER(r.name) LIKE ?
+        OR LOWER(r.lastname) LIKE ?
+        OR LOWER(tp.nickname) LIKE ?
+        OR LOWER(tp.can_teach_subjects) LIKE ?
+        OR (LOWER(tp.can_teach_subjects) LIKE '%คณิต%' AND ? IN ('math', 'maths'))
+        OR (LOWER(tp.can_teach_subjects) LIKE '%ภาษาอังกฤษ%' AND ? IN ('eng', 'english'))
+    )`;
+      // เพิ่ม searchQuery หลายครั้งตามจำนวน ?
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchQuery, searchQuery);
+    }
+
+    // ✅ 3. นำ whereClause ไปใช้ในคำสั่ง SQL หลัก
     const [rows] = await pool.execute(
       `SELECT 
           r.user_id, r.name, r.lastname,
@@ -182,35 +206,32 @@ app.get('/api/tutors', async (req, res) => {
           tp.hourly_rate
        FROM register r
        LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
-       WHERE LOWER(r.type) IN ('tutor','teacher')
+       ${whereClause}
        ORDER BY r.user_id DESC
        LIMIT ? OFFSET ?`,
-      [limit, offset]
+      [...params, limit, offset] // ส่ง params ทั้งหมดไปให้ SQL
     );
 
+    // ✅ 4. แก้ไข SQL ส่วนนับจำนวนทั้งหมดให้มี WHERE ด้วย
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total
-       FROM register
-       WHERE LOWER(type) IN ('tutor','teacher')`
+       FROM register r
+       LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+       ${whereClause}`,
+      params // ใช้ params เดิม (ไม่ต้องมี limit, offset)
     );
 
-    // ✅ 2. แก้ไขการสร้าง object ให้ใช้ข้อมูลจริงจาก Database
     const items = rows.map(r => ({
       id: `t-${r.user_id}`,
       dbTutorId: r.user_id,
       name: `${r.name || ''}${r.lastname ? ' ' + r.lastname : ''}`.trim() || `ติวเตอร์ #${r.user_id}`,
-
-      // --- ส่วนที่ดึงข้อมูลจริงมาใช้ ---
       nickname: r.nickname || null,
       subject: r.can_teach_subjects || 'ยังไม่ระบุวิชาที่สอน',
-      image: r.profile_picture_url || 'https://via.placeholder.com/400', // รูปโปรไฟล์จริง
+      image: r.profile_picture_url || 'https://via.placeholder.com/400',
       city: r.address || 'ยังไม่ระบุที่อยู่',
       price: r.hourly_rate || 0,
-
-      // --- ส่วนนี้ยังเป็นข้อมูลจำลอง (mock) อยู่ ---
       rating: 4.8,
       reviews: 0,
-      // nextSlot: 'ติดต่อกำหนดเวลา'
     }));
 
     res.json({
@@ -222,7 +243,7 @@ app.get('/api/tutors', async (req, res) => {
       }
     });
   } catch (e) {
-    console.error('API /api/tutors Error:', e); // เพิ่ม console.error เพื่อดู error ที่นี่
+    console.error('API /api/tutors Error:', e);
     res.status(500).json({ message: 'Server error' });
   }
 });

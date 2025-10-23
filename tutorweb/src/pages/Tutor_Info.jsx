@@ -41,7 +41,11 @@ export default function TutorInfoPage({ setCurrentPage }) {
         profile_picture_url: '',
         nickname: '',
         phone: '',
-        address: '',
+        province: '',
+        district: '',
+        subdistrict: '',
+        postalCode: '',
+        addressDetails: '', // สำหรับบ้านเลขที่
         about_me: '',
         education: [],
         teaching_experience: [],
@@ -50,11 +54,40 @@ export default function TutorInfoPage({ setCurrentPage }) {
         hourly_rate: '',
     });
 
+    const [db, setDb] = useState([]); // เก็บ Array ข้อมูลจังหวัด
+    const [addressData, setAddressData] = useState({
+        provinces: [],
+        districts: [],
+        subdistricts: []
+    });
+
     const [customSubject, setCustomSubject] = useState('');
     const [imageFile, setImageFile] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+
+    useEffect(() => {
+        fetch('/db.json') // ดึงไฟล์จากโฟลเดอร์ public
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                return res.json();
+            })
+            .then(jsonData => {
+                // ตรวจสอบว่าได้ Array กลับมาจริงๆ
+                if (Array.isArray(jsonData) && jsonData.length > 0) {
+                    setDb(jsonData); // เก็บ Array จังหวัดทั้งหมด
+                    const provinceNames = jsonData.map(province => province.name_th).sort();
+                    setAddressData(prev => ({ ...prev, provinces: provinceNames }));
+                } else {
+                    throw new Error("Invalid address data structure");
+                }
+            })
+            .catch(err => {
+                console.error("Error loading address data:", err);
+                setError("ไม่สามารถโหลดข้อมูลที่อยู่ได้");
+            });
+    }, []);
 
     useEffect(() => {
         if (!currentUser?.user_id) {
@@ -69,7 +102,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
                     throw new Error("ไม่สามารถดึงข้อมูลโปรไฟล์ติวเตอร์ได้");
                 }
                 const data = await response.json();
-                
+
                 setFormData({
                     profile_picture_url: data.profile_picture_url || '',
                     nickname: data.nickname || '',
@@ -95,6 +128,37 @@ export default function TutorInfoPage({ setCurrentPage }) {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleAddressChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+
+        if (db.length === 0) return; // ถ้า db ยังไม่มีข้อมูล ให้หยุด
+
+        if (name === 'province') {
+            const selectedProvinceData = db.find(p => p.name_th === value);
+            const districts = selectedProvinceData?.districts || [];
+            const districtNames = districts.map(d => d.name_th).sort();
+            setAddressData(prev => ({ ...prev, districts: districtNames, subdistricts: [] }));
+            setFormData(prev => ({ ...prev, district: '', subdistrict: '', postalCode: '' }));
+        } else if (name === 'district') {
+            const selectedProvinceData = db.find(p => p.name_th === formData.province);
+            const districts = selectedProvinceData?.districts || [];
+            const selectedDistrictData = districts.find(d => d.name_th === value);
+            const subdistricts = selectedDistrictData?.sub_districts || [];
+            const subdistrictNames = subdistricts.map(s => s.name_th).sort();
+            setAddressData(prev => ({ ...prev, subdistricts: subdistrictNames }));
+            setFormData(prev => ({ ...prev, subdistrict: '', postalCode: '' }));
+        } else if (name === 'subdistrict') {
+            const selectedProvinceData = db.find(p => p.name_th === formData.province);
+            const districts = selectedProvinceData?.districts || [];
+            const selectedDistrictData = districts.find(d => d.name_th === formData.district);
+            const subdistricts = selectedDistrictData?.sub_districts || [];
+            const selectedSubdistrictData = subdistricts.find(s => s.name_th === value);
+            const postalCode = selectedSubdistrictData ? selectedSubdistrictData.zip_code : '';
+            setFormData(prev => ({ ...prev, postalCode: String(postalCode) }));
+        }
+    };
+
     const handleImageChange = (e) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
@@ -112,8 +176,8 @@ export default function TutorInfoPage({ setCurrentPage }) {
         );
         setFormData(prev => ({ ...prev, education: updatedEducation }));
     };
-    const addEducation = () => setFormData(prev => ({ ...prev, education: [...prev.education, { institution: '', degree: '', major: '', year: '' }]}));
-    const removeEducation = (index) => setFormData(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index)}));
+    const addEducation = () => setFormData(prev => ({ ...prev, education: [...prev.education, { institution: '', degree: '', major: '', year: '' }] }));
+    const removeEducation = (index) => setFormData(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }));
     const handleExperienceChange = (index, e) => {
         const { name, value } = e.target;
         const updatedExperience = formData.teaching_experience.map((item, i) =>
@@ -121,10 +185,9 @@ export default function TutorInfoPage({ setCurrentPage }) {
         );
         setFormData(prev => ({ ...prev, teaching_experience: updatedExperience }));
     };
-    const addExperience = () => setFormData(prev => ({ ...prev, teaching_experience: [...prev.teaching_experience, { title: '', duration: '', description: '' }]}));
-    const removeExperience = (index) => setFormData(prev => ({ ...prev, teaching_experience: prev.teaching_experience.filter((_, i) => i !== index)}));
-    
-    // ✅ 1. ฟังก์ชันใหม่สำหรับจัดการ Checkbox ของระดับชั้น
+    const addExperience = () => setFormData(prev => ({ ...prev, teaching_experience: [...prev.teaching_experience, { title: '', duration: '', description: '' }] }));
+    const removeExperience = (index) => setFormData(prev => ({ ...prev, teaching_experience: prev.teaching_experience.filter((_, i) => i !== index) }));
+
     const handleGradeChange = (gradeValue) => {
         setFormData(prev => {
             const currentGrades = prev.can_teach_grades;
@@ -164,7 +227,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
             can_teach_subjects: prev.can_teach_subjects.filter(subject => subject !== subjectToRemove)
         }));
     };
-    
+
     // handleSubmit (เหมือนเดิม)
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -193,10 +256,18 @@ export default function TutorInfoPage({ setCurrentPage }) {
                 imageUrl = uploadResult.imageUrl;
             }
 
+            const fullAddress = [
+                formData.addressDetails,
+                formData.subdistrict,
+                formData.district,
+                formData.province,
+                formData.postalCode
+            ].filter(Boolean).join(' '); // รวมเฉพาะส่วนที่มีข้อมูล
+
             const profileData = {
                 nickname: formData.nickname,
                 phone: formData.phone,
-                address: formData.address,
+                address: fullAddress, // <--- ใช้ที่อยู่แบบรวม
                 about_me: formData.about_me,
                 education: formData.education,
                 teaching_experience: formData.teaching_experience,
@@ -243,9 +314,9 @@ export default function TutorInfoPage({ setCurrentPage }) {
                     {/* ... (Profile Picture, Main Info, About Me, Education, Experience sections are the same) ... */}
                     {/* --- Profile Picture Section --- */}
                     <div className="flex flex-col items-center space-y-4">
-                        <img 
-                            src={formData.profile_picture_url || 'https://via.placeholder.com/150'} 
-                            alt="Profile" 
+                        <img
+                            src={formData.profile_picture_url || 'https://via.placeholder.com/150'}
+                            alt="Profile"
                             className="w-32 h-32 rounded-full object-cover border-4 border-gray-200"
                         />
                         <input type="file" id="profilePictureUpload" className="hidden" onChange={handleImageChange} accept="image/*" />
@@ -253,35 +324,94 @@ export default function TutorInfoPage({ setCurrentPage }) {
                             เปลี่ยนรูปโปรไฟล์
                         </label>
                     </div>
-                    
+
                     {/* --- Main Info Section --- */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-medium text-gray-700">ชื่อจริง</label>
-                            <input type="text" value={user.name} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2"/>
+                            <input type="text" value={user.name} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">นามสกุล</label>
-                            <input type="text" value={user.lastname} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2"/>
+                            <input type="text" value={user.lastname} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
                         </div>
                         <div>
                             <label htmlFor="nickname" className="block text-sm font-medium text-gray-700">ชื่อเล่น</label>
-                            <input type="text" id="nickname" name="nickname" value={formData.nickname} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                            <input type="text" id="nickname" name="nickname" value={formData.nickname} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
                         </div>
                         <div>
                             <label htmlFor="phone" className="block text-sm font-medium text-gray-700">เบอร์โทรศัพท์</label>
-                            <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                            <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
                         </div>
                         <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-gray-700">อีเมล</label>
-                            <input type="email" value={user.email} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2"/>
+                            <input type="email" value={user.email} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
                         </div>
-                        <div className="md:col-span-2">
-                            <label htmlFor="address" className="block text-sm font-medium text-gray-700">ที่อยู่ที่สามารถติดต่อได้</label>
-                            <input type="text" id="address" name="address" value={formData.address} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                        <div className="md:col-span-2 space-y-3">
+                            <label className="block text-sm font-medium text-gray-700">ที่อยู่</label>
+                            {/* จังหวัด */}
+                            <select
+                                name="province"
+                                value={formData.province}
+                                onChange={handleAddressChange}
+                                required
+                                className="w-full border rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100"
+                                disabled={db.length === 0} // ปิดใช้งานจนกว่า db จะโหลดเสร็จ
+                            >
+                                <option value="" disabled>-- เลือกจังหวัด --</option>
+                                {addressData.provinces.map(province => (
+                                    <option key={province} value={province}>{province}</option>
+                                ))}
+                            </select>
+                            {/* อำเภอ */}
+                            <select
+                                name="district"
+                                value={formData.district}
+                                onChange={handleAddressChange}
+                                required
+                                className="w-full border rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100"
+                                disabled={!formData.province} // ปิดจนกว่าจะเลือกจังหวัด
+                            >
+                                <option value="" disabled>-- เลือกอำเภอ --</option>
+                                {addressData.districts.map(district => (
+                                    <option key={district} value={district}>{district}</option>
+                                ))}
+                            </select>
+                            {/* ตำบล */}
+                            <select
+                                name="subdistrict"
+                                value={formData.subdistrict}
+                                onChange={handleAddressChange}
+                                required
+                                className="w-full border rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100"
+                                disabled={!formData.district} // ปิดจนกว่าจะเลือกอำเภอ
+                            >
+                                <option value="" disabled>-- เลือกตำบล --</option>
+                                {addressData.subdistricts.map(subdistrict => (
+                                    <option key={subdistrict} value={subdistrict}>{subdistrict}</option>
+                                ))}
+                            </select>
+                            {/* รหัสไปรษณีย์ */}
+                            <input
+                                type="text"
+                                name="postalCode"
+                                placeholder="รหัสไปรษณีย์"
+                                value={formData.postalCode}
+                                disabled // ปิดการแก้ไข
+                                className="w-full border rounded-md shadow-sm p-2 bg-gray-100"
+                            />
+                            {/* ที่อยู่เพิ่มเติม */}
+                            <input
+                                type="text"
+                                name="addressDetails"
+                                placeholder="บ้านเลขที่, หมู่, ถนน (ถ้ามี)"
+                                value={formData.addressDetails}
+                                onChange={handleChange}
+                                className="w-full border rounded-md shadow-sm p-2"
+                            />
                         </div>
                     </div>
-                    
+
                     {/* --- About Me --- */}
                     <div>
                         <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">เกี่ยวกับคุณ</h3>
@@ -292,69 +422,69 @@ export default function TutorInfoPage({ setCurrentPage }) {
                     <div>
                         <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">ประวัติการศึกษา</h3>
                         {formData.education.map((edu, index) => (
-                        <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 border rounded-md relative">
-                            <button
-                                type="button"
-                                onClick={() => removeEducation(index)}
-                                className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold"
-                                title="ลบ"
-                            >
-                            &times;
-                            </button>
-                            <div>
-                                <label htmlFor={`edu-institution-${index}`} className="block text-sm font-medium text-gray-700">สถานศึกษา</label>
-                                <input
-                                    type="text"
-                                    id={`edu-institution-${index}`}
-                                    name="institution"
-                                    value={edu.institution}
-                                    onChange={(e) => handleEducationChange(index, e)}
-                                    className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                />
+                            <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 border rounded-md relative">
+                                <button
+                                    type="button"
+                                    onClick={() => removeEducation(index)}
+                                    className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold"
+                                    title="ลบ"
+                                >
+                                    &times;
+                                </button>
+                                <div>
+                                    <label htmlFor={`edu-institution-${index}`} className="block text-sm font-medium text-gray-700">สถานศึกษา</label>
+                                    <input
+                                        type="text"
+                                        id={`edu-institution-${index}`}
+                                        name="institution"
+                                        value={edu.institution}
+                                        onChange={(e) => handleEducationChange(index, e)}
+                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor={`edu-degree-${index}`} className="block text-sm font-medium text-gray-700">ระดับ/วุฒิที่ได้รับ</label>
+                                    <input
+                                        type="text"
+                                        id={`edu-degree-${index}`}
+                                        name="degree"
+                                        value={edu.degree}
+                                        onChange={(e) => handleEducationChange(index, e)}
+                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor={`edu-major-${index}`} className="block text-sm font-medium text-gray-700">สาขาวิชา</label>
+                                    <input
+                                        type="text"
+                                        id={`edu-major-${index}`}
+                                        name="major"
+                                        value={edu.major}
+                                        onChange={(e) => handleEducationChange(index, e)}
+                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor={`edu-year-${index}`} className="block text-sm font-medium text-gray-700">ปีที่สำเร็จการศึกษา</label>
+                                    <input
+                                        type="text"
+                                        id={`edu-year-${index}`}
+                                        name="year"
+                                        value={edu.year}
+                                        onChange={(e) => handleEducationChange(index, e)}
+                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
+                                        placeholder="เช่น 2020"
+                                    />
+                                </div>
                             </div>
-                            <div>
-                                <label htmlFor={`edu-degree-${index}`} className="block text-sm font-medium text-gray-700">ระดับ/วุฒิที่ได้รับ</label>
-                                <input
-                                    type="text"
-                                    id={`edu-degree-${index}`}
-                                    name="degree"
-                                    value={edu.degree}
-                                    onChange={(e) => handleEducationChange(index, e)}
-                                    className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor={`edu-major-${index}`} className="block text-sm font-medium text-gray-700">สาขาวิชา</label>
-                                <input
-                                    type="text"
-                                    id={`edu-major-${index}`}
-                                    name="major"
-                                    value={edu.major}
-                                    onChange={(e) => handleEducationChange(index, e)}
-                                    className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor={`edu-year-${index}`} className="block text-sm font-medium text-gray-700">ปีที่สำเร็จการศึกษา</label>
-                                <input
-                                    type="text"
-                                    id={`edu-year-${index}`}
-                                    name="year"
-                                    value={edu.year}
-                                    onChange={(e) => handleEducationChange(index, e)}
-                                    className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                    placeholder="เช่น 2020"
-                                />
-                            </div>
-                        </div>
                         ))}
                         <button
                             type="button"
                             onClick={addEducation}
                             className="flex items-center text-blue-600 hover:text-blue-800 text-sm mt-2"
                         >
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                        เพิ่มประวัติการศึกษา
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                            เพิ่มประวัติการศึกษา
                         </button>
                     </div>
 
@@ -362,69 +492,69 @@ export default function TutorInfoPage({ setCurrentPage }) {
                     <div>
                         <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">ประสบการณ์ด้านการสอน</h3>
                         {formData.teaching_experience.map((exp, index) => (
-                        <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 border rounded-md relative">
-                            <button
-                                type="button"
-                                onClick={() => removeExperience(index)}
-                                className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold"
-                                title="ลบ"
-                            >
-                            &times;
-                            </button>
-                            <div>
-                                <label htmlFor={`exp-title-${index}`} className="block text-sm font-medium text-gray-700">ตำแหน่ง/ลักษณะงาน</label>
-                                <input
-                                    type="text"
-                                    id={`exp-title-${index}`}
-                                    name="title"
-                                    value={exp.title}
-                                    onChange={(e) => handleExperienceChange(index, e)}
-                                    className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                    placeholder="เช่น ติวเตอร์อิสระ, ครูสอนพิเศษ"
-                                />
+                            <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 border rounded-md relative">
+                                <button
+                                    type="button"
+                                    onClick={() => removeExperience(index)}
+                                    className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold"
+                                    title="ลบ"
+                                >
+                                    &times;
+                                </button>
+                                <div>
+                                    <label htmlFor={`exp-title-${index}`} className="block text-sm font-medium text-gray-700">ตำแหน่ง/ลักษณะงาน</label>
+                                    <input
+                                        type="text"
+                                        id={`exp-title-${index}`}
+                                        name="title"
+                                        value={exp.title}
+                                        onChange={(e) => handleExperienceChange(index, e)}
+                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
+                                        placeholder="เช่น ติวเตอร์อิสระ, ครูสอนพิเศษ"
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor={`exp-duration-${index}`} className="block text-sm font-medium text-gray-700">ระยะเวลา</label>
+                                    <input
+                                        type="text"
+                                        id={`exp-duration-${index}`}
+                                        name="duration"
+                                        value={exp.duration}
+                                        onChange={(e) => handleExperienceChange(index, e)}
+                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
+                                        placeholder="เช่น 2018-ปัจจุบัน, 2 ปี"
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label htmlFor={`exp-description-${index}`} className="block text-sm font-medium text-gray-700">รายละเอียด</label>
+                                    <textarea
+                                        id={`exp-description-${index}`}
+                                        name="description"
+                                        rows="2"
+                                        value={exp.description}
+                                        onChange={(e) => handleExperienceChange(index, e)}
+                                        className="mt-1 w-full border border rounded-md shadow-sm p-2"
+                                        placeholder="อธิบายบทบาทและสิ่งที่สอน"
+                                    ></textarea>
+                                </div>
                             </div>
-                            <div>
-                                <label htmlFor={`exp-duration-${index}`} className="block text-sm font-medium text-gray-700">ระยะเวลา</label>
-                                <input
-                                    type="text"
-                                    id={`exp-duration-${index}`}
-                                    name="duration"
-                                    value={exp.duration}
-                                    onChange={(e) => handleExperienceChange(index, e)}
-                                    className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                    placeholder="เช่น 2018-ปัจจุบัน, 2 ปี"
-                                />
-                            </div>
-                            <div className="md:col-span-2">
-                                <label htmlFor={`exp-description-${index}`} className="block text-sm font-medium text-gray-700">รายละเอียด</label>
-                                <textarea
-                                    id={`exp-description-${index}`}
-                                    name="description"
-                                    rows="2"
-                                    value={exp.description}
-                                    onChange={(e) => handleExperienceChange(index, e)}
-                                    className="mt-1 w-full border border rounded-md shadow-sm p-2"
-                                    placeholder="อธิบายบทบาทและสิ่งที่สอน"
-                                ></textarea>
-                            </div>
-                        </div>
                         ))}
                         <button
                             type="button"
                             onClick={addExperience}
                             className="flex items-center text-blue-600 hover:text-blue-800 text-sm mt-2"
                         >
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                        เพิ่มประสบการณ์การสอน
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                            เพิ่มประสบการณ์การสอน
                         </button>
                     </div>
 
-                    
+
                     {/* --- Teaching Capabilities Section --- */}
                     <div>
                         <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">ความสามารถในการสอน</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            
+
                             {/* ✅ 2. START: UI ใหม่สำหรับ "ระดับชั้นที่สอนได้" (Checkbox) */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">ระดับชั้นที่สอนได้</label>
@@ -467,11 +597,11 @@ export default function TutorInfoPage({ setCurrentPage }) {
                                         <span className="text-sm text-gray-500">ยังไม่ได้เลือกวิชา</span>
                                     )}
                                 </div>
-                                
+
                                 <div className="mt-2 grid grid-cols-1 gap-2">
                                     <select
                                         onChange={(e) => {
-                                            if(e.target.value) addSubject(e.target.value);
+                                            if (e.target.value) addSubject(e.target.value);
                                             e.target.value = '';
                                         }}
                                         className="w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
@@ -483,7 +613,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
                                             </option>
                                         ))}
                                     </select>
-                                    
+
                                     <div className="flex gap-2">
                                         <input
                                             type="text"
@@ -493,8 +623,8 @@ export default function TutorInfoPage({ setCurrentPage }) {
                                             className="flex-grow w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
                                             placeholder="หรือพิมพ์วิชาอื่น..."
                                         />
-                                        <button 
-                                            type="button" 
+                                        <button
+                                            type="button"
                                             onClick={handleAddCustomSubjectByClick}
                                             className="px-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
                                         >
@@ -503,7 +633,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div>
                                 <label htmlFor="hourly_rate" className="block text-sm font-medium text-gray-700">อัตราค่าสอนต่อชั่วโมง (บาท)</label>
                                 <input

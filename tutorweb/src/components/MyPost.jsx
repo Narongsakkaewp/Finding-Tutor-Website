@@ -416,9 +416,6 @@ function MyPost({ setPostsCache }) {
 
         {/* compose box */}
         {(
-          // ★ เงื่อนไขใหม่:
-          // - ถ้าอยู่แท็บนักเรียน: แสดงเฉพาะ "ไม่ใช่ติวเตอร์"
-          // - ถ้าอยู่แท็บติวเตอร์: แสดงเฉพาะ "เป็นติวเตอร์"
           (feedType === "student" && !isTutor) ||
           (feedType === "tutor" && isTutor)
         ) && (
