@@ -1,5 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 
+const API_BASE = "http://localhost:5000";
+
+/* ---------- normalizer ---------- */
 const normalizePost = (p = {}) => ({
   id: p.id ?? p._id ?? p.student_post_id,
   owner_id: p.owner_id ?? p.student_id ?? p.user_id,
@@ -27,7 +30,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
 
   // หาโพสต์จาก cache ก่อน
   useEffect(() => {
-    const found = postsCache.find(p => Number(p.id) === Number(postId));
+    const found = postsCache.find((p) => Number(p.id) === Number(postId));
     if (found) {
       setPost(found);
       setLoading(false);
@@ -36,17 +39,17 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
 
     (async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/student_posts?me=${me || 0}`);
+        const res = await fetch(`${API_BASE}/api/student_posts?me=${me || 0}`);
         const data = await res.json();
         const list = Array.isArray(data)
           ? data
           : Array.isArray(data.items)
-          ? data.items
-          : Array.isArray(data.data)
-          ? data.data
-          : [];
+            ? data.items
+            : Array.isArray(data.data)
+              ? data.data
+              : [];
         const normalized = list.map(normalizePost);
-        const single = normalized.find(p => Number(p.id) === Number(postId));
+        const single = normalized.find((p) => Number(p.id) === Number(postId));
         if (single) setPost(single);
       } catch (e) {
         console.error(e);
@@ -55,6 +58,11 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
       }
     })();
   }, [postId, me, postsCache]);
+
+  const isOwner = useMemo(
+    () => Number(me) === Number(post?.owner_id),
+    [me, post?.owner_id]
+  );
 
   if (loading) {
     return (
@@ -70,7 +78,9 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
         <div className="bg-white border rounded-xl p-4">
           ไม่พบโพสต์นี้
           <div className="mt-2">
-            <button onClick={onBack} className="px-3 py-1 rounded border">กลับ</button>
+            <button onClick={onBack} className="px-3 py-1 rounded border">
+              กลับ
+            </button>
           </div>
         </div>
       </div>
@@ -80,7 +90,10 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-3xl mx-auto p-4">
-        <button onClick={onBack} className="mb-4 px-3 py-1 rounded border hover:bg-gray-50">
+        <button
+          onClick={onBack}
+          className="mb-4 px-3 py-1 rounded border hover:bg-gray-50"
+        >
           ← กลับไปการแจ้งเตือน
         </button>
 
@@ -93,8 +106,12 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
               className="w-12 h-12 rounded-full"
             />
             <div>
-              <div className="font-semibold">{post.user?.first_name} {post.user?.last_name}</div>
-              <div className="text-xs text-gray-500">{new Date(post.createdAt).toLocaleString()}</div>
+              <div className="font-semibold">
+                {post.user?.first_name} {post.user?.last_name}
+              </div>
+              <div className="text-xs text-gray-500">
+                {new Date(post.createdAt).toLocaleString()}
+              </div>
             </div>
           </div>
 
@@ -111,71 +128,196 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
           </div>
 
           <div className="mt-4 text-sm text-gray-600 border-t pt-3">
-            เข้าร่วมแล้ว: <b>{post.join_count}</b> / {post.group_size} คน {post.joined ? "• คุณเข้าร่วมแล้ว" : ""}
+            เข้าร่วมแล้ว: <b>{post.join_count}</b> / {post.group_size} คน{" "}
+            {post.joined ? "• คุณเข้าร่วมแล้ว" : ""}
           </div>
 
-          {/* ✅ แสดงคำขอเข้าร่วม (ไม่มี “จัดการคำขอ” ด้านบนอีกต่อไป) */}
-          <JoinRequests postId={post.id} />
+          {/* เดิม: แสดงเฉพาะเจ้าของ */}
+{/* {isOwner && <JoinRequestsManager postId={post.id} />} */}
+
+{/* ทดสอบชั่วคราว: บังคับแสดง */}
+<JoinRequestsManager postId={post.id} />
+
+
         </div>
       </div>
     </div>
   );
 }
 
-function JoinRequests({ postId }) {
+/* ---------------------------------------------------------
+   JoinRequestsManager: โหลด "คำขอแบบ pending" และให้อนุมัติ/ปฏิเสธ
+   รองรับทั้ง API แบบใหม่ และ fallback แบบเดิม
+--------------------------------------------------------- */
+function JoinRequestsManager({ postId, isOwner }) {
   const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  const parseItems = (raw) => {
+    if (raw && Array.isArray(raw.items)) return raw.items;
+    if (Array.isArray(raw)) return raw;
+    return [];
+  };
+
+  const loadRequests = async () => {
     if (!postId) return;
-    fetch(`http://localhost:5000/api/student_posts/${postId}/requests`)
-      .then((r) => r.json())
-      .then((data) => Array.isArray(data) ? setRequests(data) : [])
-      .catch((e) => console.error("load join requests error:", e));
-  }, [postId]);
-
-  const handleAction = async (reqId, action) => {
-    const confirmMsg = action === "approve" ? "ยืนยันการอนุมัติ?" : "ยืนยันการปฏิเสธ?";
-    if (!window.confirm(confirmMsg)) return;
+    setLoading(true);
     try {
-      await fetch(`http://localhost:5000/api/student_posts/requests/${reqId}/${action}`, {
-        method: "PUT",
-      });
-      setRequests((prev) => prev.filter((r) => r.request_id !== reqId));
-    } catch (err) {
-      console.error("update request error:", err);
-      alert("เกิดข้อผิดพลาด");
+      const res = await fetch(`${API_BASE}/api/student_posts/${postId}/requests`);
+      const data = await res.json();
+      setRequests(parseItems(data));
+    } catch (e) {
+      console.error("load join requests error:", e);
+      setRequests([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (requests.length === 0)
+  useEffect(() => {
+    loadRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postId]);
+
+  const optimisticRemove = (predicate) =>
+    setRequests((prev) => prev.filter((r) => !predicate(r)));
+
+  const approve = async (req) => {
+    if (!window.confirm(`ยืนยันอนุมัติให้ ${req.name} ${req.lastname || ""} ?`))
+      return;
+
+    // optimistic
+    optimisticRemove((r) => r.request_id === req.request_id || r.user_id === req.user_id);
+
+    try {
+      // รูปแบบใหม่
+      let ok = false;
+      try {
+        const r1 = await fetch(
+          `${API_BASE}/api/student_posts/${postId}/requests/${req.user_id}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "approve" }),
+          }
+        );
+        ok = r1.ok;
+      } catch { }
+
+      // fallback เดิม
+      if (!ok) {
+        await fetch(
+          `${API_BASE}/api/student_posts/requests/${req.request_id}/approve`,
+          { method: "PUT" }
+        );
+      }
+    } catch (e) {
+      console.error("approve error:", e);
+      loadRequests(); // rollback
+      alert("อนุมัติไม่สำเร็จ");
+    }
+  };
+
+  const reject = async (req) => {
+    if (!window.confirm(`ปฏิเสธคำขอของ ${req.name} ${req.lastname || ""} ?`))
+      return;
+
+    // optimistic
+    optimisticRemove((r) => r.request_id === req.request_id || r.user_id === req.user_id);
+
+    try {
+      // รูปแบบใหม่
+      let ok = false;
+      try {
+        const r1 = await fetch(
+          `${API_BASE}/api/student_posts/${postId}/requests/${req.user_id}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "reject" }),
+          }
+        );
+        ok = r1.ok;
+      } catch { }
+
+      // fallback เดิม
+      if (!ok) {
+        await fetch(
+          `${API_BASE}/api/student_posts/requests/${req.request_id}/reject`,
+          { method: "PUT" }
+        );
+      }
+    } catch (e) {
+      console.error("reject error:", e);
+      loadRequests(); // rollback
+      alert("ปฏิเสธไม่สำเร็จ");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="mt-6">
+        <h2 className="font-semibold mb-2">คำขอเข้าร่วม</h2>
+        <div className="text-sm text-gray-500">กำลังโหลด…</div>
+      </div>
+    );
+  }
+
+  if (!requests || requests.length === 0) {
     return <p className="text-sm text-gray-500 mt-6">ยังไม่มีคำขอเข้าร่วม</p>;
+  }
 
   return (
     <div className="mt-6 border-t pt-4">
       <h2 className="font-semibold mb-3">คำขอเข้าร่วม</h2>
-      {requests.map((r) => (
-        <div key={r.request_id} className="flex justify-between items-center border rounded-lg p-2 bg-white mb-2">
-          <div className="text-sm text-gray-700">
-            {r.name} {r.lastname} <span className="text-gray-400 text-xs">#{r.user_id}</span>
+
+      <div className="space-y-2">
+        {requests.map((r) => (
+          <div
+            key={r.request_id || r.user_id}
+            className="flex justify-between items-center border rounded-lg p-3 bg-white"
+          >
+            <div className="text-sm text-gray-700">
+              {r.name} {r.lastname}{" "}
+              <span className="text-gray-400 text-xs">#{r.user_id}</span>
+              {r.status && (
+                <span className="ml-2 text-xs px-2 py-0.5 rounded bg-gray-100">
+                  {r.status}
+                </span>
+              )}
+            </div>
+
+            {/* ถ้าเป็นเจ้าของเท่านั้นจึงเห็นปุ่ม */}
+            {isOwner ? (
+              (r.status === "pending" || !r.status) ? (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => approve(r)}
+                    className="px-3 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 text-sm"
+                  >
+                    อนุมัติ
+                  </button>
+                  <button
+                    onClick={() => reject(r)}
+                    className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50"
+                  >
+                    ปฏิเสธ
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs px-2 py-1 rounded bg-gray-100">
+                  {r.status}
+                </span>
+              )
+            ) : (
+              <span className="text-xs text-gray-400">คุณไม่ใช่เจ้าของโพสต์</span>
+            )}
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleAction(r.request_id, "approve")}
-              className="px-3 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 text-sm"
-            >
-              อนุมัติ
-            </button>
-            <button
-              onClick={() => handleAction(r.request_id, "reject")}
-              className="px-3 py-1 rounded border text-sm hover:bg-gray-50"
-            >
-              ปฏิเสธ
-            </button>
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
+
 
 export default MyPostDetails;

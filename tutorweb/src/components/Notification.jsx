@@ -1,10 +1,11 @@
+// src/components/Notification.jsx
 import React, { useEffect, useMemo, useState } from "react";
 
 /**
  * props:
- * - userId: number                  // user_id ที่ล็อกอิน
- * - onOpenPost?: (id:number)=>void  // เรียกเมื่อคลิกเพื่อไปหน้าโพสต์/จัดการคำขอ
- * - onReadAll?: ()=>void            // (ออปชัน) เรียกเมื่อมาร์คว่าอ่านทั้งหมด
+ * - userId: number                                  // user_id ที่ล็อกอิน
+ * - onOpenPost?: (id:number, type?:string, path?:string)=>void  // คลิกแล้วให้ parent นำทางเองได้
+ * - onReadAll?: ()=>void                             // (ออปชัน) เรียกเมื่อมาร์คว่าอ่านทั้งหมด
  */
 function Notification({ userId, onOpenPost, onReadAll }) {
   const [notifications, setNotifications] = useState([]);
@@ -31,11 +32,7 @@ function Notification({ userId, onOpenPost, onReadAll }) {
     const older = [];
 
     const now = new Date();
-    const startToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate()
-    );
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startYesterday = new Date(startToday);
     startYesterday.setDate(startToday.getDate() - 1);
 
@@ -52,34 +49,65 @@ function Notification({ userId, onOpenPost, onReadAll }) {
     return { latest, today, yesterday, older };
   }, [notifications]);
 
-  // มาร์คว่าอ่าน + เปิดโพสต์
-  const handleOpen = async (item) => {
-    if (!item) return;
-    try {
-      await fetch(`http://localhost:5000/api/notifications/read/${item.notification_id}`, {
-        method: "PUT",
-      });
-      setNotifications((prev) =>
-        prev.map((x) =>
-          x.notification_id === item.notification_id ? { ...x, is_read: 1 } : x
-        )
-      );
-    } catch (e) {
-      console.error("mark read error:", e);
-    }
+  // ===== helper: สร้างข้อความที่แสดง โดยดึงชื่อผู้ทำกิจกรรม (actor) ถ้ามี =====
+  const displayMessage = (item) => {
+    if (!item) return "";
+    const actor = [item.actor_firstname, item.actor_lastname]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
 
-    // ✅ ถ้ามี related_id ให้เปิดโพสต์นั้น
-    if (item.related_id) {
-      window.location.href = `http://localhost:3000/post/${item.related_id}`;
-      // 👆 หรือเปลี่ยน URL ตามโครงสร้างเว็บของคุณ เช่น:
-      // window.location.href = `/post/${item.related_id}`;
+    switch (item.type) {
+      case "join_request":
+        return actor
+          ? `มีคำขอเข้าร่วมจาก ${actor} (โพสต์นักเรียน #${item.related_id})`
+          : `มีคำขอเข้าร่วมโพสต์นักเรียน #${item.related_id}`;
+      case "tutor_join_request":
+        return actor
+          ? `มีคำขอเข้าร่วมจาก ${actor} (โพสต์ติวเตอร์ #${item.related_id})`
+          : `มีคำขอเข้าร่วมโพสต์ติวเตอร์ #${item.related_id}`;
+      default:
+        // ถ้า backend มี message อยู่แล้ว ก็แสดงได้เลย
+        return item.message || "การแจ้งเตือนใหม่";
     }
   };
 
+  // ===== helper: เลือกเส้นทางที่จะไปจาก notification =====
+  const buildTargetPath = (item) => {
+    if (!item) return null;
+    // ถ้ามี deep_link จากเซิร์ฟเวอร์ ใช้ได้ทันที
+    if (item.deep_link) return item.deep_link;
 
-  // มาร์คว่าอ่านอย่างเดียว (ไม่เปิดโพสต์)
-  const handleMarkReadOnly = async (e, item) => {
-    e.stopPropagation();
+    // ไม่มี deep_link → map เองจาก type + related_id
+    if (!item.related_id) return null;
+
+    // type:
+    // - 'join_request'           => โพสต์นักเรียนในแท็บ student
+    // - 'tutor_join_request'     => โพสต์ติวเตอร์ในแท็บ tutor
+    // - อื่นๆ                     => ลิงก์ไปหน้ารายละเอียดโพสต์ทั่วไป
+    switch (item.type) {
+      case "join_request":
+        return `/feed?tab=student&open=${item.related_id}`;
+      case "tutor_join_request":
+        return `/feed?tab=tutor&open=${item.related_id}`;
+      default:
+        return `/post/${item.related_id}`;
+    }
+  };
+
+  // ===== helper: เปิดปลายทาง (ให้ parent จัดการ หรือเปลี่ยน URL เอง) =====
+  const openFromNotification = (item) => {
+    const path = buildTargetPath(item);
+    if (typeof onOpenPost === "function") {
+      onOpenPost(item.related_id, item.type, path);
+    } else if (path) {
+      window.location.href = path;
+    }
+  };
+
+  // มาร์คว่าอ่าน + เปิดโพสต์
+  const handleOpen = async (item) => {
+    if (!item) return;
     try {
       await fetch(
         `http://localhost:5000/api/notifications/read/${item.notification_id}`,
@@ -90,25 +118,22 @@ function Notification({ userId, onOpenPost, onReadAll }) {
           x.notification_id === item.notification_id ? { ...x, is_read: 1 } : x
         )
       );
-    } catch (err) {
-      console.error("mark single read error:", err);
+    } catch (e) {
+      console.error("mark read error:", e);
     }
+    openFromNotification(item);
   };
 
   // ปุ่มไปดูโพสต์
   const handleGoPost = (e, item) => {
     e.stopPropagation();
-    if (typeof onOpenPost === "function" && item.related_id) {
-      onOpenPost(item.related_id);
-    }
+    openFromNotification(item);
   };
 
-  // ปุ่มจัดการคำขอ (ตอนนี้พาไปหน้าโพสต์เช่นกัน — ไปเปิดแท็บจัดการในหน้านั้น)
+  // ปุ่มจัดการคำขอ
   const handleManageRequest = (e, item) => {
     e.stopPropagation();
-    if (typeof onOpenPost === "function" && item.related_id) {
-      onOpenPost(item.related_id);
-    }
+    openFromNotification(item);
   };
 
   const handleReadAll = async () => {
@@ -147,14 +172,13 @@ function Notification({ userId, onOpenPost, onReadAll }) {
               <span className="absolute left-2 top-2 inline-block h-2 w-2 rounded-full bg-rose-500" />
             )}
 
-            <div className="text-sm">{item.message}</div>
+            <div className="text-sm">{displayMessage(item)}</div>
             <div className="text-xs text-gray-500 mt-1">
               {new Date(item.created_at).toLocaleString()}
             </div>
 
             {/* ปุ่มแอ็กชัน */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {/* ไปดูโพสต์ */}
               {item.related_id && (
                 <button
                   onClick={(e) => handleGoPost(e, item)}
@@ -165,8 +189,8 @@ function Notification({ userId, onOpenPost, onReadAll }) {
                 </button>
               )}
 
-              {/* จัดการคำขอ (เฉพาะแจ้งเตือน join) */}
-              {item.type === "join_request" && item.related_id && (
+
+              {(item.type === "join_request" || item.type === "tutor_join_request") && item.related_id && (
                 <button
                   onClick={(e) => handleManageRequest(e, item)}
                   className="px-3 py-1.5 rounded-lg border text-sm bg-gray-900 text-white hover:bg-gray-800 "

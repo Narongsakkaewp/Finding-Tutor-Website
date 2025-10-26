@@ -49,7 +49,6 @@ const normalizeStudentPost = (p = {}) => ({
   },
 });
 
-
 const normalizeTutorPost = (p = {}) => {
   const full = (p.authorId?.name || p.name || "").trim();
   let first = p.first_name || "";
@@ -79,6 +78,10 @@ const normalizeTutorPost = (p = {}) => {
     },
     fav_count: Number(p.fav_count ?? 0),
     favorited: !!p.favorited,
+    // ★ NEW (Tutor Join): รองรับการ join โพสต์ติวเตอร์
+    join_count: Number(p.join_count ?? 0),
+    joined: !!p.joined,
+    pending_me: !!p.pending_me,
     post_type: "tutor",
     user: p.user || {
       first_name: first,
@@ -87,7 +90,6 @@ const normalizeTutorPost = (p = {}) => {
     },
   };
 };
-
 
 /* ---------- component ---------- */
 function MyPost({ setPostsCache }) {
@@ -136,7 +138,7 @@ function MyPost({ setPostsCache }) {
         setPosts(normalized);
         setPostsCache?.(normalized);
       } else {
-        // tutor feed — แนบ me เพื่อให้ backend คืน favorited/fav_count ให้ถูก
+        // tutor feed — แนบ me เพื่อให้ backend คืน favorited/fav_count/join flags ให้ถูก
         const url = `${API_BASE}/api/tutor-posts?page=1&limit=20&me=${meId}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -267,7 +269,7 @@ function MyPost({ setPostsCache }) {
     }
   };
 
-  /* ---------- Join / Unjoin (student only) ---------- */
+  /* ---------- Join / Unjoin (student-only on student posts) ---------- */
   const handleJoin = async (post) => {
     if (feedType !== "student") return;
     if (!meId) return alert("กรุณาเข้าสู่ระบบ");
@@ -318,6 +320,134 @@ function MyPost({ setPostsCache }) {
       setJoinLoading(s => ({ ...s, [post.id]: false }));
     }
   };
+
+  /* ---------- ★ NEW: Join / Unjoin สำหรับโพสต์ติวเตอร์ ---------- */
+  const handleJoinTutor = async (post) => {
+    // เฉพาะนักเรียนที่ดูแท็บ "ติวเตอร์"
+    if (feedType !== "tutor") return;
+    if (isTutor) return alert("บัญชีติวเตอร์ไม่สามารถ Join โพสต์ติวเตอร์ได้");
+    if (!meId) return alert("กรุณาเข้าสู่ระบบ");
+
+    setJoinLoading((s) => ({ ...s, [post.id]: true }));
+
+    const prev = { joined: !!post.joined, count: Number(post.join_count || 0) };
+
+    // optimistic
+    const optimistic = (arr) =>
+      arr.map((p) =>
+        p.id === post.id
+          ? { ...p, joined: true, pending_me: true, join_count: prev.count + 1 }
+          : p
+      );
+    setPosts(optimistic);
+    setPostsCache?.(optimistic);
+
+    try {
+      // ✅ ใช้ unified endpoint ที่ฝั่ง server มีแน่นอน
+      const res = await fetch(`${API_BASE}/api/posts/tutor/${post.id}/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: meId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || "Join ไม่สำเร็จ");
+
+      const sync = (arr) =>
+        arr.map((p) =>
+          p.id === post.id
+            ? {
+              ...p,
+              joined: !!data.joined,
+              pending_me: !!data.pending_me,
+              join_count:
+                typeof data.join_count === "number"
+                  ? data.join_count
+                  : prev.count + 1,
+            }
+            : p
+        );
+      setPosts(sync);
+      setPostsCache?.(sync);
+    } catch (e) {
+      const rollback = (arr) =>
+        arr.map((p) =>
+          p.id === post.id
+            ? {
+              ...p,
+              joined: prev.joined,
+              pending_me: false,
+              join_count: prev.count,
+            }
+            : p
+        );
+      setPosts(rollback);
+      setPostsCache?.(rollback);
+      alert(e.message || "เกิดข้อผิดพลาด");
+    } finally {
+      setJoinLoading((s) => ({ ...s, [post.id]: false }));
+    }
+  };
+
+  const handleUnjoinTutor = async (post) => {
+    if (feedType !== "tutor") return;
+    if (!meId) return alert("กรุณาเข้าสู่ระบบ");
+
+    setJoinLoading((s) => ({ ...s, [post.id]: true }));
+    const prev = { joined: !!post.joined, count: Number(post.join_count || 0) };
+
+    // optimistic
+    const optimistic = (arr) =>
+      arr.map((p) =>
+        p.id === post.id
+          ? {
+            ...p,
+            joined: false,
+            pending_me: false,
+            join_count: Math.max(0, prev.count - 1),
+          }
+          : p
+      );
+    setPosts(optimistic);
+    setPostsCache?.(optimistic);
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/posts/tutor/${post.id}/join?user_id=${meId}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || "ยกเลิกไม่สำเร็จ");
+
+      const sync = (arr) =>
+        arr.map((p) =>
+          p.id === post.id
+            ? {
+              ...p,
+              joined: !!data.joined,
+              pending_me: !!data.pending_me,
+              join_count:
+                typeof data.join_count === "number"
+                  ? data.join_count
+                  : Math.max(0, prev.count - 1),
+            }
+            : p
+        );
+      setPosts(sync);
+      setPostsCache?.(sync);
+    } catch (e) {
+      const rollback = (arr) =>
+        arr.map((p) =>
+          p.id === post.id ? { ...p, joined: prev.joined, join_count: prev.count } : p
+        );
+      setPosts(rollback);
+      setPostsCache?.(rollback);
+      alert(e.message || "เกิดข้อผิดพลาด");
+    } finally {
+      setJoinLoading((s) => ({ ...s, [post.id]: false }));
+    }
+  };
+
+
 
   /* ---------- Favorite (student & tutor feed) ---------- */
   const toggleFavorite = async (post) => {
@@ -457,39 +587,39 @@ function MyPost({ setPostsCache }) {
                     className="border rounded p-2 w-full"
                   />
 
-                {feedType === "student" ? (
-                  <>
-                    <input type="text" name="preferred_days" placeholder="วันสะดวก (เช่น จ-พ หรือ 10 ตุลาคม 2568)"
-                      value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    <input type="time" name="preferred_time"
-                      value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    <input type="text" name="location" placeholder="สถานที่"
-                      value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    <input type="number" name="group_size" placeholder="จำนวนคน"
-                      value={formData.group_size} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    <input type="number" name="budget" placeholder="งบประมาณ (บาท)"
-                      value={formData.budget} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ"
-                      value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
-                  </>
-                ) : (
-                  <>
-                    <div className="grid md:grid-cols-2 gap-3">
-                      <input type="text" name="teaching_days" placeholder="วันที่สอน (เช่น เสาร์-อาทิตย์)"
-                        value={formData.teaching_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="text" name="teaching_time" placeholder="ช่วงเวลา (เช่น 18:00-20:00)"
-                        value={formData.teaching_time} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    </div>
-                    <div className="grid md:grid-cols-2 gap-3">
-                      <input type="text" name="location" placeholder="สถานที่ (ออนไลน์/ออนไซต์)"
+                  {feedType === "student" ? (
+                    <>
+                      <input type="text" name="preferred_days" placeholder="วันสะดวก (เช่น จ-พ หรือ 10 ตุลาคม 2568)"
+                        value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <input type="time" name="preferred_time"
+                        value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <input type="text" name="location" placeholder="สถานที่"
                         value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="number" name="price" placeholder="ราคา (บาท/ชม.)"
-                        value={formData.price} onChange={handleChange} required className="border rounded p-2 w-full" />
-                    </div>
-                    <input type="text" name="contact_info" placeholder="ช่องทางติดต่อ (LINE/เบอร์/อีเมล)"
-                      value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
-                  </>
-                )}
+                      <input type="number" name="group_size" placeholder="จำนวนคน"
+                        value={formData.group_size} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <input type="number" name="budget" placeholder="งบประมาณ (บาท)"
+                        value={formData.budget} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ"
+                        value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid md:grid-cols-2 gap-3">
+                        <input type="text" name="teaching_days" placeholder="วันที่สอน (เช่น เสาร์-อาทิตย์)"
+                          value={formData.teaching_days} onChange={handleChange} required className="border rounded p-2 w-full" />
+                        <input type="text" name="teaching_time" placeholder="ช่วงเวลา (เช่น 18:00-20:00)"
+                          value={formData.teaching_time} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      </div>
+                      <div className="grid md:grid-cols-2 gap-3">
+                        <input type="text" name="location" placeholder="สถานที่ (ออนไลน์/ออนไซต์)"
+                          value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
+                        <input type="number" name="price" placeholder="ราคา (บาท/ชม.)"
+                          value={formData.price} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      </div>
+                      <input type="text" name="contact_info" placeholder="ช่องทางติดต่อ (LINE/เบอร์/อีเมล)"
+                        value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
+                    </>
+                  )}
 
                   <div className="flex justify-end gap-2">
                     <button type="button" onClick={() => setExpanded(false)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">
@@ -575,9 +705,15 @@ function MyPost({ setPostsCache }) {
                           )}
                         </>
                       ) : (
-                        <span className="inline-block px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full">
-                          โพสต์รับสอน
-                        </span>
+                        <>
+                          <span className="inline-block px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full mr-2">
+                            โพสต์รับสอน
+                          </span>
+                          {/* ★ NEW: แสดงจำนวนผู้เข้าร่วม/สนใจสำหรับโพสต์ติวเตอร์ */}
+                          <span className="text-gray-600">
+                            ผู้เข้าร่วม: <b>{Number(post.join_count || 0)}</b>
+                          </span>
+                        </>
                       )}
                     </div>
 
@@ -598,6 +734,7 @@ function MyPost({ setPostsCache }) {
                       </button>
 
                       {post.post_type === "student" ? (
+                        // ----- เดิม (คงไว้) -----
                         isOwner ? (
                           <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">
                             คุณเป็นเจ้าของโพสต์
@@ -630,10 +767,40 @@ function MyPost({ setPostsCache }) {
                           </button>
                         )
                       ) : (
-                        isOwner && (
+                        // ----- ★ NEW: ปุ่ม Join สำหรับโพสต์ติวเตอร์ -----
+                        isOwner ? (
                           <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">
                             โพสต์ของฉัน
                           </span>
+                        ) : isTutor ? (
+                          <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600" title="เฉพาะนักเรียนเท่านั้นที่ Join ได้">
+                            สำหรับนักเรียน
+                          </span>
+                        ) : post.joined ? (
+                          <button
+                            disabled={busy}
+                            onClick={() => handleUnjoinTutor(post)}
+                            className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                          >
+                            {busy ? "กำลังยกเลิก..." : "เลิกร่วม"}
+                          </button>
+                        ) : post.pending_me ? (
+                          <button
+                            disabled={busy}
+                            onClick={() => handleUnjoinTutor(post)}
+                            className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                            title="ยกเลิกคำขอที่รออนุมัติ"
+                          >
+                            {busy ? "กำลังยกเลิก..." : "ยกเลิกคำขอ"}
+                          </button>
+                        ) : (
+                          <button
+                            disabled={busy}
+                            onClick={() => handleJoinTutor(post)}
+                            className="px-4 py-2 rounded-xl text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
+                          >
+                            {busy ? "กำลังเข้าร่วม..." : "Join"}
+                          </button>
                         )
                       )}
                     </div>
