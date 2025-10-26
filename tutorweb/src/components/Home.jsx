@@ -8,20 +8,13 @@ import {
 const API_BASE = "http://localhost:5000";
 
 /** ---------------- Mock ------------------ */
-const CATEGORIES = [
-  { id: "math", label: "คณิตศาสตร์", icon: <BookOpen className="h-4 w-4" /> },
-  { id: "sci", label: "วิทยาศาสตร์", icon: <BookOpen className="h-4 w-4" /> },
-  { id: "eng", label: "ภาษาอังกฤษ", icon: <BookOpen className="h-4 w-4" /> },
-  { id: "code", label: "เขียนโปรแกรม", icon: <BookOpen className="h-4 w-4" /> },
-  { id: "art", label: "ศิลปะ/ดีไซน์", icon: <BookOpen className="h-4 w-4" /> },
-];
 
 const SUBJECTS = [
   { id: "s1", dbKey: "Math 1", title: "คณิตศาสตร์", tutors: 241, cover: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?q=80&w=1200&auto=format&fit=crop" },
   { id: "s2", dbKey: "English", title: "ภาษาอังกฤษเพื่อการสื่อสาร", tutors: 198, cover: "https://images.unsplash.com/photo-1516534775068-ba3e7458af70?q=80&w=1200&auto=format&fit=crop" },
-  { id: "s3", dbKey: "Physics 1", title: "Physics", tutors: 121, cover: "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=1200&auto=format&fit=crop" },
-  { id: "s4", dbKey: "Python Beginner", title: "เขียนโปรแกรมด้วย Python", tutors: 302, cover: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?q=80&w=1200&auto=format&fit=crop" },
-  { id: "s5", dbKey: "UIUX", title: "ออกแบบ UI/UX", tutors: 74, cover: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?q=80&w=1200&auto=format&fit=crop" },
+  { id: "s3", dbKey: "Physics 1", title: "ฟิสิกส์", tutors: 121, cover: "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=1200&auto=format&fit=crop" },
+  { id: "s4", dbKey: "Python Beginner", title: "เขียนโปรแกรมด้วย", tutors: 302, cover: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?q=80&w=1200&auto=format&fit=crop" },
+  { id: "s5", dbKey: "Art", title: "ศิลปะ/ดีไซน์", tutors: 74, cover: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?q=80&w=1200&auto=format&fit=crop" },
   { id: "s6", dbKey: "Biology 1", title: "ชีววิทยา", tutors: 97, cover: "https://images.unsplash.com/photo-1581092795360-fd1ca04f0952?q=80&w=1200&auto=format&fit=crop" },
 ];
 
@@ -162,6 +155,7 @@ function StudentPosts({ subjectKey }) {
   const [error, setError] = useState("");
 
   const key = subjectKey?.trim();
+
 
   useEffect(() => {
     let ignore = false;
@@ -470,13 +464,16 @@ function HomeStudent() {
 
   const [tutors, setTutors] = useState([]);          // ← ดึงจาก DB
   const [loadErr, setLoadErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let ignore = false;
     (async () => {
       try {
         setLoadErr("");
-        const res = await fetch(`${API_BASE}/api/tutors?page=1&limit=12`);
+        setLoading(true);
+        const searchParam = query ? `&search=${encodeURIComponent(query)}` : "";
+        const res = await fetch(`${API_BASE}/api/tutors?page=1&limit=12${searchParam}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!ignore) setTutors(data.items || []);
@@ -485,10 +482,12 @@ function HomeStudent() {
           setLoadErr(e.message || "โหลดรายชื่อติวเตอร์ไม่สำเร็จ");
           setTutors([]);
         }
+      } finally {
+        if (!ignore) { setLoading(false); }
       }
     })();
     return () => { ignore = true; };
-  }, []);
+  }, [query]);
 
   const filteredTutors = useMemo(() => {
     const list = tutors || [];
@@ -549,19 +548,6 @@ function HomeStudent() {
                     ค้นหา
                   </button>
                 </div>
-
-                {/* Categories */}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {CATEGORIES.map((c) => (
-                    <CategoryPill
-                      key={c.id}
-                      label={c.label}
-                      icon={c.icon}
-                      active={activeCat === c.id}
-                      onClick={() => setActiveCat((v) => (v === c.id ? null : c.id))}
-                    />
-                  ))}
-                </div>
               </div>
 
               {/* Hero Illustration */}
@@ -574,18 +560,21 @@ function HomeStudent() {
           </div>
         </div>
 
-        {/* Featured Tutors (จาก DB) */}
+        {/* Featured Tutors */}
         <section className="mt-10 md:mt-14">
           <SectionHeader title="ติวเตอร์แนะนำ" subtitle="ข้อมูลติวเตอร์" onAction={() => { }} />
           {loadErr && <div className="mb-4 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-3">{loadErr}</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-            {filteredTutors.length > 0 ? (
-              filteredTutors.map((tutor) => (
+            {loading ? ( // Check loading state first
+              <p className="col-span-full text-center text-gray-500">กำลังโหลดติวเตอร์...</p>
+            ) : tutors.length > 0 ? ( // Use tutors state directly
+              tutors.map((tutor) => (
                 <TutorCard key={tutor.id} item={tutor} onOpen={openTutor} />
               ))
             ) : (
-              <div className="col-span-full ...">
-                {filteredTutors.length === 0 && <EmptyState label="ไม่พบติวเตอร์ตามคำค้นหา" />}
+              // Use col-span-full on EmptyState's container
+              <div className="col-span-full">
+                <EmptyState label="ไม่พบติวเตอร์ตามคำค้นหา" />
               </div>
             )}
           </div>

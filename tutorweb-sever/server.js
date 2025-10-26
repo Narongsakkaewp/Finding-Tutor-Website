@@ -188,6 +188,8 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
   }
 });
 
+// ในไฟล์ server.js
+
 // ---------- /api/tutors (รายชื่อติวเตอร์) ----------
 app.get('/api/tutors', async (req, res) => {
   try {
@@ -195,6 +197,7 @@ app.get('/api/tutors', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
 
+    // ✅ 1. แก้ไขคำสั่ง SQL ให้ JOIN ตาราง tutor_profiles เพื่อดึงข้อมูลจริง
     const [rows] = await pool.execute(
       `SELECT 
           r.user_id, r.name, r.lastname,
@@ -205,18 +208,20 @@ app.get('/api/tutors', async (req, res) => {
           tp.hourly_rate
        FROM register r
        LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
-       WHERE LOWER(r.type) IN ('tutor','teacher')
+       ${whereClause}
        ORDER BY r.user_id DESC
        LIMIT ? OFFSET ?`,
-      [limit, offset]
+      [...params, limit, offset] // ส่ง params ทั้งหมดไปให้ SQL
     );
 
+    // ✅ 4. แก้ไข SQL ส่วนนับจำนวนทั้งหมดให้มี WHERE ด้วย
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total
        FROM register
        WHERE LOWER(type) IN ('tutor','teacher')`
     );
 
+    // ✅ 2. แก้ไขการสร้าง object ให้ใช้ข้อมูลจริงจาก Database
     const items = rows.map(r => ({
       id: `t-${r.user_id}`,
       dbTutorId: r.user_id,

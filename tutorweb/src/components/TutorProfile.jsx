@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, Star } from "lucide-react";
+import { Edit, Star, MapPin, Phone, Mail } from "lucide-react";
 
 /* ---------- Helpers (สำหรับ Tutor) ---------- */
 
@@ -108,19 +108,22 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                 ];
 
                 setProfile({
-                    ...profileData,
+                    ...profileData, // เก็บข้อมูลดิบทั้งหมดที่ได้จาก API ไว้ด้วย
                     fullName: fullNameOf(profileData),
                     avatarUrl: profileData.profile_picture_url || "/default-avatar.png",
                     bio: profileData.about_me || "ยังไม่มีข้อมูลแนะนำตัว",
-                    education: profileData.education?.[0]?.institution || "ยังไม่ระบุสถานศึกษา", // แสดงแค่สถานศึกษาล่าสุด
+                    educationDisplay: profileData.education?.[0]?.institution || "ยังไม่ระบุสถานศึกษา", // สำหรับแสดงผลสั้นๆ
+                    // เก็บข้อมูลติดต่อแยกไว้เพื่อให้เข้าถึงง่าย
+                    address: profileData.address || null,
+                    phone: profileData.phone || null,
+                    email: profileData.email || null // email มาจาก join ตาราง register
                 });
 
                 setTutorPosts(Array.isArray(postsData.items) ? postsData.items.map(normalizeTutorPost) : []);
                 setReviews(mockReviews);
                 setBookings(mockBookings);
-            } catch (err) {
-                console.error("Failed to fetch tutor data:", err);
-            } finally {
+            } catch (err) { /* ... */ }
+            finally {
                 setLoading(false);
             }
         };
@@ -137,8 +140,6 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
     return (
         <div className="min-h-screen bg-gray-50">
             <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
-
-                {/* Header (ปรับปรุงให้เหมือนในรูป) */}
                 <div className="bg-white rounded-3xl shadow-sm border p-6">
                     <div className="flex flex-col md:flex-row md:items-center gap-6">
                         <div className="flex items-start gap-5 flex-grow">
@@ -154,19 +155,75 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                                         <span className="text-gray-500 font-medium ml-2">({profile.nickname})</span>
                                     )}
                                 </h1>
-                                <p className="text-gray-600 mt-1">{profile.education}</p>
-                                <p className="mt-2 text-sm text-gray-700">{profile.bio}</p>
+                                <p className="text-gray-600 mt-1">{profile.education && profile.education.length > 0 && (
+                                    <div className="mt-3 border-t pt-3">
+                                        <h4 className="text-sm font-semibold text-gray-700 mb-1">ประวัติการศึกษา:</h4>
+                                        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                                            {profile.education.map((edu, index) => (
+                                                <li key={index}>
+                                                    {edu.degree || 'N/A'} ที่ {edu.institution || 'N/A'}
+                                                    {edu.major && ` (สาขา ${edu.major})`}
+                                                    {edu.year && ` - ปี ${edu.year}`}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}</p>
+                                <p className="text-gray-600 mt-1">{profile.teaching_experience && profile.teaching_experience.length > 0 && (
+                                    <div className="mt-3 border-t pt-3">
+                                        <h4 className="text-sm font-semibold text-gray-700 mb-1">ประสบการณ์ด้านการสอน:</h4>
+                                        <ul className="space-y-2 text-sm text-gray-600">
+                                            {profile.teaching_experience.map((exp, index) => (
+                                                <li key={index}>
+                                                    <p className="font-medium">{exp.title || 'N/A'} {exp.duration && `(${exp.duration})`}</p>
+                                                    {exp.description && <p className="text-sm text-gray-700 pl-4">{exp.description}</p>}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}</p>
+                                <p className="mt-3 border-t pt-3 text-sm text-gray-700">{profile.bio}</p>
+                                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                                    {/* Address */}
+                                    <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50">
+                                        <div className="flex-shrink-0 bg-gray-200 rounded p-1.5">
+                                            <MapPin size={16} className="text-gray-600" />
+                                        </div>
+                                        <span className="text-gray-700 truncate">{profile.address || "ยังไม่ระบุที่อยู่"}</span>
+                                    </div>
+                                    {/* Phone */}
+                                    <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50">
+                                        <div className="flex-shrink-0 bg-gray-200 rounded p-1.5">
+                                            <Phone size={16} className="text-gray-600" />
+                                        </div>
+                                        <a href={`tel:${profile.phone}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">
+                                            {profile.phone || "ยังไม่ระบุเบอร์"}
+                                        </a>
+                                    </div>
+                                    {/* Email */}
+                                    <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50">
+                                        <div className="flex-shrink-0 bg-gray-200 rounded p-1.5">
+                                            <Mail size={16} className="text-gray-600" />
+                                        </div>
+                                        <a href={`mailto:${profile.email}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">
+                                            {profile.email || "ยังไม่ระบุอีเมล"}
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <div className="md:ml-auto grid grid-cols items-end gap-3">
                             <button
                                 onClick={onEditProfile}
-                                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
+                                className="flex w-full justify-center items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
                             >
                                 <Edit size={16} /> แก้ไขโปรไฟล์
                             </button>
-                            <Stat label="โพสต์ทั้งหมด" value={String(tutorPosts.length)} />
+                            <div className="rounded-xl border bg-white px-3 py-2 text-center">
+                                <div className="text-xs text-gray-500">โพสต์ทั้งหมด</div>
+                                <div className="text-lg font-semibold">{String(tutorPosts.length)}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
