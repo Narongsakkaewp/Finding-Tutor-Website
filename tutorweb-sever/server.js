@@ -188,14 +188,27 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
   }
 });
 
-// ในไฟล์ server.js
-
 // ---------- /api/tutors (รายชื่อติวเตอร์) ----------
 app.get('/api/tutors', async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
+
+    const searchQuery = (req.query.search || '').trim();
+    let whereClause = `WHERE LOWER(r.type) IN ('tutor','teacher')`;
+    const params = [];
+
+    if (searchQuery) {
+      whereClause += ` AND (
+          LOWER(r.name) LIKE ? 
+          OR LOWER(r.lastname) LIKE ? 
+          OR LOWER(tp.nickname) LIKE ? 
+          OR LOWER(tp.can_teach_subjects) LIKE ?
+      )`;
+      const searchTerm = `%${searchQuery.toLowerCase()}%`;
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+    }
 
     // ✅ 1. แก้ไขคำสั่ง SQL ให้ JOIN ตาราง tutor_profiles เพื่อดึงข้อมูลจริง
     const [rows] = await pool.execute(
@@ -217,8 +230,10 @@ app.get('/api/tutors', async (req, res) => {
     // ✅ 4. แก้ไข SQL ส่วนนับจำนวนทั้งหมดให้มี WHERE ด้วย
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total
-       FROM register
-       WHERE LOWER(type) IN ('tutor','teacher')`
+       FROM register r
+       LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+       ${whereClause}`,
+      params // ใช้ params เดิม
     );
 
     // ✅ 2. แก้ไขการสร้าง object ให้ใช้ข้อมูลจริงจาก Database
@@ -251,6 +266,7 @@ app.get('/api/tutors', async (req, res) => {
 
 // ---------- โพสต์ติวเตอร์ (ฟีด) ----------
 app.get('/api/tutor-posts', async (req, res) => {
+  console.log("📩 /api/tutor-posts called:", req.query);
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
@@ -352,9 +368,9 @@ app.get('/api/tutor-posts', async (req, res) => {
         hasMore: offset + rows.length < total
       }
     });
-  } catch (e) {
-    console.error('GET /api/tutor-posts error:', e);
-    res.status(500).json({ message: 'Server error' });
+  } catch (err) {
+    console.error("❌ /api/tutor-posts error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 
@@ -937,7 +953,7 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
 
     const status = (req.query.status || 'pending').toLowerCase(); // optional
-    const whereStatus = ['pending','approved','rejected'].includes(status) ? 'AND j.status = ?' : '';
+    const whereStatus = ['pending', 'approved', 'rejected'].includes(status) ? 'AND j.status = ?' : '';
     const params = [postId];
     if (whereStatus) params.push(status);
 
@@ -970,7 +986,7 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
 
     if (!Number.isFinite(postId) || !Number.isFinite(userId))
       return res.status(400).json({ message: 'invalid ids' });
-    if (!['approve','reject'].includes(action))
+    if (!['approve', 'reject'].includes(action))
       return res.status(400).json({ message: 'invalid action' });
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
@@ -995,7 +1011,7 @@ app.get('/api/tutor_posts/:id/requests', async (req, res) => {
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
 
     const status = (req.query.status || 'pending').toLowerCase();
-    const whereStatus = ['pending','approved','rejected'].includes(status) ? 'AND j.status = ?' : '';
+    const whereStatus = ['pending', 'approved', 'rejected'].includes(status) ? 'AND j.status = ?' : '';
     const params = [postId];
     if (whereStatus) params.push(status);
 
@@ -1028,7 +1044,7 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
 
     if (!Number.isFinite(postId) || !Number.isFinite(userId))
       return res.status(400).json({ message: 'invalid ids' });
-    if (!['approve','reject'].includes(action))
+    if (!['approve', 'reject'].includes(action))
       return res.status(400).json({ message: 'invalid action' });
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
