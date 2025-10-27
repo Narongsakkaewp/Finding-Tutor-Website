@@ -12,7 +12,7 @@ function pickUserType() {
 }
 function pickTutorId() {
   const u = pickUser();
-  return localStorage.getItem("tutorId") || u.tutor_id || u.user_id || "";
+  return u.user_id || localStorage.getItem("tutorId") || "";
 }
 function extractList(data) {
   if (Array.isArray(data)) return data;
@@ -29,7 +29,7 @@ const normalizeStudentPost = (p = {}) => ({
   owner_id: p.owner_id ?? p.student_id ?? p.user_id,
   createdAt: p.createdAt || p.created_at || p.created || new Date().toISOString(),
   subject: p.subject || p.title || "",
-  description: p.description || p.body || p.details || "",
+  description: p.description || p.content || "",
   location: p.location || p.place || p.location_name || "",
   group_size: Number(p.group_size ?? p.seats ?? p.groupSize ?? 0),
   budget: Number(p.budget ?? p.price ?? p.cost ?? 0),
@@ -91,6 +91,33 @@ const normalizeTutorPost = (p = {}) => {
   };
 };
 
+const postGradeLevelOptions = [
+  { value: "ประถมศึกษา", label: "ประถมศึกษา" },
+  { value: "ม.1-ม.3", label: "มัธยมศึกษาตอนต้น (ม.1-ม.3)" },
+  { value: "ม.4-ม.6", label: "มัธยมศึกษาตอนปลาย (ม.4-ม.6)" },
+  { value: "ปริญญาตรี", label: "ปริญญาตรี" },
+  { value: "บุคคลทั่วไป", label: "บุคคลทั่วไป" }
+];
+
+function Modal({ open, onClose, children, title }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <h3 className="font-semibold text-lg">{title}</h3>
+          <button onClick={onClose} className="px-2 py-1 rounded-md text-sm text-gray-600 hover:bg-gray-100">ปิด</button>
+        </div>
+        <div className="p-5 max-h-[70vh] overflow-y-auto">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 /* ---------- component ---------- */
 function MyPost({ setPostsCache }) {
   const user = pickUser();
@@ -110,23 +137,27 @@ function MyPost({ setPostsCache }) {
   const [error, setError] = useState("");
 
   // ฟอร์ม
-  const [formData, setFormData] = useState({
+  const initialFormData = {
     subject: "",
     description: "",
-    preferred_days: "",
-    preferred_time: "",
-    location: "",
-    group_size: "",
+    preferred_days: "", // สำหรับ input type="date"
+    preferred_time: "", // สำหรับ input type="time"
+    location: "ออนไลน์", // ใส่ค่าเริ่มต้น
+    group_size: "1",
     budget: "",
     contact_info: "",
     // สำหรับติวเตอร์
+    target_student_level: [],
     teaching_days: "",
     teaching_time: "",
     price: "",
-  });
+  };
+
+  const [formData, setFormData] = useState(initialFormData);
 
   /* ---------- fetch posts (ตามแท็บ) ---------- */
   const fetchPosts = useCallback(async () => {
+    console.log("[DEBUG] fetchPosts triggered:", feedType, meId);
     try {
       setError("");
 
@@ -139,7 +170,7 @@ function MyPost({ setPostsCache }) {
         setPostsCache?.(normalized);
       } else {
         // tutor feed — แนบ me เพื่อให้ backend คืน favorited/fav_count/join flags ให้ถูก
-        const url = `${API_BASE}/api/tutor-posts?page=1&limit=20&me=${meId}`;
+        const url = `${API_BASE}/api/tutor-posts?page=1&limit=20`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -155,7 +186,10 @@ function MyPost({ setPostsCache }) {
     }
   }, [feedType, meId, setPostsCache]);
 
-  useEffect(() => { fetchPosts(); }, [fetchPosts]);
+  useEffect(() => {
+    console.log("[DEBUG] useEffect triggered by feedType:", feedType);
+    fetchPosts();
+  }, [fetchPosts]);
 
   /* ---------- form handlers ---------- */
   const handleChange = (e) => {
@@ -163,77 +197,71 @@ function MyPost({ setPostsCache }) {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleLevelChange = (levelValue) => {
+    setFormData(prev => {
+      const currentLevels = prev.target_student_level || [];
+      if (currentLevels.includes(levelValue)) {
+        return { ...prev, target_student_level: currentLevels.filter(l => l !== levelValue) };
+      } else {
+        return { ...prev, target_student_level: [...currentLevels, levelValue] };
+      }
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log("[DEBUG] Submit formData:", feedType, formData);
     if (!user?.user_id) return alert("กรุณาเข้าสู่ระบบก่อนโพสต์");
-
-    // ตรวจค่าว่างตามประเภทแบบฟอร์ม
-    if (feedType === "student") {
-      const required = ["subject", "description", "preferred_days", "preferred_time", "location", "group_size", "budget", "contact_info"];
-      for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
-    } else {
-      const required = ["subject", "description", "teaching_days", "teaching_time", "location", "price", "contact_info"];
-      for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
-    }
 
     try {
       setLoading(true);
+      setError("");
 
       if (feedType === "student") {
+        const required = ["subject", "description", "preferred_days", "preferred_time", "location", "group_size", "budget", "contact_info"];
+        for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
+
         const payload = {
           user_id: meId,
           subject: formData.subject.trim(),
           description: formData.description.trim(),
-          preferred_days: formData.preferred_days.trim(),
+          preferred_days: formData.preferred_days,
           preferred_time: formData.preferred_time,
           location: formData.location.trim(),
           group_size: Number(formData.group_size),
           budget: Number(formData.budget),
           contact_info: formData.contact_info.trim(),
         };
-
         const res = await fetch(`${API_BASE}/api/student_posts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
         const body = await res.json();
-        if (!res.ok) return alert(body?.message || "เกิดข้อผิดพลาด");
+        if (!res.ok) throw new Error(body?.message || "เกิดข้อผิดพลาด");
 
-        const created = normalizeStudentPost({
-          ...payload, ...body,
-          user: {
-            first_name: user?.first_name || user?.name || "",
-            last_name: user?.last_name || "",
-            profile_image: user?.profile_image || "/default-avatar.png",
-          },
-        });
-
-        setPosts(prev => [created, ...prev]);
-        setPostsCache?.(prev => [created, ...(Array.isArray(prev) ? prev : [])]);
-        setExpanded(false);
-        setFormData({
-          subject: "", description: "", preferred_days: "", preferred_time: "",
-          location: "", group_size: "", budget: "", contact_info: "",
-          teaching_days: "", teaching_time: "", price: ""
-        });
       } else {
-        if (userType !== "tutor") {
-          return alert("เฉพาะติวเตอร์เท่านั้นที่โพสต์ฝั่งติวเตอร์ได้");
+        // ✅✅✅ 8. START: แก้ไข Bug ของติวเตอร์ ✅✅✅
+        const required = ["subject", "description", "teaching_days", "teaching_time", "location", "price", "contact_info"];
+        for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
+        if (formData.target_student_level.length === 0) {
+          return alert("กรุณาเลือกระดับชั้นที่สอนอย่างน้อย 1 ระดับ");
         }
-        const tId = tutorId;
+        if (userType !== "tutor") {
+          throw new Error("เฉพาะติวเตอร์เท่านั้นที่โพสต์ฝั่งติวเตอร์ได้");
+        }
+
+        // สร้าง payload แบบ Flat Object ให้ตรงกับ Backend API
         const payload = {
-          tutorId: tId,
-          tutor_id: tId,
+          tutor_id: tutorId, // ใช้ tutorId ที่ดึงมาจาก useMemo
           subject: formData.subject.trim(),
-          content: formData.description.trim(),
-          meta: {
-            teaching_days: formData.teaching_days.trim(),
-            teaching_time: formData.teaching_time.trim(),
-            location: formData.location.trim(),
-            price: Number(formData.price),
-            contact_info: formData.contact_info.trim(),
-          },
+          description: formData.description.trim(), // <--- แก้จาก content
+          target_student_level: formData.target_student_level.join(','), // แปลง Array เป็น String
+          teaching_days: formData.teaching_days, // <--- ย้ายออกมาจาก meta
+          teaching_time: formData.teaching_time, // <--- ย้ายออกมาจาก meta
+          location: formData.location.trim(),      // <--- ย้ายออกมาจาก meta
+          price: Number(formData.price),           // <--- ย้ายออกมาจาก meta
+          contact_info: formData.contact_info.trim(), // <--- ย้ายออกมาจาก meta
         };
 
         const res = await fetch(`${API_BASE}/api/tutor-posts`, {
@@ -241,29 +269,20 @@ function MyPost({ setPostsCache }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
+
         const body = await res.json();
-        if (!res.ok) return alert(body?.message || "เกิดข้อผิดพลาด");
-
-        const created = normalizeTutorPost({
-          ...payload, ...body,
-          user: {
-            first_name: user?.first_name || user?.name || "",
-            last_name: user?.last_name || "",
-            profile_image: user?.profile_image || "/default-avatar.png",
-          },
-        });
-
-        setPosts(prev => [created, ...prev]);
-        setPostsCache?.(prev => [created, ...(Array.isArray(prev) ? prev : [])]);
-        setExpanded(false);
-        setFormData({
-          subject: "", description: "", preferred_days: "", preferred_time: "",
-          location: "ออนไลน์", group_size: "", budget: "", contact_info: "",
-          teaching_days: "", teaching_time: "", price: ""
-        });
+        if (!res.ok || !body.success) {
+          throw new Error(body?.message || "เกิดข้อผิดพลาดในการสร้างโพสต์ (tutor)");
+        }
+        // ✅✅✅ END: แก้ไข Bug ของติวเตอร์ ✅✅✅
       }
-    } catch {
-      alert("Server error");
+
+      await fetchPosts(); // เรียกโหลดโพสต์ใหม่ทั้งหมด
+      setExpanded(false); // ปิด Modal
+      setFormData(initialFormData); // ✅ 9. รีเซ็ตฟอร์มด้วยค่าเริ่มต้นที่ถูกต้อง
+
+    } catch (err) {
+      alert(err.message || "Server error");
     } finally {
       setLoading(false);
     }
@@ -447,8 +466,6 @@ function MyPost({ setPostsCache }) {
     }
   };
 
-
-
   /* ---------- Favorite (student & tutor feed) ---------- */
   const toggleFavorite = async (post) => {
     if (!meId) return alert("กรุณาเข้าสู่ระบบ");
@@ -527,7 +544,10 @@ function MyPost({ setPostsCache }) {
             </button>
             <button
               className={`px-4 py-2 text-sm ${feedType === 'tutor' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => setFeedType('tutor')}
+              onClick={() => {
+                console.log("Switching to tutor feed");
+                setFeedType('tutor');
+              }}
             >
               ติวเตอร์
             </button>
@@ -552,65 +572,89 @@ function MyPost({ setPostsCache }) {
             <div className="bg-white rounded-xl shadow p-4 mb-6">
               <div className="flex items-center gap-3">
                 <img
-                  src={user?.profile_image || "/default-avatar.png"}
+                  src={user?.profile_picture_url || user?.profile_image || "/default-avatar.png"}
                   alt="avatar"
-                  className="w-10 h-10 rounded-full"
+                  className="w-10 h-10 rounded-full object-cover"
                 />
                 <div
                   className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-gray-600 cursor-pointer hover:bg-gray-200"
-                  onClick={() => setExpanded(true)}
+                  onClick={() => setExpanded(true)} // กดแล้วเปิด Modal
                 >
-                  {`สวัสดี, ${currentUserName} — สร้างโพสต์ของคุณเลย`}
+                  {`สวัสดี, ${currentUserName} — ${feedType === 'student' ? 'สร้างโพสต์หานักเรียน...' : 'สร้างโพสต์รับสอน...'}`}
                 </div>
               </div>
 
-              {expanded && (
-                <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+              <Modal
+                open={expanded}
+                onClose={() => setExpanded(false)}
+                title={feedType === "student" ? "นักเรียนสร้างโพสต์" : "ติวเตอร์สร้างโพสต์"}
+              >
+                <form onSubmit={handleSubmit} className="space-y-4">
                   <input
-                    type="text"
-                    name="subject"
-                    placeholder="วิชา/หัวข้อ"
-                    value={formData.subject}
-                    onChange={handleChange}
-                    required
+                    type="text" name="subject" placeholder="วิชา/หัวข้อ"
+                    value={formData.subject} onChange={handleChange} required
                     className="border rounded p-2 w-full"
                   />
                   <textarea
                     name="description"
                     placeholder={feedType === "student" ? "รายละเอียดความต้องการเรียน" : "รายละเอียดคอร์ส/แนวทางการสอน"}
-                    value={formData.description}
-                    onChange={handleChange}
-                    required
+                    value={formData.description} onChange={handleChange} required
                     className="border rounded p-2 w-full"
                   />
 
                   {feedType === "student" ? (
                     <>
-                      <input type="text" name="preferred_days" placeholder="วันสะดวก (เช่น จ-พ หรือ 10 ตุลาคม 2568)"
-                        value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="time" name="preferred_time"
-                        value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      {/* ✅ 8. เปลี่ยน "วันสะดวก" เป็น date picker */}
+                      <div className="grid md:grid-cols-2 gap-3">
+                        <input type="date" name="preferred_days" placeholder="วันสะดวก"
+                          value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
+                        <input type="time" name="preferred_time"
+                          value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      </div>
                       <input type="text" name="location" placeholder="สถานที่"
                         value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="number" name="group_size" placeholder="จำนวนคน"
-                        value={formData.group_size} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <input type="number" name="budget" placeholder="งบประมาณ (บาท)"
-                        value={formData.budget} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      <div className="grid md:grid-cols-2 gap-3">
+                        <input type="number" name="group_size" placeholder="จำนวนคน (ขั้นต่ำ 1)" min="1"
+                          value={formData.group_size} onChange={handleChange} required className="border rounded p-2 w-full" />
+                        <input type="number" name="budget" placeholder="งบประมาณ (บาท)" min="0"
+                          value={formData.budget} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      </div>
                       <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ"
                         value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
                     </>
                   ) : (
                     <>
+                      {/* ✅ 9. เพิ่มฟิลด์ "ระดับชั้น" สำหรับติวเตอร์ */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">ระดับชั้นที่สอน (เลือกได้หลายข้อ)</label>
+                        <div className="mt-2 space-y-2 border rounded-md p-4">
+                          {postGradeLevelOptions.map(option => (
+                            <div key={option.value} className="flex items-center">
+                              <input
+                                id={`level-${option.value}`} type="checkbox"
+                                value={option.value}
+                                checked={(formData.target_student_level || []).includes(option.value)}
+                                onChange={() => handleLevelChange(option.value)}
+                                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <label htmlFor={`level-${option.value}`} className="ml-3 block text-sm text-gray-900">
+                                {option.label}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
                       <div className="grid md:grid-cols-2 gap-3">
-                        <input type="text" name="teaching_days" placeholder="วันที่สอน (เช่น เสาร์-อาทิตย์)"
+                        <input type="date" name="teaching_days" placeholder="วันที่สอน"
                           value={formData.teaching_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-                        <input type="text" name="teaching_time" placeholder="ช่วงเวลา (เช่น 18:00-20:00)"
+                        <input type="time" name="teaching_time" placeholder="ช่วงเวลา"
                           value={formData.teaching_time} onChange={handleChange} required className="border rounded p-2 w-full" />
                       </div>
                       <div className="grid md:grid-cols-2 gap-3">
                         <input type="text" name="location" placeholder="สถานที่ (ออนไลน์/ออนไซต์)"
                           value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-                        <input type="number" name="price" placeholder="ราคา (บาท/ชม.)"
+                        <input type="number" name="price" placeholder="ราคา (บาท/ชม.)" min="0"
                           value={formData.price} onChange={handleChange} required className="border rounded p-2 w-full" />
                       </div>
                       <input type="text" name="contact_info" placeholder="ช่องทางติดต่อ (LINE/เบอร์/อีเมล)"
@@ -618,16 +662,16 @@ function MyPost({ setPostsCache }) {
                     </>
                   )}
 
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end gap-2 pt-4">
                     <button type="button" onClick={() => setExpanded(false)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">
                       ยกเลิก
                     </button>
-                    <button disabled={loading} type="submit" className="px-4 py-2 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60">
+                    <button disabled={loading} type="submit" className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
                       {loading ? "กำลังโพสต์..." : "โพสต์"}
                     </button>
                   </div>
                 </form>
-              )}
+              </Modal>
             </div>
           )}
 

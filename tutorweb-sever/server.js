@@ -188,6 +188,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
   }
 });
 
+// ในไฟล์ server.js
 
 // ---------- /api/tutors (รายชื่อติวเตอร์) ----------
 app.get('/api/tutors', async (req, res) => {
@@ -195,6 +196,21 @@ app.get('/api/tutors', async (req, res) => {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
+
+    const searchQuery = (req.query.search || '').trim();
+    let whereClause = `WHERE LOWER(r.type) IN ('tutor','teacher')`;
+    const params = [];
+
+    if (searchQuery) {
+      whereClause += ` AND (
+          LOWER(r.name) LIKE ? 
+          OR LOWER(r.lastname) LIKE ? 
+          OR LOWER(tp.nickname) LIKE ? 
+          OR LOWER(tp.can_teach_subjects) LIKE ?
+      )`;
+      const searchTerm = `%${searchQuery.toLowerCase()}%`;
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+    }
 
     // ฟิลเตอร์เพิ่มเติม (เลือกใส่ก็ได้)
     const search = (req.query.search || '').trim().toLowerCase();
@@ -234,12 +250,11 @@ app.get('/api/tutors', async (req, res) => {
     // นับรวม (ใช้ WHERE เดียวกัน ยกเว้น LIMIT/OFFSET)
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total
-         FROM register r
-         LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
-         ${whereClause}`,
-      params
+       FROM register
+       WHERE LOWER(type) IN ('tutor','teacher')`
     );
 
+    // ✅ 2. แก้ไขการสร้าง object ให้ใช้ข้อมูลจริงจาก Database
     const items = rows.map(r => ({
       id: `t-${r.user_id}`,
       dbTutorId: r.user_id,
@@ -269,6 +284,7 @@ app.get('/api/tutors', async (req, res) => {
 
 // ---------- โพสต์ติวเตอร์ (ฟีด) ----------
 app.get('/api/tutor-posts', async (req, res) => {
+  console.log("📩 /api/tutor-posts called:", req.query);
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
@@ -370,9 +386,9 @@ app.get('/api/tutor-posts', async (req, res) => {
         hasMore: offset + rows.length < total
       }
     });
-  } catch (e) {
-    console.error('GET /api/tutor-posts error:', e);
-    res.status(500).json({ message: 'Server error' });
+  } catch (err) {
+    console.error("❌ /api/tutor-posts error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 
@@ -988,8 +1004,8 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     const postId = Number(req.params.id);
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
 
-    const status = (req.query.status || '').trim(); // optional
-    const where = ['j.student_post_id = ?'];
+    const status = (req.query.status || 'pending').toLowerCase(); // optional
+    const whereStatus = ['pending','approved','rejected'].includes(status) ? 'AND j.status = ?' : '';
     const params = [postId];
     if (status) { where.push('j.status = ?'); params.push(status); }
 
@@ -1015,16 +1031,15 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
 
 // >>> อนุมัติ/ปฏิเสธคำขอ ของโพสต์นักเรียน (REWRITE)
 app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
-  const postId = Number(req.params.id);
-  const targetUserId = Number(req.params.userId);
-  // รับ action ได้ทั้งจาก body และ query
-  const action = String((req.body?.action || req.query?.action || '')).toLowerCase(); // 'approve' | 'reject'
-  console.log('[student request]', { postId, targetUserId, action });
+  try {
+    const postId = Number(req.params.id);
+    const userId = Number(req.params.userId);
+    const action = String(req.body?.action || '').toLowerCase(); // "approve" | "reject"
 
-  if (!Number.isFinite(postId) || !Number.isFinite(targetUserId))
-    return res.status(400).json({ message: 'invalid id' });
-  if (!['approve', 'reject'].includes(action))
-    return res.status(400).json({ message: 'invalid action' });
+    if (!Number.isFinite(postId) || !Number.isFinite(userId))
+      return res.status(400).json({ message: 'invalid ids' });
+    if (!['approve','reject'].includes(action))
+      return res.status(400).json({ message: 'invalid action' });
 
   const conn = await pool.getConnection();
   try {
@@ -1154,7 +1169,7 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
 
     if (!Number.isFinite(postId) || !Number.isFinite(userId))
       return res.status(400).json({ message: 'invalid ids' });
-    if (!['approve','reject'].includes(action))
+    if (!['approve', 'reject'].includes(action))
       return res.status(400).json({ message: 'invalid action' });
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';

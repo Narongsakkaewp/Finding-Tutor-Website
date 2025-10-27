@@ -99,8 +99,8 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
 
                 // Mock data สำหรับรีวิวและตารางการจอง
                 const mockReviews = [
-                    { studentName: "Yasin Warat", rating: 5, comment: "สอนดีมาก(กี่โมง?) เข้าใจง่ายขึ้นเยอะเลย", date: "1 วันที่แล้ว" },
-                    { studentName: "Narongsak Kw", rating: 4.5, comment: "อาจารย์ตอแหล ไม่ค่อยชอบหน้า", date: "5 วันที่แล้ว" },
+                    { studentName: "Yasin Warat", rating: 5, comment: "", date: "1 วันที่แล้ว" },
+                    { studentName: "Narongsak Kw", rating: 4.5, comment: "", date: "5 วันที่แล้ว" },
                 ];
                 const mockBookings = [
                     { time: "10:30 - 13:00", subject: "English for Conversation", location: "Esplanade Ratchada" },
