@@ -28,7 +28,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // หาโพสต์จาก cache ก่อน
+  // โหลดโพสต์ (พยายามใช้ cache ก่อน)
   useEffect(() => {
     const found = postsCache.find((p) => Number(p.id) === Number(postId));
     if (found) {
@@ -44,10 +44,10 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
         const list = Array.isArray(data)
           ? data
           : Array.isArray(data.items)
-            ? data.items
-            : Array.isArray(data.data)
-              ? data.data
-              : [];
+          ? data.items
+          : Array.isArray(data.data)
+          ? data.data
+          : [];
         const normalized = list.map(normalizePost);
         const single = normalized.find((p) => Number(p.id) === Number(postId));
         if (single) setPost(single);
@@ -59,10 +59,18 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
     })();
   }, [postId, me, postsCache]);
 
-  const isOwner = useMemo(
-    () => Number(me) === Number(post?.owner_id),
-    [me, post?.owner_id]
-  );
+  // หา user_id ปัจจุบันจาก prop me หรือ localStorage (fallback)
+  const myId = useMemo(() => {
+    if (Number.isFinite(Number(me))) return Number(me);
+    try {
+      const saved = JSON.parse(localStorage.getItem("user") || "{}");
+      return Number(saved?.user_id ?? saved?.user?.user_id ?? saved?.id ?? 0);
+    } catch {
+      return 0;
+    }
+  }, [me]);
+
+  const isOwner = Number(myId) === Number(post?.owner_id);
 
   if (loading) {
     return (
@@ -132,13 +140,8 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
             {post.joined ? "• คุณเข้าร่วมแล้ว" : ""}
           </div>
 
-          {/* เดิม: แสดงเฉพาะเจ้าของ */}
-{/* {isOwner && <JoinRequestsManager postId={post.id} />} */}
-
-{/* ทดสอบชั่วคราว: บังคับแสดง */}
-<JoinRequestsManager postId={post.id} />
-
-
+          {/* แสดงบล็อคจัดการคำขอเฉพาะเจ้าของโพสต์ */}
+          <JoinRequestsManager postId={post.id} isOwner={isOwner} />
         </div>
       </div>
     </div>
@@ -183,14 +186,11 @@ function JoinRequestsManager({ postId, isOwner }) {
     setRequests((prev) => prev.filter((r) => !predicate(r)));
 
   const approve = async (req) => {
-    if (!window.confirm(`ยืนยันอนุมัติให้ ${req.name} ${req.lastname || ""} ?`))
-      return;
+    if (!window.confirm(`ยืนยันอนุมัติให้ ${req.name} ${req.lastname || ""} ?`)) return;
 
-    // optimistic
     optimisticRemove((r) => r.request_id === req.request_id || r.user_id === req.user_id);
 
     try {
-      // รูปแบบใหม่
       let ok = false;
       try {
         const r1 = await fetch(
@@ -202,9 +202,8 @@ function JoinRequestsManager({ postId, isOwner }) {
           }
         );
         ok = r1.ok;
-      } catch { }
+      } catch {}
 
-      // fallback เดิม
       if (!ok) {
         await fetch(
           `${API_BASE}/api/student_posts/requests/${req.request_id}/approve`,
@@ -213,20 +212,17 @@ function JoinRequestsManager({ postId, isOwner }) {
       }
     } catch (e) {
       console.error("approve error:", e);
-      loadRequests(); // rollback
+      loadRequests();
       alert("อนุมัติไม่สำเร็จ");
     }
   };
 
   const reject = async (req) => {
-    if (!window.confirm(`ปฏิเสธคำขอของ ${req.name} ${req.lastname || ""} ?`))
-      return;
+    if (!window.confirm(`ปฏิเสธคำขอของ ${req.name} ${req.lastname || ""} ?`)) return;
 
-    // optimistic
     optimisticRemove((r) => r.request_id === req.request_id || r.user_id === req.user_id);
 
     try {
-      // รูปแบบใหม่
       let ok = false;
       try {
         const r1 = await fetch(
@@ -238,9 +234,8 @@ function JoinRequestsManager({ postId, isOwner }) {
           }
         );
         ok = r1.ok;
-      } catch { }
+      } catch {}
 
-      // fallback เดิม
       if (!ok) {
         await fetch(
           `${API_BASE}/api/student_posts/requests/${req.request_id}/reject`,
@@ -249,7 +244,7 @@ function JoinRequestsManager({ postId, isOwner }) {
       }
     } catch (e) {
       console.error("reject error:", e);
-      loadRequests(); // rollback
+      loadRequests();
       alert("ปฏิเสธไม่สำเร็จ");
     }
   };
@@ -287,30 +282,22 @@ function JoinRequestsManager({ postId, isOwner }) {
               )}
             </div>
 
-            {/* ถ้าเป็นเจ้าของเท่านั้นจึงเห็นปุ่ม */}
-            {isOwner ? (
-              (r.status === "pending" || !r.status) ? (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => approve(r)}
-                    className="px-3 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 text-sm"
-                  >
-                    อนุมัติ
-                  </button>
-                  <button
-                    onClick={() => reject(r)}
-                    className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50"
-                  >
-                    ปฏิเสธ
-                  </button>
-                </div>
-              ) : (
-                <span className="text-xs px-2 py-1 rounded bg-gray-100">
-                  {r.status}
-                </span>
-              )
-            ) : (
-              <span className="text-xs text-gray-400">คุณไม่ใช่เจ้าของโพสต์</span>
+            {/* เจ้าของเท่านั้นที่เห็นปุ่ม */}
+            {isOwner && (r.status === "pending" || !r.status) && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => approve(r)}
+                  className="px-3 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 text-sm"
+                >
+                  อนุมัติ
+                </button>
+                <button
+                  onClick={() => reject(r)}
+                  className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50"
+                >
+                  ปฏิเสธ
+                </button>
+              </div>
             )}
           </div>
         ))}

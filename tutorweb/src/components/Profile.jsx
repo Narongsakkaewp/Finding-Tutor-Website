@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { User, MapPin, Mail, Phone, Edit } from "lucide-react";
+import { Edit, MoreVertical, Trash2, EyeOff } from "lucide-react";
 
-/* Profile.jsx - หน้าข้อมูลโปรไฟล์ผู้ใช้ (student)*/
 /* ---------- helpers ---------- */
 
 const normalizePost = (p = {}) => ({
@@ -20,7 +19,8 @@ const normalizePost = (p = {}) => ({
   },
 });
 
-const fullNameOf = (u) => [u?.name || u?.first_name || "", u?.lastname || u?.last_name || ""].join(" ").trim();
+const fullNameOf = (u) =>
+  [u?.name || u?.first_name || "", u?.lastname || u?.last_name || ""].join(" ").trim();
 
 /* ---------- Subcomponents ---------- */
 
@@ -43,7 +43,60 @@ function Card({ title, children }) {
 }
 
 function Empty({ line = "ไม่พบข้อมูล" }) {
-  return <div className="text-sm text-gray-500 bg-gray-50 border rounded-md p-3">{line}</div>;
+  return (
+    <div className="text-sm text-gray-500 bg-gray-50 border rounded-md p-3">
+      {line}
+    </div>
+  );
+}
+
+/* ===== เมนูสามจุดบนการ์ดโพสต์ ===== */
+function PostActionMenu({ open, onClose, onHide, onDelete }) {
+  if (!open) return null;
+  return (
+    <div className="absolute right-2 top-8 z-20 w-40 overflow-hidden rounded-xl border bg-white shadow-xl">
+      <button
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
+        onClick={() => { onHide(); onClose(); }}
+      >
+        <EyeOff size={16} /> ซ่อนโพสต์
+      </button>
+      <button
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+        onClick={() => { onDelete(); onClose(); }}
+      >
+        <Trash2 size={16} /> ลบโพสต์
+      </button>
+    </div>
+  );
+}
+
+/* ===== กล่องยืนยันลบ ===== */
+function ConfirmDialog({ open, title = "ยืนยันการลบ", desc = "ลบโพสต์นี้ถาวรหรือไม่?", onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
+      <div className="relative z-10 w-[92%] max-w-sm rounded-2xl border bg-white p-5 shadow-xl">
+        <h4 className="text-lg font-bold">{title}</h4>
+        <p className="mt-2 text-sm text-gray-600">{desc}</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
+          >
+            ยกเลิก
+          </button>
+          <button
+            onClick={onConfirm}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+          >
+            ลบโพสต์
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ---------- Main ---------- */
@@ -53,6 +106,14 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   const [posts, setPosts] = useState([]);
   const [savedTutors, setSavedTutors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [events, setEvents] = useState([]); // calendar events
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [dailyEvents, setDailyEvents] = useState([]);
+
+  // ===== สำหรับเมนู/ซ่อน/ลบ
+  const [openMenuFor, setOpenMenuFor] = useState(null);   // id ของการ์ดที่เปิดเมนู
+  const [hiddenPostIds, setHiddenPostIds] = useState(new Set()); // id ที่ถูกซ่อน
+  const [confirm, setConfirm] = useState({ open: false, id: null });
 
   const currentUser = useMemo(() => {
     try {
@@ -62,6 +123,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
     }
   }, []);
 
+  // โหลดโปรไฟล์, โพสต์ และอีเวนต์
   useEffect(() => {
     let cancelled = false;
 
@@ -69,19 +131,18 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
       try {
         const me = currentUser?.user_id || 0;
 
-        // ✅ 1. แก้ไขค่าเริ่มต้นให้ตรงกับข้อมูลใน localStorage
+        // ----- โปรไฟล์ -----
         let prof = {
-          avatarUrl: currentUser?.profile_picture_url || "/default-avatar.png", 
+          avatarUrl: currentUser?.profile_picture_url || "/default-avatar.png",
           fullName: fullNameOf(currentUser) || currentUser?.email || "ผู้ใช้",
           nickname: currentUser?.nickname || "",
-          gradeLevel: currentUser?.grade_level || "นักเรียน", // ใช้ grade_level
-          school: currentUser?.institution || "", // ใช้ institution
-          city: currentUser?.address || "", // ใช้ address
+          gradeLevel: currentUser?.grade_level || "นักเรียน",
+          school: currentUser?.institution || "",
+          city: currentUser?.address || "",
           contact: { email: currentUser?.email || "", phone: currentUser?.phone || "" },
           subjects: currentUser?.subjects || [],
         };
 
-        // Fetch ข้อมูลโปรไฟล์ล่าสุดจาก API
         try {
           const pfRes = await fetch(`http://localhost:5000/api/profile/${me}`);
           if (pfRes.ok) {
@@ -90,7 +151,6 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               ...prof,
               fullName: fullNameOf(p) || prof.fullName,
               nickname: p.nickname ?? prof.nickname,
-              // ✅ 2. จุดแก้ไขสำคัญ: ใช้ p.profile_picture_url แทน p.avatarUrl
               avatarUrl: p.profile_picture_url || prof.avatarUrl,
               city: p.address ?? prof.city,
               school: p.institution ?? prof.school,
@@ -102,13 +162,11 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               gradeLevel: p.grade_level ?? prof.gradeLevel,
             };
           }
-        } catch {
-          // ถ้า fetch ไม่สำเร็จ ก็จะใช้ข้อมูลจาก localStorage แทน
-        }
+        } catch { /* ใช้ข้อมูล localStorage หากโหลดไม่ได้ */ }
 
         if (!cancelled) setProfile(prof);
 
-        // โหลดโพสต์ของนักเรียน (เหมือนเดิม)
+        // ----- โหลดโพสต์ -----
         const r = await fetch(`http://localhost:5000/api/student_posts?me=${me}&mine=1`);
         const data = await r.json();
         const onlyMine = Array.isArray(data)
@@ -117,11 +175,14 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
         const normalized = onlyMine.map(normalizePost);
         if (!cancelled) setPosts(normalized);
 
-        // mock ติวเตอร์ที่บันทึก (เหมือนเดิม)
-        if (!cancelled)
-          setSavedTutors([
-            // ... (ข้อมูล mock เดิม)
-          ]);
+        // ----- โหลดกิจกรรม (calendar_events) -----
+        const evRes = await fetch(`http://localhost:5000/api/calendar/${me}`);
+        if (evRes.ok) {
+          const evData = await evRes.json();
+          if (!cancelled) setEvents(evData.items || []);
+        }
+
+        if (!cancelled) setSavedTutors([]);
       } catch (e) {
         console.error(e);
       } finally {
@@ -129,10 +190,56 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.user_id]);
+
+  // กรองกิจกรรมตามวันที่เลือก
+  useEffect(() => {
+    const todayISO = selectedDate.toISOString().slice(0, 10);
+    const matches = events.filter((ev) => ev.event_date === todayISO);
+    setDailyEvents(matches);
+  }, [selectedDate, events]);
+
+  // ===== handlers เมนู/ซ่อน/ลบ =====
+  const handleToggleMenu = (id) => {
+    setOpenMenuFor((prev) => (prev === id ? null : id));
+  };
+
+  const handleHidePost = (id) => {
+    setHiddenPostIds((prev) => new Set(prev).add(id));
+  };
+
+  const handleAskDelete = (id) => setConfirm({ open: true, id });
+
+  const doDeletePost = async () => {
+    const id = confirm.id;
+    setConfirm({ open: false, id: null });
+
+    // optimistic remove
+    const before = posts;
+    const after = posts.filter((p) => (p._id ?? p.id) !== id);
+    setPosts(after);
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/student_posts/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        setPosts(before);
+        alert("ลบไม่สำเร็จ (API ลบยังไม่พร้อมหรือเกิดข้อผิดพลาด)");
+      }
+    } catch (e) {
+      setPosts(before);
+      alert("ลบไม่สำเร็จ (เครือข่ายผิดพลาด)");
+    }
+  };
+
+  const cancelDelete = () => setConfirm({ open: false, id: null });
+
+  const restoreAllHidden = () => setHiddenPostIds(new Set());
+  const hiddenCount = hiddenPostIds.size;
 
   if (loading) {
     return (
@@ -166,7 +273,9 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                 <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
                   {profile.fullName}
                   {profile.nickname && (
-                    <span className="text-gray-500 font-medium ml-2">({profile.nickname})</span>
+                    <span className="text-gray-500 font-medium ml-2">
+                      ({profile.nickname})
+                    </span>
                   )}
                 </h1>
                 <p className="text-gray-600 mt-1">
@@ -176,14 +285,12 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               </div>
             </div>
             <div className="md:ml-auto flex flex-col items-stretch md:items-end gap-3">
-              <div>
-                <button
-                  onClick={onEditProfile}
-                  className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
-                >
-                  <Edit size={16} /> แก้ไขโปรไฟล์
-                </button>
-              </div>
+              <button
+                onClick={onEditProfile}
+                className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
+              >
+                <Edit size={16} /> แก้ไขโปรไฟล์
+              </button>
               <div className="grid grid-cols-3 gap-3">
                 <Stat label="โพสต์ทั้งหมด" value={String(posts.length)} />
                 <Stat label="โพสต์ติวเตอร์ที่สนใจ" value={String(savedTutors.length)} />
@@ -192,6 +299,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
             </div>
           </div>
         </div>
+
         {/* Content */}
         <div className="mt-6 grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
@@ -200,60 +308,116 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                 <div className="flex justify-center">
                   <ReactCalendar
                     className="border rounded-xl p-4 bg-white shadow-sm w-full max-w-sm"
-                    locale="en-US"
+                    locale="th-TH"
+                    value={selectedDate}
+                    onClickDay={(value) => setSelectedDate(value)}
                     tileClassName={({ date, view }) => {
                       if (view === "month") {
-                        const day = date.toLocaleDateString("en-US", { weekday: "long" });
-                        if (profile.availability?.days?.includes(day)) {
-                          return "bg-blue-100 text-blue-800 rounded-lg";
+                        const iso = date.toISOString().slice(0, 10);
+                        if (events.some((ev) => ev.event_date === iso)) {
+                          return "bg-blue-200 text-blue-800 font-semibold rounded-lg";
                         }
-                        return "text-gray-600";
                       }
+                      return null;
                     }}
                   />
                 </div>
+
                 <Card title="การติวของฉัน">
-                  <div className="flex flex-col h-full">
+                  {!dailyEvents.length ? (
                     <Empty line="ยังไม่มีการติวในวันนี้" />
-                  </div>
+                  ) : (
+                    <ul className="space-y-2">
+                      {dailyEvents.map((ev) => (
+                        <li
+                          key={ev.event_id}
+                          className="border rounded-lg p-3 bg-gray-50 hover:bg-gray-100 transition"
+                        >
+                          <div className="font-semibold">{ev.title}</div>
+                          <div className="text-sm text-gray-600">
+                            📘 {ev.subject} — ⏰ {ev.event_time?.slice(0, 5)}<br />
+                            📍 {ev.location || "ไม่ระบุสถานที่"}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </Card>
               </div>
             </Card>
+
             <Card title="โพสต์ของฉัน">
+              {/* ปุ่มยกเลิกซ่อนทั้งหมด */}
+              {hiddenCount > 0 && (
+                <div className="mb-3 flex justify-end">
+                  <button
+                    onClick={restoreAllHidden}
+                    className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50"
+                    title="นำโพสต์ที่ซ่อนทั้งหมดกลับมาแสดง"
+                  >
+                    แสดงโพสต์ที่ซ่อนทั้งหมด ({hiddenCount})
+                  </button>
+                </div>
+              )}
+
               {!posts.length ? (
                 <Empty line="ยังไม่มีโพสต์" />
               ) : (
                 <div className="space-y-4">
-                  {posts.map((p) => (
-                    <div key={p._id} className="border rounded-xl p-4 bg-white shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={profile.avatarUrl || "/default-avatar.png"}
-                          alt="avatar"
-                          className="w-9 h-9 rounded-full object-cover"
-                        />
-                        <div>
-                          <div className="text-sm font-semibold">{profile.fullName}</div>
-                          <div className="text-xs text-gray-500">
-                            {new Date(p.createdAt).toLocaleString('th-TH')}
+                  {posts
+                    .filter((p) => !hiddenPostIds.has(p._id ?? p.id))
+                    .map((p) => {
+                      const id = p._id ?? p.id;
+                      return (
+                        <div key={id} className="relative border rounded-xl p-4 bg-white shadow-sm">
+                          {/* เมนูสามจุด */}
+                          <button
+                            onClick={() => handleToggleMenu(id)}
+                            className="absolute right-2 top-2 rounded-md p-1.5 hover:bg-gray-100"
+                            aria-label="more"
+                          >
+                            <MoreVertical size={18} />
+                          </button>
+                          <PostActionMenu
+                            open={openMenuFor === id}
+                            onClose={() => setOpenMenuFor(null)}
+                            onHide={() => handleHidePost(id)}
+                            onDelete={() => handleAskDelete(id)}
+                          />
+
+                          {/* เนื้อหาโพสต์ */}
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={profile.avatarUrl || "/default-avatar.png"}
+                              alt="avatar"
+                              className="w-9 h-9 rounded-full object-cover"
+                            />
+                            <div>
+                              <div className="text-sm font-semibold">{profile.fullName}</div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(p.createdAt).toLocaleString("th-TH")}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-2 text-gray-800 whitespace-pre-line">
+                            {p.content}
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 mt-3">
+                            <div>📘 {p.subject || "-"}</div>
+                            <div>📅 {p.meta?.preferred_days || "-"}</div>
+                            <div>⏰ {p.meta?.preferred_time || "-"}</div>
+                            <div>📍 {p.meta?.location || "-"}</div>
+                            <div>👥 {p.meta?.group_size || "-"}</div>
+                            <div>💸 {p.meta?.budget ? `฿${p.meta.budget}` : "-"}</div>
                           </div>
                         </div>
-                      </div>
-                      <div className="mt-2 text-gray-800 whitespace-pre-line">{p.content}</div>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 mt-3">
-                        <div>📘 {p.subject || "-"}</div>
-                        <div>📅 {p.meta?.preferred_days || "-"}</div>
-                        <div>⏰ {p.meta?.preferred_time || "-"}</div>
-                        <div>📍 {p.meta?.location || "-"}</div>
-                        <div>👥 {p.meta?.group_size || "-"}</div>
-                        <div>💸 {p.meta?.budget ? `฿${p.meta.budget}` : "-"}</div>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
                 </div>
               )}
             </Card>
           </div>
+
           <div className="space-y-6">
             <Card title="ติวเตอร์แนะนำสำหรับคุณ">
               <Empty line="ยังไม่มีข้อมูลติวเตอร์แนะนำ" />
@@ -272,6 +436,15 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           </div>
         </div>
       </div>
+
+      {/* Confirm Delete */}
+      <ConfirmDialog
+        open={confirm.open}
+        title="ยืนยันการลบโพสต์"
+        desc="เมื่อยืนยันแล้วจะไม่สามารถกู้คืนโพสต์นี้ได้"
+        onConfirm={doDeletePost}
+        onCancel={cancelDelete}
+      />
     </div>
   );
 }
