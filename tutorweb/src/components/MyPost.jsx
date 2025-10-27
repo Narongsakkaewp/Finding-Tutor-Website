@@ -170,7 +170,7 @@ function MyPost({ setPostsCache }) {
         setPostsCache?.(normalized);
       } else {
         // tutor feed — แนบ me เพื่อให้ backend คืน favorited/fav_count/join flags ให้ถูก
-        const url = `${API_BASE}/api/tutor-posts?page=1&limit=20&tutorId=${meId}`;
+        const url = `${API_BASE}/api/tutor-posts?page=1&limit=20`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
