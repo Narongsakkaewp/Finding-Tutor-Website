@@ -46,7 +46,7 @@ const normalizeStudentPost = (p = {}) => ({
   user: p.user || {
     first_name: p.first_name || p.name || "",
     last_name: p.last_name || "",
-    profile_image: p.profile_image || "/default-avatar.png",
+    profile_image: p.profile_picture_url || "/default-avatar.png",
   },
 });
 
@@ -714,7 +714,7 @@ function MyPost({ setPostsCache }) {
                 <div key={post.id} className="bg-white border p-4 rounded-2xl shadow-sm">
                   <div className="flex items-center gap-3 mb-2">
                     <img
-                      src={post.user?.profile_image || "/default-avatar.png"}
+                      src={post.user?.profile_image}
                       alt="profile"
                       className="w-10 h-10 rounded-full object-cover mr-3"
                     />

@@ -138,9 +138,11 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
           sp.preferred_days, sp.preferred_time, sp.location, sp.group_size, sp.budget,
           COALESCE(sp.created_at, NOW()) AS created_at,
           r.name       AS student_name,
-          r.lastname   AS student_lastname
+          r.lastname   AS student_lastname,
+          spro.profile_picture_url
        FROM student_posts sp
        LEFT JOIN register r ON r.user_id = sp.student_id
+       LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
        WHERE sp.subject = ?
        ORDER BY sp.student_post_id DESC
        LIMIT ? OFFSET ?`,
@@ -158,7 +160,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
         _id: r.student_post_id,
         authorId: {
           name: fullName || `นักเรียน #${r.student_id}`,
-          avatarUrl: ''
+          avatarUrl: r.profile_picture_url || ''
         },
         content: r.description,
         meta: {
@@ -280,7 +282,7 @@ app.get('/api/tutors', async (req, res) => {
 
 // ---------- โพสต์ติวเตอร์ (ฟีด) ----------
 app.get('/api/tutor-posts', async (req, res) => {
-  console.log("📩 /api/tutor-posts called:", req.query);
+  // console.log("📩 /api/tutor-posts called:", req.query);
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
@@ -309,6 +311,7 @@ app.get('/api/tutor-posts', async (req, res) => {
         tp.teaching_days, tp.teaching_time, tp.location, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
         r.name, r.lastname,
+        tpro.profile_picture_url,
         -- Favorites
         COALESCE(fvc.c,0) AS fav_count,
         CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited,
@@ -318,6 +321,7 @@ app.get('/api/tutor-posts', async (req, res) => {
         CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me
       FROM tutor_posts tp
       LEFT JOIN register r ON r.user_id = tp.tutor_id
+      LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
       LEFT JOIN (
         SELECT post_id, COUNT(*) AS c
         FROM posts_favorites
@@ -360,7 +364,7 @@ app.get('/api/tutor-posts', async (req, res) => {
         authorId: {
           id: r.tutor_id,
           name: `${r.name || ''}${r.lastname ? ' ' + r.lastname : ''}`.trim() || `ติวเตอร์ #${r.tutor_id}`,
-          avatarUrl: ''
+          avatarUrl: r.profile_picture_url || ''
         },
         meta: {
           target_student_level: r.target_student_level || 'ไม่ระบุ',
@@ -501,7 +505,8 @@ app.get('/api/student_posts', async (req, res) => {
         sp.student_post_id, sp.student_id, sp.subject, sp.description,
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
         sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at, sp.grade_level,
-        r.name, r.lastname,
+        r.name, r.lastname, 
+        spro.profile_picture_url,
         COALESCE(jc.join_count, 0) AS join_count,
         CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined,
         CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me,
@@ -509,6 +514,7 @@ app.get('/api/student_posts', async (req, res) => {
         CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited
       FROM student_posts sp
       LEFT JOIN register r ON r.user_id = sp.student_id
+      LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
       LEFT JOIN (
         SELECT student_post_id, COUNT(*) AS join_count
         FROM student_post_joins
@@ -548,10 +554,11 @@ app.get('/api/student_posts', async (req, res) => {
       fav_count: Number(r.fav_count || 0),
       favorited: !!r.favorited,
       grade_level: r.grade_level || 'ไม่ระบุ',
+      profile_picture_url: r.profile_picture_url || '/default-avatar.png',
       user: {
         first_name: r.name || '',
         last_name: r.lastname || '',
-        profile_image: r.profile_image || '/default-avatar.png',
+        profile_image: r.profile_picture_url || '/default-avatar.png',
       },
     }));
 
@@ -602,10 +609,12 @@ app.post('/api/student_posts', async (req, res) => {
       `SELECT
          sp.student_post_id, sp.student_id, sp.subject, sp.description,
          sp.preferred_days, sp.preferred_time, sp.location, sp.group_size,
-         sp.budget, sp.contact_info, sp.grade_level, sp.created_at,  -- ✅ เพิ่ม level
+         sp.budget, sp.contact_info, sp.grade_level, sp.created_at,
          r.name, r.lastname
+         spro.profile_picture_url
        FROM student_posts sp
        LEFT JOIN register r ON r.user_id = sp.student_id
+       LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
        WHERE sp.student_post_id = ?`,
       [insertId]
     );
@@ -629,7 +638,6 @@ app.post('/api/student_posts', async (req, res) => {
       user: {
         first_name: r.name || '',
         last_name: r.lastname || '',
-        profile_image: '/default-avatar.png',
       },
 
     };
@@ -696,9 +704,10 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
     const [rows] = await pool.query(
       `SELECT 
           tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description, tp.target_student_level, tp.teaching_days, tp.teaching_time, 
-          tp.location, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname
+          tp.location, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname,
         FROM tutor_posts tp
         LEFT JOIN register r ON r.user_id = tp.tutor_id
+        
         WHERE tp.tutor_post_id = ?`,
       [result.insertId]
     );
@@ -722,12 +731,12 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
         user: {
           first_name: r.name || '',
           last_name: r.lastname || '',
-          
+
         },
         createdAt: r.created_at
       }
     });
-    
+
   } catch (err) {
     console.error('POST /api/tutor-posts error:', err);
     return res.status(500).json({ success: false, message: 'Database error', error: err.message });
