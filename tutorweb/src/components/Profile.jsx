@@ -99,6 +99,39 @@ function ConfirmDialog({ open, title = "ยืนยันการลบ", desc
   );
 }
 
+function AvatarModal({ src, alt, onClose }) {
+  if (!src) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      onClick={onClose} // กดที่พื้นหลังเพื่อปิด
+    >
+      <div
+        className="relative max-w-lg w-full max-h-[80vh]"
+        onClick={(e) => e.stopPropagation()} // ป้องกันการกดที่รูปแล้วปิด
+      >
+        <img
+          src={src}
+          alt={alt}
+          className="w-full h-full object-contain rounded-lg shadow-xl"
+        />
+        {/* ปุ่มปิด (X) */}
+        <button
+          onClick={onClose}
+          className="absolute -top-3 -right-3 bg-white text-gray-700 rounded-full p-1.5 shadow-lg hover:bg-gray-200 transition"
+          aria-label="Close"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Main ---------- */
 
 function Profile({ user, setCurrentPage, onEditProfile }) {
@@ -114,6 +147,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   const [openMenuFor, setOpenMenuFor] = useState(null);   // id ของการ์ดที่เปิดเมนู
   const [hiddenPostIds, setHiddenPostIds] = useState(new Set()); // id ที่ถูกซ่อน
   const [confirm, setConfirm] = useState({ open: false, id: null });
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
   const currentUser = useMemo(() => {
     try {
@@ -313,7 +347,8 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               <img
                 src={profile.avatarUrl || "/default-avatar.png"}
                 alt={profile.fullName}
-                className="h-28 w-28 rounded-2xl object-cover ring-4 ring-white shadow-md flex-shrink-0"
+                className="h-28 w-28 rounded-2xl object-cover ring-4 ring-white shadow-md flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => setIsAvatarModalOpen(true)}
               />
               <div className="flex-grow">
                 <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
@@ -404,8 +439,6 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               </button>
               <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
                 <Stat label="โพสต์ทั้งหมด" value={String(posts.length)} />
-                <Stat label="ติวเตอร์ที่บันทึก" value={String(savedTutors.length)} />
-                <Stat label="วิชาที่สนใจ" value={String(profile.subjects?.length || 0)} />
               </div>
             </div>
           </div>
@@ -574,6 +607,14 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           </div>
         </div>
       </div>
+
+      {isAvatarModalOpen && (
+        <AvatarModal
+          src={profile.avatarUrl}
+          alt={profile.fullName}
+          onClose={() => setIsAvatarModalOpen(false)}
+        />
+      )}
 
       {/* Confirm Delete */}
       <ConfirmDialog
