@@ -30,6 +30,7 @@ const normalizeStudentPost = (p = {}) => ({
   createdAt: p.createdAt || p.created_at || p.created || new Date().toISOString(),
   subject: p.subject || p.title || "",
   description: p.description || p.content || "",
+  grade_level: p.grade_level || "",
   location: p.location || p.place || p.location_name || "",
   group_size: Number(p.group_size ?? p.seats ?? p.groupSize ?? 0),
   budget: Number(p.budget ?? p.price ?? p.cost ?? 0),
@@ -67,6 +68,7 @@ const normalizeTutorPost = (p = {}) => {
     subject: p.subject || p.title || "",
     description: p.content || p.description || "",
     meta: {
+      target_student_level: p.meta?.target_student_level ?? p.target_student_level ?? "",
       teaching_days: p.meta?.teaching_days ?? p.teaching_days ?? "",
       teaching_time: p.meta?.teaching_time ?? p.teaching_time ?? "",
       location: p.meta?.location ?? p.location ?? "",
@@ -93,8 +95,8 @@ const normalizeTutorPost = (p = {}) => {
 
 const postGradeLevelOptions = [
   { value: "ประถมศึกษา", label: "ประถมศึกษา" },
-  { value: "ม.1-ม.3", label: "มัธยมศึกษาตอนต้น (ม.1-ม.3)" },
-  { value: "ม.4-ม.6", label: "มัธยมศึกษาตอนปลาย (ม.4-ม.6)" },
+  { value: "มัธยมต้น (ม.1-ม.3)", label: "มัธยมศึกษาตอนต้น (ม.1-ม.3)" },
+  { value: "มัธยมปลาย (ม.4-ม.6)", label: "มัธยมศึกษาตอนปลาย (ม.4-ม.6)" },
   { value: "ปริญญาตรี", label: "ปริญญาตรี" },
   { value: "บุคคลทั่วไป", label: "บุคคลทั่วไป" }
 ];
@@ -140,9 +142,10 @@ function MyPost({ setPostsCache }) {
   const initialFormData = {
     subject: "",
     description: "",
-    preferred_days: "", // สำหรับ input type="date"
-    preferred_time: "", // สำหรับ input type="time"
-    location: "ออนไลน์", // ใส่ค่าเริ่มต้น
+    preferred_days: "",
+    preferred_time: "",
+    grade_level: "",
+    location: "",
     group_size: "1",
     budget: "",
     contact_info: "",
@@ -227,6 +230,7 @@ function MyPost({ setPostsCache }) {
           description: formData.description.trim(),
           preferred_days: formData.preferred_days,
           preferred_time: formData.preferred_time,
+          grade_level: formData.grade_level,
           location: formData.location.trim(),
           group_size: Number(formData.group_size),
           budget: Number(formData.budget),
@@ -611,6 +615,23 @@ function MyPost({ setPostsCache }) {
                         <input type="time" name="preferred_time"
                           value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          ระดับชั้นของผู้เรียน
+                        </label>
+                        <select
+                          name="grade_level"
+                          value={formData.grade_level}
+                          onChange={handleChange}
+                          required
+                          className="border rounded p-2 w-full"
+                        >
+                          <option value="">เลือกระดับของผู้เรียน</option>
+                          {postGradeLevelOptions.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
                       <input type="text" name="location" placeholder="สถานที่"
                         value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
                       <div className="grid md:grid-cols-2 gap-3">
@@ -694,8 +715,8 @@ function MyPost({ setPostsCache }) {
                   <div className="flex items-center gap-3 mb-2">
                     <img
                       src={post.user?.profile_image || "/default-avatar.png"}
-                      alt="avatar"
-                      className="w-10 h-10 rounded-full"
+                      alt="profile"
+                      className="w-10 h-10 rounded-full object-cover mr-3"
                     />
                     <div>
                       <p className="font-semibold">
@@ -711,7 +732,8 @@ function MyPost({ setPostsCache }) {
                   <p className="mb-2 whitespace-pre-line">{post.description}</p>
 
                   {post.post_type === "student" ? (
-                    <div className="text-sm text-gray-600 space-y-1">
+                    <div className="text-sm text-gray-600 grid md:grid-cols-2 gap-y-1">
+                      <p>📚 ระดับชั้น: {post.grade_level || ""}</p>
                       <p>📍 สถานที่: {post.location}</p>
                       <p>👥 จำนวนคน: {post.group_size} คน</p>
                       <p>💰 งบประมาณ: {post.budget} บาท</p>
@@ -721,6 +743,7 @@ function MyPost({ setPostsCache }) {
                     </div>
                   ) : (
                     <div className="text-sm text-gray-600 grid md:grid-cols-2 gap-y-1">
+                      <p>📚 ระดับชั้นที่สอน: {post.meta?.target_student_level || ""}</p>
                       <p>📅 วันที่สอน: {post.meta?.teaching_days}</p>
                       <p>⏰ ช่วงเวลา: {post.meta?.teaching_time}</p>
                       <p>📍 สถานที่: {post.meta?.location}</p>

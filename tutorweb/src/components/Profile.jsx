@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, MoreVertical, Trash2, EyeOff } from "lucide-react";
+import { Edit, MoreVertical, Trash2, EyeOff, MapPin, Mail, Phone, GraduationCap } from "lucide-react";
 
 /* ---------- helpers ---------- */
 
@@ -139,27 +139,45 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           gradeLevel: currentUser?.grade_level || "นักเรียน",
           school: currentUser?.institution || "",
           city: currentUser?.address || "",
-          contact: { email: currentUser?.email || "", phone: currentUser?.phone || "" },
+          email: currentUser?.email || "",
+          phone: currentUser?.phone || "",
           subjects: currentUser?.subjects || [],
+          bio: "",
+          education: [],
         };
 
         try {
           const pfRes = await fetch(`http://localhost:5000/api/profile/${me}`);
           if (pfRes.ok) {
+            // --- ดึงข้อมูลจาก Schema ที่คุณระบุ ---
             const p = await pfRes.json();
+
+            // สร้าง array การศึกษาจากฟิลด์ต่างๆ
+            const education = [];
+            if (p.institution) {
+              education.push({
+                degree: p.grade_level || 'N/A',
+                institution: p.institution,
+                faculty: p.faculty || null,
+                major: p.major || null,
+              });
+            }
+
             prof = {
               ...prof,
               fullName: fullNameOf(p) || prof.fullName,
               nickname: p.nickname ?? prof.nickname,
               avatarUrl: p.profile_picture_url || prof.avatarUrl,
-              city: p.address ?? prof.city,
+              city: p.address || null, // ใช้ p.address
               school: p.institution ?? prof.school,
-              contact: {
-                email: p.email ?? prof.contact.email,
-                phone: p.phone ?? prof.contact.phone,
-              },
+              email: p.email ?? prof.email, // email ที่ join มา
+              phone: p.phone || null, // ใช้ p.phone
               subjects: p.subjects ?? prof.subjects,
               gradeLevel: p.grade_level ?? prof.gradeLevel,
+
+              // --- ข้อมูลใหม่ที่ต้องการ ---
+              bio: p.about || "", // แมพ 'about' ไปที่ 'bio'
+              education: education, // array ที่สร้างขึ้น
             };
           }
         } catch { /* ใช้ข้อมูล localStorage หากโหลดไม่ได้ */ }
@@ -257,19 +275,47 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
     );
   }
 
+  const mockRecommendedTutors = [
+    {
+      user_id: 101,
+      profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=S',
+      name: 'สมศักดิ์',
+      lastname: 'เก่งกาจ',
+      can_teach_subjects: 'คณิตศาสตร์ ม.ปลาย, แคลคูลัส'
+    },
+    {
+      user_id: 102,
+      profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=A',
+      name: 'อลิสา',
+      lastname: 'ใจดี',
+      can_teach_subjects: 'GAT ภาษาอังกฤษ, TOEIC'
+    },
+    {
+      user_id: 103,
+      profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=N',
+      name: 'นนทรี',
+      lastname: 'บีทีเอส',
+      can_teach_subjects: 'ฟิสิกส์ (PAT3), ตะลุยโจทย์'
+    }
+  ];
+
+  const recommendLoading = false;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
         {/* Header */}
         <div className="bg-white rounded-3xl shadow-sm border p-6">
           <div className="flex flex-col md:flex-row md:items-center gap-6">
+
+            {/* --- ส่วนซ้าย (รูป, ชื่อ, bio, การศึกษา, ติดต่อ) --- */}
             <div className="flex items-start gap-5 flex-grow">
               <img
                 src={profile.avatarUrl || "/default-avatar.png"}
                 alt={profile.fullName}
-                className="h-28 w-28 rounded-2xl object-cover ring-4 ring-white shadow-md"
+                className="h-28 w-28 rounded-2xl object-cover ring-4 ring-white shadow-md flex-shrink-0"
               />
-              <div>
+              <div className="flex-grow">
                 <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
                   {profile.fullName}
                   {profile.nickname && (
@@ -279,11 +325,76 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                   )}
                 </h1>
                 <p className="text-gray-600 mt-1">
-                  {profile.gradeLevel || "นักเรียน"} •{" "}
-                  {profile.school || "โรงเรียน/มหาวิทยาลัย"}
+                  {profile.gradeLevel || "นักเรียน"}
+                  {profile.school && ` • ${profile.school}`}
                 </p>
+
+                {/* --- ส่วน "การศึกษา" --- */}
+                {profile.education && profile.education.length > 0 && (
+                  <div className="mt-3 border-t pt-3">
+                    <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-1">
+                      <GraduationCap size={16} />
+                      การศึกษาปัจจุบัน:
+                    </h4>
+                    <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                      {profile.education.map((edu, index) => (
+                        <li key={index} className="mt-1">
+                          <span className="font-semibold">{edu.degree} ที่ {edu.institution}</span>
+                          {edu.faculty && (
+                            <div className="pl-5 text-gray-500">
+                              คณะ {edu.faculty}
+                            </div>
+                          )}
+                          {edu.major && (
+                            <div className="pl-5 text-gray-500">
+                              สาขา {edu.major}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* --- ส่วน "Bio" (เกี่ยวกับฉัน) --- */}
+                {profile.bio && (
+                  <p className="mt-3 border-t pt-3 text-sm text-gray-700 whitespace-pre-line">
+                    {profile.bio}
+                  </p>
+                )}
+
+                {/* --- ส่วน "ข้อมูลติดต่อ" --- */}
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                  {/* Address */}
+                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50">
+                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5">
+                      <MapPin size={16} className="text-gray-600" />
+                    </div>
+                    <span className="text-gray-700 truncate">{profile.city || "ยังไม่ระบุที่อยู่"}</span>
+                  </div>
+                  {/* Phone */}
+                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50">
+                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5">
+                      <Phone size={16} className="text-gray-600" />
+                    </div>
+                    <a href={`tel:${profile.phone}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">
+                      {profile.phone || "ยังไม่ระบุเบอร์"}
+                    </a>
+                  </div>
+                  {/* Email */}
+                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50">
+                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5">
+                      <Mail size={16} className="text-gray-600" />
+                    </div>
+                    <a href={`mailto:${profile.email}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">
+                      {profile.email || "ยังไม่ระบุอีเมล"}
+                    </a>
+                  </div>
+                </div>
               </div>
             </div>
+
+            {/* --- ส่วนขวา (ปุ่มแก้ไข, Stats) --- */}
             <div className="md:ml-auto flex flex-col items-stretch md:items-end gap-3">
               <button
                 onClick={onEditProfile}
@@ -291,10 +402,10 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               >
                 <Edit size={16} /> แก้ไขโปรไฟล์
               </button>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
                 <Stat label="โพสต์ทั้งหมด" value={String(posts.length)} />
-                <Stat label="โพสต์ติวเตอร์ที่สนใจ" value={String(savedTutors.length)} />
-                <Stat label="โพสต์นักเรียนที่สนใจ" value={String(profile.subjects?.length || 0)} />
+                <Stat label="ติวเตอร์ที่บันทึก" value={String(savedTutors.length)} />
+                <Stat label="วิชาที่สนใจ" value={String(profile.subjects?.length || 0)} />
               </div>
             </div>
           </div>
@@ -308,7 +419,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                 <div className="flex justify-center">
                   <ReactCalendar
                     className="border rounded-xl p-4 bg-white shadow-sm w-full max-w-sm"
-                    locale="th-TH"
+                    locale="en-US"
                     value={selectedDate}
                     onClickDay={(value) => setSelectedDate(value)}
                     tileClassName={({ date, view }) => {
@@ -419,9 +530,35 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           </div>
 
           <div className="space-y-6">
+
+            {/* --- 1. การ์ดติวเตอร์แนะนำ (แสดงผลจาก Mockup) --- */}
             <Card title="ติวเตอร์แนะนำสำหรับคุณ">
-              <Empty line="ยังไม่มีข้อมูลติวเตอร์แนะนำ" />
+              {recommendLoading ? (
+                <div className="text-sm text-gray-500">กำลังค้นหา...</div>
+              ) : !mockRecommendedTutors.length ? (
+                <Empty line="ไม่พบติวเตอร์แนะนำ" />
+              ) : (
+                <ul className="space-y-3">
+                  {mockRecommendedTutors.map((tutor) => (
+                    <li key={tutor.user_id} className="flex items-center gap-3 p-2 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                      <img
+                        src={tutor.profile_picture_url || '/default-avatar.png'}
+                        alt={tutor.name || 'tutor'}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                      <div>
+                        <div className="text-sm font-semibold">{tutor.name} {tutor.lastname || ''}</div>
+                        <div className="text-xs text-gray-500 truncate" title={tutor.can_teach_subjects}>
+                          {tutor.can_teach_subjects || 'ไม่ระบุวิชา'}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Card>
+
+            {/* --- 2. การ์ดวิชาที่สนใจ (แสดงผลจาก profile.subjects) --- */}
             <Card title="วิชาที่สนใจ">
               {!profile.subjects?.length ? (
                 <Empty line="ยังไม่มีวิชา" />
@@ -433,6 +570,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                 </ul>
               )}
             </Card>
+
           </div>
         </div>
       </div>

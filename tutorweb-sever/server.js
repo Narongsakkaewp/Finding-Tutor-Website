@@ -197,40 +197,33 @@ app.get('/api/tutors', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
 
-    const searchQuery = (req.query.search || '').trim();
-    let whereClause = `WHERE LOWER(r.type) IN ('tutor','teacher')`;
-    const params = [];
+    // --- ส่วนนี้คือตรรกะการค้นหาและฟิลเตอร์ที่ถูกต้อง ---
 
-    if (searchQuery) {
-      whereClause += ` AND (
-          LOWER(r.name) LIKE ? 
-          OR LOWER(r.lastname) LIKE ? 
-          OR LOWER(tp.nickname) LIKE ? 
-          OR LOWER(tp.can_teach_subjects) LIKE ?
-      )`;
-      const searchTerm = `%${searchQuery.toLowerCase()}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
-    }
-
-    // ฟิลเตอร์เพิ่มเติม (เลือกใส่ก็ได้)
     const search = (req.query.search || '').trim().toLowerCase();
     const subject = (req.query.subject || '').trim();
 
     // สร้าง WHERE + params
     const where = [`LOWER(r.type) IN ('tutor','teacher')`];
+    // 'params' ถูกประกาศแค่ครั้งเดียวตรงนี้
     const params = [];
 
     if (search) {
+      // ค้นหาจาก ชื่อ, นามสกุล, หรือชื่อเล่น
       where.push(`(LOWER(r.name) LIKE ? OR LOWER(r.lastname) LIKE ? OR LOWER(tp.nickname) LIKE ?)`);
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
     if (subject) {
+      // ค้นหาจากวิชาที่สอน
       where.push(`tp.can_teach_subjects LIKE ?`);
       params.push(`%${subject}%`);
     }
+
+    // 'whereClause' ถูกประกาศแค่ครั้งเดียวตรงนี้
     const whereClause = `WHERE ${where.join(' AND ')}`;
 
-    // ดึงรายการ
+    // --- จบส่วนตรรกะการค้นหา ---
+
+    // ดึงรายการ (ใช้ params และ whereClause จากส่วนด้านบน)
     const [rows] = await pool.execute(
       `SELECT 
           r.user_id, r.name, r.lastname,
@@ -239,19 +232,22 @@ app.get('/api/tutors', async (req, res) => {
           tp.profile_picture_url,
           tp.address,
           tp.hourly_rate
-       FROM register r
-       LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
-       ${whereClause}
-       ORDER BY r.user_id DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+        FROM register r
+        LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+        ${whereClause}
+        ORDER BY r.user_id DESC
+        LIMIT ? OFFSET ?`,
+      [...params, limit, offset] // ใช้ params ที่สร้างไว้
     );
 
-    // นับรวม (ใช้ WHERE เดียวกัน ยกเว้น LIMIT/OFFSET)
+    // นับรวม (ใช้ WHERE เดียวกัน แต่ต้องส่ง params เข้าไปด้วย)
+    // *** แก้ไข: การนับ total ต้องใช้ whereClause และ params เดียวกันด้วย ***
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total
-       FROM register
-       WHERE LOWER(type) IN ('tutor','teacher')`
+        FROM register r
+        LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+        ${whereClause}`, // ใช้ whereClause เดียวกัน
+      params // ส่ง params เข้าไป
     );
 
     // ✅ 2. แก้ไขการสร้าง object ให้ใช้ข้อมูลจริงจาก Database
@@ -264,8 +260,8 @@ app.get('/api/tutors', async (req, res) => {
       image: r.profile_picture_url || 'https://via.placeholder.com/400',
       city: r.address || 'ยังไม่ระบุที่อยู่',
       price: Number(r.hourly_rate || 0),
-      rating: 4.8,
-      reviews: 0,
+      rating: 4.8, // ควรมารจาก DB ถ้ามี
+      reviews: 0, // ควรมารจาก DB ถ้ามี
     }));
 
     res.json({
@@ -309,7 +305,7 @@ app.get('/api/tutor-posts', async (req, res) => {
     const [rows] = await pool.query(
       `
       SELECT
-        tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
+        tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description, tp.target_student_level,
         tp.teaching_days, tp.teaching_time, tp.location, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
         r.name, r.lastname,
@@ -367,6 +363,7 @@ app.get('/api/tutor-posts', async (req, res) => {
           avatarUrl: ''
         },
         meta: {
+          target_student_level: r.target_student_level || 'ไม่ระบุ',
           teaching_days: r.teaching_days,
           teaching_time: r.teaching_time,
           location: r.location,
@@ -405,7 +402,7 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
     const offset = (page - 1) * limit;
 
     const [rows] = await pool.execute(
-      `SELECT tutor_post_id, tutor_id, subject, description,
+      `SELECT tutor_post_id, tutor_id, subject, description, target_student_level,
               teaching_days, teaching_time, location, price, contact_info,
               COALESCE(created_at, NOW()) AS created_at
        FROM tutor_posts
@@ -429,6 +426,7 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
         createdAt: r.created_at,
         images: [],
         meta: {
+          target_student_level: r.target_student_level || 'ไม่ระบุ',
           teaching_days: r.teaching_days,
           teaching_time: r.teaching_time,
           location: r.location,
@@ -502,7 +500,7 @@ app.get('/api/student_posts', async (req, res) => {
       SELECT
         sp.student_post_id, sp.student_id, sp.subject, sp.description,
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
-        sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
+        sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at, sp.grade_level,
         r.name, r.lastname,
         COALESCE(jc.join_count, 0) AS join_count,
         CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined,
@@ -549,7 +547,12 @@ app.get('/api/student_posts', async (req, res) => {
       pending_me: !!r.pending_me,
       fav_count: Number(r.fav_count || 0),
       favorited: !!r.favorited,
-      user: { first_name: r.name || '', last_name: r.lastname || '', profile_image: '/default-avatar.png' },
+      grade_level: r.grade_level || 'ไม่ระบุ',
+      user: {
+        first_name: r.name || '',
+        last_name: r.lastname || '',
+        profile_image: r.profile_image || '/default-avatar.png',
+      },
     }));
 
     return res.json(posts);
@@ -564,7 +567,7 @@ app.post('/api/student_posts', async (req, res) => {
   try {
     const {
       user_id, subject, description, preferred_days, preferred_time,
-      location, group_size, budget, contact_info
+      location, group_size, budget, contact_info, grade_level
     } = req.body;
 
     if (!user_id) return res.status(400).json({ success: false, message: 'user_id is required' });
@@ -586,10 +589,10 @@ app.post('/api/student_posts', async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO student_posts
-         (student_id, subject, description, preferred_days, preferred_time,
-          location, group_size, budget, contact_info, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [user_id, subject, description, preferred_days, timeSql,
+     (student_id, subject, description, grade_level, preferred_days, preferred_time,
+      location, group_size, budget, contact_info, created_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [user_id, subject, description, req.body.grade_level || '', preferred_days, timeSql,
         location, groupSizeNum, budgetNum, contact_info]
     );
 
@@ -599,7 +602,7 @@ app.post('/api/student_posts', async (req, res) => {
       `SELECT
          sp.student_post_id, sp.student_id, sp.subject, sp.description,
          sp.preferred_days, sp.preferred_time, sp.location, sp.group_size,
-         sp.budget, sp.contact_info, sp.created_at,
+         sp.budget, sp.contact_info, sp.grade_level, sp.created_at,  -- ✅ เพิ่ม level
          r.name, r.lastname
        FROM student_posts sp
        LEFT JOIN register r ON r.user_id = sp.student_id
@@ -620,11 +623,15 @@ app.post('/api/student_posts', async (req, res) => {
       budget: Number(r.budget),
       contact_info: r.contact_info,
       createdAt: r.created_at,
+      meta: {
+        grade_level: r.grade_level || 'ไม่ระบุ',
+      },
       user: {
         first_name: r.name || '',
         last_name: r.lastname || '',
         profile_image: '/default-avatar.png',
       },
+
     };
     // ✅ CALL HERE (หลังส่ง response ได้ก็ได้ แต่อย่าให้ throw)
     try {
@@ -648,7 +655,6 @@ app.post('/api/student_posts', async (req, res) => {
     return sendDbError(res, err);
   }
 });
-
 
 // ===== POST: สร้างโพสต์ติวเตอร์ =====
 app.post('/api/tutor-posts', upload.none(), async (req, res) => {
@@ -688,28 +694,40 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
     const [result] = await pool.execute(sql, vals);
 
     const [rows] = await pool.query(
-      `SELECT tutor_post_id, tutor_id, subject, description, target_student_level,
-              teaching_days, teaching_time, location, price, contact_info, created_at
-       FROM tutor_posts WHERE tutor_post_id = ?`,
+      `SELECT 
+          tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description, tp.target_student_level, tp.teaching_days, tp.teaching_time, 
+          tp.location, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname
+        FROM tutor_posts tp
+        LEFT JOIN register r ON r.user_id = tp.tutor_id
+        WHERE tp.tutor_post_id = ?`,
       [result.insertId]
     );
-    try {
-      const t = rows[0];
-      const tevDate = parseDateFromPreferredDays(t.teaching_days) || new Date().toISOString().slice(0, 10);
-      const tevTime = toSqlTimeMaybe(t.teaching_time);
-      await upsertCalendarEvent({
-        user_id: t.tutor_id,
-        post_id: t.tutor_post_id,
-        title: `สอน: ${t.subject}`,
-        subject: t.subject,
-        event_date: tevDate,
-        event_time: tevTime,
-        location: t.location || null
-      });
-    } catch (e) { console.warn('calendar upsert (tutor post) failed:', e.message); }
 
-
-    return res.status(201).json({ success: true, item: rows[0] });
+    const r = rows[0];
+    return res.status(201).json({
+      success: true,
+      item: {
+        id: r.tutor_post_id,
+        owner_id: r.tutor_id,
+        subject: r.subject,
+        description: r.description,
+        meta: {
+          target_student_level: r.target_student_level || 'ไม่ระบุ',
+          teaching_days: r.teaching_days || '',
+          teaching_time: r.teaching_time || '',
+          location: r.location || '',
+          price: r.price || 0,
+          contact_info: r.contact_info || ''
+        },
+        user: {
+          first_name: r.name || '',
+          last_name: r.lastname || '',
+          
+        },
+        createdAt: r.created_at
+      }
+    });
+    
   } catch (err) {
     console.error('POST /api/tutor-posts error:', err);
     return res.status(500).json({ success: false, message: 'Database error', error: err.message });
@@ -1005,7 +1023,7 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
 
     const status = (req.query.status || 'pending').toLowerCase(); // optional
-    const whereStatus = ['pending','approved','rejected'].includes(status) ? 'AND j.status = ?' : '';
+    const whereStatus = ['pending', 'approved', 'rejected'].includes(status) ? 'AND j.status = ?' : '';
     const params = [postId];
     if (status) { where.push('j.status = ?'); params.push(status); }
 
@@ -1027,70 +1045,81 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
   }
 });
 
-
-
 // >>> อนุมัติ/ปฏิเสธคำขอ ของโพสต์นักเรียน (REWRITE)
 app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
+  // 1. OUTER 'try' starts here
   try {
     const postId = Number(req.params.id);
-    const userId = Number(req.params.userId);
+    const userId = Number(req.params.userId); // <-- นี่คือตัวแปรที่ถูกต้อง
     const action = String(req.body?.action || '').toLowerCase(); // "approve" | "reject"
 
     if (!Number.isFinite(postId) || !Number.isFinite(userId))
       return res.status(400).json({ message: 'invalid ids' });
-    if (!['approve','reject'].includes(action))
+    if (!['approve', 'reject'].includes(action))
       return res.status(400).json({ message: 'invalid action' });
 
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
+    const conn = await pool.getConnection();
 
-    if (action === 'approve') {
-      // ล็อกโพสต์เช็คความจุ
-      const [[cap]] = await conn.query(
-        `SELECT sp.group_size,
-                (SELECT COUNT(*) FROM student_post_joins sj
-                 WHERE sj.student_post_id = sp.student_post_id AND sj.status='approved') AS approved_count
-         FROM student_posts sp
-         WHERE sp.student_post_id = ? FOR UPDATE`,
-        [postId]
-      );
-      if (!cap) { await conn.rollback(); return res.status(404).json({ message: 'post not found' }); }
-      if (Number(cap.approved_count) >= Number(cap.group_size)) {
-        await conn.rollback(); return res.status(409).json({ message: 'กลุ่มนี้เต็มแล้ว' });
+    // 2. INNER 'try...catch...finally' for transaction
+    try {
+      await conn.beginTransaction();
+
+      if (action === 'approve') {
+        // ล็อกโพสต์เช็คความจุ
+        const [[cap]] = await conn.query(
+          `SELECT sp.group_size,
+                  (SELECT COUNT(*) FROM student_post_joins sj
+                    WHERE sj.student_post_id = sp.student_post_id AND sj.status='approved') AS approved_count
+           FROM student_posts sp
+           WHERE sp.student_post_id = ? FOR UPDATE`,
+          [postId]
+        );
+        if (!cap) { await conn.rollback(); return res.status(404).json({ message: 'post not found' }); }
+        if (Number(cap.approved_count) >= Number(cap.group_size)) {
+          await conn.rollback(); return res.status(409).json({ message: 'กลุ่มนี้เต็มแล้ว' });
+        }
       }
-    }
 
-    // อัปเดตสถานะ + timestamp
-    const newStatus = action === 'approve' ? 'approved' : 'rejected';
-    await conn.query(
-      `UPDATE student_post_joins
-       SET status=?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at)
-       WHERE student_post_id=? AND user_id=?`,
-      [newStatus, newStatus, postId, targetUserId]
-    );
-
-    await conn.commit();
-
-    // งานนอก txn
-    if (newStatus === 'approved') {
-      // แจ้งผู้ถูกอนุมัติ
-      await pool.query(
-        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-        [targetUserId, null, 'join_approved', `คำขอของคุณสำหรับโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId]
+      // อัปเดตสถานะ + timestamp
+      const newStatus = action === 'approve' ? 'approved' : 'rejected';
+      await conn.query(
+        `UPDATE student_post_joins
+         SET status=?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at)
+         WHERE student_post_id=? AND user_id=?`,
+        // *** FIX:
+        [newStatus, newStatus, postId, userId] // <-- แก้ไขจาก targetUserId เป็น userId
       );
-    } else {
-      // ปฏิเสธ → ลบ event ของผู้ร้องออก (ถ้ามี)
-      await deleteCalendarEventForUser(targetUserId, postId);
+
+      await conn.commit();
+
+      // งานนอก txn
+      if (newStatus === 'approved') {
+        // แจ้งผู้ถูกอนุมัติ
+        await pool.query(
+          'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
+          // *** FIX:
+          [userId, null, 'join_approved', `คำขอของคุณสำหรับโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId] // <-- แก้ไขจาก targetUserId เป็น userId
+        );
+      } else {
+        // ปฏิเสธ → ลบ event ของผู้ร้องออก (ถ้ามี)
+        // *** FIX:
+        await deleteCalendarEventForUser(userId, postId); // <-- แก้ไขจาก targetUserId เป็น userId
+      }
+
+      res.json({ success: true, action: newStatus });
+    } catch (e) {
+      try { await conn.rollback(); } catch { }
+      console.error('PUT /api/student_posts/:id/requests/:userId error', e);
+      res.status(500).json({ message: 'Server error' });
+    } finally {
+      conn.release();
     }
 
-    res.json({ success: true, action: newStatus });
+    // 3. *** FIX: เพิ่ม CATCH สำหรับ OUTER 'try' (ที่เริ่มบรรทัด 2) ***
   } catch (e) {
-    try { await conn.rollback(); } catch {}
-    console.error('PUT /api/student_posts/:id/requests/:userId error', e);
-    res.status(500).json({ message: 'Server error' });
-  } finally {
-    conn.release();
+    // Catch-all สำหรับ error ที่เกิดก่อนเข้า transaction (เช่น validation)
+    console.error('Outer PUT /api/student_posts/:id/requests/:userId error', e);
+    res.status(500).json({ message: 'Server error (outer)' });
   }
 });
 
@@ -1178,7 +1207,7 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
       `UPDATE tutor_post_joins
        SET status=?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at)
        WHERE tutor_post_id=? AND user_id=?`,
-       [newStatus, newStatus, postId, userId]
+      [newStatus, newStatus, postId, userId]
     );
     if (!r.affectedRows) return res.status(404).json({ message: 'request not found' });
 
