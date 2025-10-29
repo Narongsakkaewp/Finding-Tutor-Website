@@ -139,10 +139,8 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
           COALESCE(sp.created_at, NOW()) AS created_at,
           r.name       AS student_name,
           r.lastname   AS student_lastname,
-          spro.profile_picture_url
        FROM student_posts sp
        LEFT JOIN register r ON r.user_id = sp.student_id
-       LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
        WHERE sp.subject = ?
        ORDER BY sp.student_post_id DESC
        LIMIT ? OFFSET ?`,
@@ -625,10 +623,9 @@ app.post('/api/student_posts', async (req, res) => {
          sp.preferred_days, sp.preferred_time, sp.location, sp.group_size,
          sp.budget, sp.contact_info, sp.grade_level, sp.created_at,
          r.name, r.lastname
-        //  spro.profile_picture_url
+         spro.profile_picture_url
        FROM student_posts sp
        LEFT JOIN register r ON r.user_id = sp.student_id
-       LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
        WHERE sp.student_post_id = ?`,
       [insertId]
     );
@@ -717,12 +714,11 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT 
-          tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description, tp.target_student_level, tp.teaching_days, tp.teaching_time, 
-          tp.location, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname,
-        FROM tutor_posts tp
-        LEFT JOIN register r ON r.user_id = tp.tutor_id
-        
-        WHERE tp.tutor_post_id = ?`,
+      tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description, tp.target_student_level, tp.teaching_days, tp.teaching_time,
+      tp.location, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname
+    FROM tutor_posts tp
+    LEFT JOIN register r ON r.user_id = tp.tutor_id
+    WHERE tp.tutor_post_id = ?`,
       [result.insertId]
     );
 
