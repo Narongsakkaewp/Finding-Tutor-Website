@@ -625,7 +625,7 @@ app.post('/api/student_posts', async (req, res) => {
          sp.preferred_days, sp.preferred_time, sp.location, sp.group_size,
          sp.budget, sp.contact_info, sp.grade_level, sp.created_at,
          r.name, r.lastname
-         spro.profile_picture_url
+        //  spro.profile_picture_url
        FROM student_posts sp
        LEFT JOIN register r ON r.user_id = sp.student_id
        LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
