@@ -185,7 +185,7 @@ function PostCardSimple({ item, onUnfav }) {
     <div className="group rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition">
       <div className="flex items-start gap-3">
         <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-600">
-          {item.post_type === "student" ? "นร." : "ติว"}
+          {item.post_type === "student" ? "นักเรียน" : "ติวเตอร์"}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-3">
