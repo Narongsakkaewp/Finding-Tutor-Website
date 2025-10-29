@@ -59,18 +59,8 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
     })();
   }, [postId, me, postsCache]);
 
-  // หา user_id ปัจจุบันจาก prop me หรือ localStorage (fallback)
-  const myId = useMemo(() => {
-    if (Number.isFinite(Number(me))) return Number(me);
-    try {
-      const saved = JSON.parse(localStorage.getItem("user") || "{}");
-      return Number(saved?.user_id ?? saved?.user?.user_id ?? saved?.id ?? 0);
-    } catch {
-      return 0;
-    }
-  }, [me]);
-
-  const isOwner = Number(myId) === Number(post?.owner_id);
+  // ล็อกให้ปุ่มอนุมัติ/ปฏิเสธแสดงเสมอ
+  const canModerate = true;
 
   if (loading) {
     return (
@@ -140,8 +130,8 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
             {post.joined ? "• คุณเข้าร่วมแล้ว" : ""}
           </div>
 
-          {/* แสดงบล็อคจัดการคำขอเฉพาะเจ้าของโพสต์ */}
-          <JoinRequestsManager postId={post.id} isOwner={isOwner} />
+          {/* แสดงบล็อคคำขอ */}
+          <JoinRequestsManager postId={post.id} canModerate={canModerate} />
         </div>
       </div>
     </div>
@@ -149,18 +139,11 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
 }
 
 /* ---------------------------------------------------------
-   JoinRequestsManager: โหลด "คำขอแบบ pending" และให้อนุมัติ/ปฏิเสธ
-   รองรับทั้ง API แบบใหม่ และ fallback แบบเดิม
+   JoinRequestsManager
 --------------------------------------------------------- */
-function JoinRequestsManager({ postId, isOwner }) {
+function JoinRequestsManager({ postId, canModerate }) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  const parseItems = (raw) => {
-    if (raw && Array.isArray(raw.items)) return raw.items;
-    if (Array.isArray(raw)) return raw;
-    return [];
-  };
 
   const loadRequests = async () => {
     if (!postId) return;
@@ -168,7 +151,7 @@ function JoinRequestsManager({ postId, isOwner }) {
     try {
       const res = await fetch(`${API_BASE}/api/student_posts/${postId}/requests`);
       const data = await res.json();
-      setRequests(parseItems(data));
+      setRequests(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("load join requests error:", e);
       setRequests([]);
@@ -179,73 +162,37 @@ function JoinRequestsManager({ postId, isOwner }) {
 
   useEffect(() => {
     loadRequests();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId]);
 
-  const optimisticRemove = (predicate) =>
-    setRequests((prev) => prev.filter((r) => !predicate(r)));
-
   const approve = async (req) => {
-    if (!window.confirm(`ยืนยันอนุมัติให้ ${req.name} ${req.lastname || ""} ?`)) return;
-
-    optimisticRemove((r) => r.request_id === req.request_id || r.user_id === req.user_id);
+    if (!window.confirm(`ยืนยันอนุมัติให้ ${req.name} ${req.lastname || ""} ?`))
+      return;
 
     try {
-      let ok = false;
-      try {
-        const r1 = await fetch(
-          `${API_BASE}/api/student_posts/${postId}/requests/${req.user_id}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "approve" }),
-          }
-        );
-        ok = r1.ok;
-      } catch {}
-
-      if (!ok) {
-        await fetch(
-          `${API_BASE}/api/student_posts/requests/${req.request_id}/approve`,
-          { method: "PUT" }
-        );
-      }
+      await fetch(`${API_BASE}/api/student_posts/${postId}/requests/${req.user_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve" }),
+      });
+      await loadRequests();
     } catch (e) {
       console.error("approve error:", e);
-      loadRequests();
-      alert("อนุมัติไม่สำเร็จ");
     }
   };
 
   const reject = async (req) => {
-    if (!window.confirm(`ปฏิเสธคำขอของ ${req.name} ${req.lastname || ""} ?`)) return;
-
-    optimisticRemove((r) => r.request_id === req.request_id || r.user_id === req.user_id);
+    if (!window.confirm(`ปฏิเสธคำขอของ ${req.name} ${req.lastname || ""} ?`))
+      return;
 
     try {
-      let ok = false;
-      try {
-        const r1 = await fetch(
-          `${API_BASE}/api/student_posts/${postId}/requests/${req.user_id}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "reject" }),
-          }
-        );
-        ok = r1.ok;
-      } catch {}
-
-      if (!ok) {
-        await fetch(
-          `${API_BASE}/api/student_posts/requests/${req.request_id}/reject`,
-          { method: "PUT" }
-        );
-      }
+      await fetch(`${API_BASE}/api/student_posts/${postId}/requests/${req.user_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reject" }),
+      });
+      await loadRequests();
     } catch (e) {
       console.error("reject error:", e);
-      loadRequests();
-      alert("ปฏิเสธไม่สำเร็จ");
     }
   };
 
@@ -258,18 +205,17 @@ function JoinRequestsManager({ postId, isOwner }) {
     );
   }
 
-  if (!requests || requests.length === 0) {
+  if (!requests.length) {
     return <p className="text-sm text-gray-500 mt-6">ยังไม่มีคำขอเข้าร่วม</p>;
   }
 
   return (
     <div className="mt-6 border-t pt-4">
       <h2 className="font-semibold mb-3">คำขอเข้าร่วม</h2>
-
       <div className="space-y-2">
         {requests.map((r) => (
           <div
-            key={r.request_id || r.user_id}
+            key={r.user_id}
             className="flex justify-between items-center border rounded-lg p-3 bg-white"
           >
             <div className="text-sm text-gray-700">
@@ -282,8 +228,7 @@ function JoinRequestsManager({ postId, isOwner }) {
               )}
             </div>
 
-            {/* เจ้าของเท่านั้นที่เห็นปุ่ม */}
-            {isOwner && (r.status === "pending" || !r.status) && (
+            {canModerate && (!r.status || r.status === "pending") && (
               <div className="flex gap-2">
                 <button
                   onClick={() => approve(r)}
