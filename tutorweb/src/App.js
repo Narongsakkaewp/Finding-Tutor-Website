@@ -12,6 +12,7 @@ import Profile from './components/Profile';
 import TutorProfile from './components/TutorProfile';
 import MyPostDetails from './components/MyPostDetails';
 import TutorLayout from './components/TutorLayout';
+import StudentCalendar from './components/StudentCalendar';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -50,12 +51,12 @@ function App() {
       .catch(console.error);
   }, [user]);
 
-  const goToProfileByRole = (roleLike) => {
+  /*const goToProfileByRole = (roleLike) => {
     const r = String(roleLike || '').toLowerCase();
     if (r === 'student') setCurrentPage('student_info');
     else if (r === 'tutor') setCurrentPage('tutor_info');
     else setCurrentPage('home');
-  };
+  };*/
 
   const handleLoginSuccess = (payload = {}) => {
     const role = (payload.userType || payload.role || payload.user?.role || '').toLowerCase();
@@ -148,6 +149,8 @@ function App() {
         }
       case 'tutor_layout':
         return <TutorLayout />;
+      case 'student_calendar':
+        return <StudentCalendar />;
       default:
         return <Home />;
     }
