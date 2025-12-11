@@ -49,13 +49,13 @@ export default function StudentInfoPage({ setCurrentPage }) {
         setFormData({
           profile_picture_url: data.profile_picture_url || '',
           nickname: data.nickname || '',
-          phone: data.phone_number || '', // แก้ไขตาม schema
+          phone: data.phone || '', // แก้ไขตาม schema
           address: data.address || '',
           gradeLevel: data.grade_level || '', // แก้ไขตาม schema
           institution: data.institution || '',
           faculty: data.faculty || '',
           major: data.major || '',
-          about: data.about_me || '' // แก้ไขตาม schema
+          about: data.about || '' // แก้ไขตาม schema
         });
       } catch (err) {
         setError(err.message);
@@ -249,7 +249,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
           </div>
           <div>
             <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">เกี่ยวกับคุณ</h3>
-            <textarea id="about" name="about" rows="4" className="mt-1 w-full border border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำตัวเองสั้นๆ..." value={formData.about} onChange={handleChange}></textarea>
+            <textarea id="about" name="about" rows="4" className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำตัวเองสั้นๆ..." value={formData.about} onChange={handleChange}></textarea>
           </div>
 
           {/* --- Action Buttons & Messages --- */}
@@ -259,7 +259,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
               {error && <div className="text-red-600 text-sm">{error}</div>}
             </div>
             <div className="flex space-x-4">
-              <button type="button" onClick={() => setCurrentPage('profile')} className="px-6 py-2 border border rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+              <button type="button" onClick={() => setCurrentPage('profile')} className="px-6 py-2 border rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                 ยกเลิก
               </button>
               <button type="submit" disabled={isSubmitting} className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300">

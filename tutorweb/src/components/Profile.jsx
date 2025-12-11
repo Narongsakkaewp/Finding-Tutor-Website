@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
+import Review from "../components/Review";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, MoreVertical, Trash2, EyeOff, MapPin, Mail, Phone, GraduationCap } from "lucide-react";
+import { Edit, MoreVertical, Trash2, EyeOff, MapPin, Mail, Phone, GraduationCap, AppWindow, Star } from "lucide-react";
 
 /* ---------- helpers ---------- */
 
@@ -142,6 +143,8 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   const [events, setEvents] = useState([]); // calendar events
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dailyEvents, setDailyEvents] = useState([]);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewTargetId, setReviewTargetId] = useState(null); // เก็บ ID ติวเตอร์ที่จะรีวิว (Mockup ไปก่อนก็ได้)
 
   // ===== สำหรับเมนู/ซ่อน/ลบ
   const [openMenuFor, setOpenMenuFor] = useState(null);   // id ของการ์ดที่เปิดเมนู
@@ -304,7 +307,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   if (!profile) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-600">
-        ไม่พบข้อมูลผู้ใช้ (กรุณาเข้าสู่ระบบ)
+        ไม่พบข้อมูลผู้ใช้ (Server อาจไม่พร้อมใช้งาน)
       </div>
     );
   }
@@ -392,11 +395,18 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                 )}
 
                 {/* --- ส่วน "Bio" (เกี่ยวกับฉัน) --- */}
-                {profile.bio && (
-                  <p className="mt-3 border-t pt-3 text-sm text-gray-700 whitespace-pre-line">
-                    {profile.bio}
-                  </p>
-                )}
+                <div>
+                  <h4 className="flex items-center mt-3 border-t pt-3 gap-2 text-sm font-semibold text-gray-700 mb-1">
+                    <AppWindow size={16} />
+                    เกี่ยวกับฉัน:
+                  </h4>
+                  {profile.bio && (
+                    <p className="pl-5 text-sm text-gray-700 whitespace-pre-line">
+                      {profile.bio}
+                    </p>
+                  )}
+                </div>
+
 
                 {/* --- ส่วน "ข้อมูลติดต่อ" --- */}
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
@@ -430,12 +440,23 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
             </div>
 
             {/* --- ส่วนขวา (ปุ่มแก้ไข, Stats) --- */}
-            <div className="md:ml-auto flex flex-col items-stretch md:items-end gap-3">
+            <div className="md:ml-auto flex flex-col items-stretch md:items-end gap-3 self-start">
               <button
                 onClick={onEditProfile}
                 className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
               >
                 <Edit size={16} /> แก้ไขโปรไฟล์
+              </button>
+              {/* ปุ่มรีวิว ทดสอบ */}
+              <button
+                onClick={() => {
+                  console.log("Button Clicked!");
+                  setReviewTargetId(16); // <--- ใส่เลข postId ของจริงที่มีใน DB เพื่อทดสอบ
+                  setShowReviewModal(true);
+                }}
+                className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-sm font-medium border border-blue-200"
+              >
+                <Star size={17} /> เขียนรีวิว (Demo)
               </button>
               <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
                 <Stat label="โพสต์ทั้งหมด" value={String(posts.length)} />
@@ -624,6 +645,14 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
         onConfirm={doDeletePost}
         onCancel={cancelDelete}
       />
+
+      {showReviewModal && (
+        <Review
+          postId={reviewTargetId}
+          studentId={currentUser?.user_id}
+          onClose={() => setShowReviewModal(false)}
+        />
+      )}
     </div>
   );
 }

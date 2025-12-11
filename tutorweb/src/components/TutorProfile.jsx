@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, Star, MapPin, Phone, Mail } from "lucide-react";
+import { Edit, Star, MapPin, Phone, Mail, GraduationCap, BookA } from "lucide-react";
 
 /* ---------- Helpers (สำหรับ Tutor) ---------- */
 
@@ -62,6 +62,39 @@ function ReviewCard({ review }) {
     );
 }
 
+function AvatarModal({ src, alt, onClose }) {
+    if (!src) return null;
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={onClose} // กดที่พื้นหลังเพื่อปิด
+        >
+            <div
+                className="relative max-w-lg w-full max-h-[80vh]"
+                onClick={(e) => e.stopPropagation()} // ป้องกันการกดที่รูปแล้วปิด
+            >
+                <img
+                    src={src}
+                    alt={alt}
+                    className="w-full h-full object-contain rounded-lg shadow-xl"
+                />
+                {/* ปุ่มปิด (X) */}
+                <button
+                    onClick={onClose}
+                    className="absolute -top-3 -right-3 bg-white text-gray-700 rounded-full p-1.5 shadow-lg hover:bg-gray-200 transition"
+                    aria-label="Close"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    );
+}
+
 /* ---------- Main TutorProfile Component ---------- */
 
 function TutorProfile({ setCurrentPage, onEditProfile }) {
@@ -70,6 +103,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
     const [reviews, setReviews] = useState([]);
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
     const currentUser = useMemo(() => {
         try {
@@ -134,7 +168,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
         return <div className="min-h-screen bg-gray-50 flex items-center justify-center">กำลังโหลดโปรไฟล์...</div>;
     }
     if (!profile) {
-        return <div className="min-h-screen bg-gray-50 flex items-center justify-center">ไม่พบข้อมูลผู้ใช้ (กรุณาเข้าสู่ระบบ)</div>;
+        return <div className="min-h-screen bg-gray-50 flex items-center justify-center">ไม่พบข้อมูลผู้ใช้ (Server อาจไม่พร้อมใช้งาน)</div>;
     }
 
     return (
@@ -146,18 +180,23 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                             <img
                                 src={profile.avatarUrl}
                                 alt={profile.fullName}
-                                className="h-28 w-28 rounded-2xl object-cover ring-4 ring-white shadow-md"
+                                className="h-28 w-28 rounded-2xl object-cover ring-4 ring-white shadow-md cursor-pointer hover:opacity-80 transition"
+                                onClick={() => setIsAvatarModalOpen(true)}
                             />
                             <div>
-                                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+                                <h1 className="flex items-center text-2xl md:text-3xl font-bold tracking-tight">
                                     {profile.fullName}
                                     {profile.nickname && (
-                                        <span className="text-gray-500 font-medium ml-2">({profile.nickname})</span>
+                                        <span className="flex items-center text-gray-500 font-medium ml-2">
+                                            ({profile.nickname}) &nbsp;
+                                            <i class="bi bi-patch-check-fill text-blue-600"></i>
+                                        </span>
                                     )}
                                 </h1>
                                 <p className="text-gray-600 mt-1">{profile.education && profile.education.length > 0 && (
                                     <div className="mt-3 border-t pt-3">
-                                        <h4 className="text-sm font-semibold text-gray-700 mb-1">ประวัติการศึกษา:</h4>
+                                        <h4 className="text-sm font-semibold text-gray-700 mb-1"><GraduationCap size={16} />
+                                            ประวัติการศึกษา:</h4>
                                         <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
                                             {profile.education.map((edu, index) => (
                                                 <li key={index}>
@@ -171,7 +210,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                                 )}</p>
                                 <p className="text-gray-600 mt-1">{profile.teaching_experience && profile.teaching_experience.length > 0 && (
                                     <div className="mt-3 border-t pt-3">
-                                        <h4 className="text-sm font-semibold text-gray-700 mb-1">ประสบการณ์ด้านการสอน:</h4>
+                                        <h4 className="text-sm font-semibold text-gray-700 mb-1"><BookA size={16} />ประสบการณ์ด้านการสอน:</h4>
                                         <ul className="space-y-2 text-sm text-gray-600">
                                             {profile.teaching_experience.map((exp, index) => (
                                                 <li key={index}>
@@ -213,7 +252,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                             </div>
                         </div>
 
-                        <div className="md:ml-auto grid grid-cols items-end gap-3">
+                        <div className="md:ml-auto grid grid-cols items-end gap-3 self-start">
                             <button
                                 onClick={onEditProfile}
                                 className="flex w-full justify-center items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
@@ -288,7 +327,9 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                                                     className="w-9 h-9 rounded-full object-cover"
                                                 />
                                                 <div>
-                                                    <div className="text-sm font-semibold">{profile.fullName}</div>
+                                                    <div className="text-sm font-semibold">{profile.fullName} 
+                                                    &nbsp; <i className="bi bi-patch-check-fill text-blue-600"></i>
+                                                    </div>
                                                     <div className="text-xs text-gray-500">
                                                         {/* ✅ ปรับ Format วันที่ให้เหมือนของนักเรียน */}
                                                         {new Date(post.createdAt).toLocaleString('th-TH')}
@@ -337,6 +378,13 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
 
                 </div>
             </div>
+            {isAvatarModalOpen && (
+                <AvatarModal
+                    src={profile.avatarUrl}
+                    alt={profile.fullName}
+                    onClose={() => setIsAvatarModalOpen(false)}
+                />
+            )}
         </div>
     );
 }

@@ -543,6 +543,7 @@ app.get('/api/student_posts', async (req, res) => {
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
         sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
         r.name, r.lastname,
+        spro.profile_picture_url,
         COALESCE(jc.join_count, 0) AS join_count,
         CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined,
         CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me,
@@ -550,6 +551,7 @@ app.get('/api/student_posts', async (req, res) => {
         CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited
       FROM student_posts sp
       LEFT JOIN register r ON r.user_id = sp.student_id
+      LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
       LEFT JOIN (
         SELECT student_post_id, COUNT(*) AS join_count
         FROM student_post_joins
@@ -588,7 +590,11 @@ app.get('/api/student_posts', async (req, res) => {
       pending_me: !!r.pending_me,
       fav_count: Number(r.fav_count || 0),
       favorited: !!r.favorited,
-      user: { first_name: r.name || '', last_name: r.lastname || '', profile_image: '/default-avatar.png' },
+      user: {
+        first_name: r.name || '',
+        last_name: r.lastname || '',
+        profile_image: r.profile_picture_url || '/default-avatar.png'
+      },
     }));
 
     return res.json(posts);
@@ -597,7 +603,6 @@ app.get('/api/student_posts', async (req, res) => {
     return sendDbError(res, err);
   }
 });
-
 // ===== POST: สร้างโพสต์นักเรียน =====
 app.post('/api/student_posts', async (req, res) => {
   try {
@@ -1774,6 +1779,106 @@ async function createCalendarEventsForTutorApproval(postId, joinerId) {
     title: titleText, subject: subjectText, event_date, event_time, location
   });
 }
+
+// --- API สำหรับดึงข้อมูลโพสต์ติวเตอร์เพื่อแสดงในหน้ารีวิว ---
+app.get('/api/review-info/:tutorPostId', async (req, res) => {
+  try {
+    const { tutorPostId } = req.params;
+
+    // JOIN 3 ตาราง: tutor_posts -> register (เอาชื่อ) -> tutor_profiles (เอารูป/ข้อมูลอื่นถ้าอยากได้)
+    const [rows] = await pool.execute(`
+      SELECT 
+        tp.subject,
+        r.name,
+        r.lastname
+      FROM tutor_posts tp
+      JOIN register r ON tp.tutor_id = r.user_id
+      WHERE tp.tutor_post_id = ?
+    `, [tutorPostId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'ไม่พบโพสต์นี้' });
+    }
+
+    const info = rows[0];
+    res.json({
+      success: true,
+      subject: info.subject,
+      tutorName: `${info.name} ${info.lastname}`
+    });
+
+  } catch (err) {
+    console.error('GET /api/review-info error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// --- API สำหรับบันทึกรีวิว (Mockup) ---
+app.post('/api/reviews', async (req, res) => {
+  try {
+    const { tutor_post_id, student_id, rating, comment } = req.body;
+
+    // 1. หา tutor_id จาก tutor_post_id ก่อน
+    const [posts] = await pool.execute('SELECT tutor_id FROM tutor_posts WHERE tutor_post_id = ?', [tutor_post_id]);
+
+    if (posts.length === 0) return res.status(404).json({ success: false, message: 'Post not found' });
+    const tutor_id = posts[0].tutor_id;
+
+    // 2. บันทึกลงตาราง reviews
+    const [result] = await pool.execute(
+      `INSERT INTO reviews (booking_id, tutor_id, student_id, rating, comment, created_at) 
+       VALUES (0, ?, ?, ?, ?, NOW())`,
+      [tutor_id, student_id, rating, comment]
+    );
+
+    res.json({ success: true, message: 'บันทึกรีวิวสำเร็จ', reviewId: result.insertId });
+
+  } catch (err) {
+    console.error('POST /api/reviews error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.get('/api/tutor-posts/:id', async (req, res) => {
+  try {
+    const postId = req.params.id;
+
+    // Join ตาราง tutor_posts กับ register เพื่อเอาชื่อติวเตอร์มาด้วย
+    const [rows] = await pool.execute(
+      `SELECT 
+        tp.tutor_post_id, 
+        tp.subject, 
+        tp.tutor_id,
+        r.name, 
+        r.lastname 
+       FROM tutor_posts tp
+       JOIN register r ON tp.tutor_id = r.user_id
+       WHERE tp.tutor_post_id = ?`,
+      [postId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'ไม่พบโพสต์นี้' });
+    }
+
+    const post = rows[0];
+
+    // ส่งข้อมูลกลับไปให้ Frontend
+    res.json({
+      tutor_post_id: post.tutor_post_id,
+      subject: post.subject,
+      owner_id: post.tutor_id, // ส่ง tutor_id กลับไปเพื่อให้ Frontend เอาไปใช้ save review
+      user: {
+        first_name: post.name,
+        last_name: post.lastname
+      }
+    });
+
+  } catch (err) {
+    console.error('GET /api/tutor-posts/:id error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 
 // ---------- Health ----------

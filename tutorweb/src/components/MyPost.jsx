@@ -97,8 +97,6 @@ const postGradeLevelOptions = [
   { value: "ประถมศึกษา", label: "ประถมศึกษา" },
   { value: "มัธยมต้น (ม.1-ม.3)", label: "มัธยมศึกษาตอนต้น (ม.1-ม.3)" },
   { value: "มัธยมปลาย (ม.4-ม.6)", label: "มัธยมศึกษาตอนปลาย (ม.4-ม.6)" },
-  { value: "ปริญญาตรี", label: "ปริญญาตรี" },
-  { value: "บุคคลทั่วไป", label: "บุคคลทั่วไป" }
 ];
 
 function Modal({ open, onClose, children, title }) {

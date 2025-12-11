@@ -11,13 +11,8 @@ const getCurrentUser = () => {
 
 const gradeLevelOptions = [
     { value: 'ประถม', label: 'ประถมศึกษา' },
-    { value: 'ม.1', label: 'มัธยมศึกษาปีที่ 1' },
-    { value: 'ม.2', label: 'มัธยมศึกษาปีที่ 2' },
-    { value: 'ม.3', label: 'มัธยมศึกษาปีที่ 3' },
-    { value: 'ม.4', label: 'มัธยมศึกษาปีที่ 4' },
-    { value: 'ม.5', label: 'มัธยมศึกษาปีที่ 5' },
-    { value: 'ม.6', label: 'มัธยมศึกษาปีที่ 6' },
-    { value: 'ปริญญาตรี', label: 'ปริญญาตรี' },
+    { value: 'มัธยมต้น', label: 'มัธยมศึกษาตอนต้น (ม.1-ม.3)' },
+    { value: 'มัธยมปลาย', label: 'มัธยมศึกษาตอนปลาย (ม.4-ม.6)' },
 ];
 
 const subjectOptions = [
