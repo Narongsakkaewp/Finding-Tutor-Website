@@ -1775,6 +1775,104 @@ async function createCalendarEventsForTutorApproval(postId, joinerId) {
   });
 }
 
+// ---------- Get single post by type & id ----------
+app.get('/api/posts/:type/:id', async (req, res) => {
+  try {
+    const type = String(req.params.type || '').toLowerCase();
+    const id = Number(req.params.id);
+    if (!['student', 'tutor'].includes(type)) {
+      return res.status(400).json({ message: 'invalid post type' });
+    }
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ message: 'invalid id' });
+    }
+
+    if (type === 'student') {
+      const [rows] = await pool.query(`
+        SELECT
+          sp.student_post_id, sp.student_id, sp.subject, sp.description,
+          sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
+          sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at, sp.grade_level,
+          r.name, r.lastname, spro.profile_picture_url
+        FROM student_posts sp
+        LEFT JOIN register r ON r.user_id = sp.student_id
+        LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
+        WHERE sp.student_post_id = ?
+        LIMIT 1
+      `, [id]);
+
+      if (!rows.length) return res.status(404).json({ message: 'not found' });
+
+      const r = rows[0];
+      return res.json({
+        id: r.student_post_id,
+        owner_id: r.student_id,
+        subject: r.subject || '',
+        description: r.description || '',
+        preferred_days: r.preferred_days || '',
+        preferred_time: r.preferred_time || '',
+        location: r.location || '',
+        group_size: Number(r.group_size || 0),
+        budget: Number(r.budget || 0),
+        contact_info: r.contact_info || '',
+        createdAt: r.created_at,
+        grade_level: r.grade_level || 'ไม่ระบุ',
+        user: {
+          first_name: r.name || '',
+          last_name: r.lastname || '',
+          profile_image: r.profile_picture_url || '/default-avatar.png',
+        },
+        join_count: 0, // (ถ้าต้องการ ใส่ query count เพิ่มได้)
+        joined: false,
+        pending_me: false,
+        type: 'student',
+      });
+    }
+
+    // type === 'tutor'
+    const [rows] = await pool.query(`
+      SELECT
+        tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
+        tp.teaching_days, tp.teaching_time, tp.location, tp.price, tp.contact_info, tp.created_at,
+        r.name, r.lastname, tpro.profile_picture_url
+      FROM tutor_posts tp
+      LEFT JOIN register r ON r.user_id = tp.tutor_id
+      LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
+      WHERE tp.tutor_post_id = ?
+      LIMIT 1
+    `, [id]);
+
+    if (!rows.length) return res.status(404).json({ message: 'not found' });
+
+    const r = rows[0];
+    return res.json({
+      id: r.tutor_post_id,
+      owner_id: r.tutor_id,
+      subject: r.subject || '',
+      description: r.description || '',
+      preferred_days: r.teaching_days || '',
+      preferred_time: r.teaching_time || '',
+      location: r.location || '',
+      budget: Number(r.price || 0),
+      contact_info: r.contact_info || '',
+      createdAt: r.created_at,
+      user: {
+        first_name: r.name || '',
+        last_name: r.lastname || '',
+        profile_image: r.profile_picture_url || '/default-avatar.png',
+      },
+      join_count: 0,
+      joined: false,
+      pending_me: false,
+      type: 'tutor',
+    });
+  } catch (e) {
+    console.error('GET /api/posts/:type/:id error', e);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
 
 // ---------- Health ----------
 app.get('/health', (req, res) => res.json({ ok: true, time: new Date() }));
