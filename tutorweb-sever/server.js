@@ -1843,7 +1843,8 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
 
-    // Join ตาราง tutor_posts กับ register เพื่อเอาชื่อติวเตอร์มาด้วย
+    // ✅ แก้จาก JOIN เป็น LEFT JOIN
+    // เพื่อให้ดึงข้อมูลโพสต์ได้ แม้ว่าจะหาข้อมูลคนโพสต์ไม่เจอ
     const [rows] = await pool.execute(
       `SELECT 
         tp.tutor_post_id, 
@@ -1852,25 +1853,25 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
         r.name, 
         r.lastname 
        FROM tutor_posts tp
-       JOIN register r ON tp.tutor_id = r.user_id
+       LEFT JOIN register r ON tp.tutor_id = r.user_id 
        WHERE tp.tutor_post_id = ?`,
       [postId]
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({ message: 'ไม่พบโพสต์นี้' });
+      return res.status(404).json({ message: 'ไม่พบโพสต์นี้ในฐานข้อมูล' });
     }
 
     const post = rows[0];
 
-    // ส่งข้อมูลกลับไปให้ Frontend
     res.json({
       tutor_post_id: post.tutor_post_id,
-      subject: post.subject,
-      owner_id: post.tutor_id, // ส่ง tutor_id กลับไปเพื่อให้ Frontend เอาไปใช้ save review
+      subject: post.subject || "ไม่ระบุวิชา", // กันค่า null
+      owner_id: post.tutor_id,
       user: {
-        first_name: post.name,
-        last_name: post.lastname
+        // ถ้าหาชื่อไม่เจอ ให้แสดงค่า default
+        first_name: post.name || "ไม่ทราบชื่อ", 
+        last_name: post.lastname || ""
       }
     });
 

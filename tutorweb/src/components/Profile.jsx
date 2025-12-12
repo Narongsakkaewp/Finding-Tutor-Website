@@ -443,7 +443,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
             <div className="md:ml-auto flex flex-col items-stretch md:items-end gap-3 self-start">
               <button
                 onClick={onEditProfile}
-                className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
+                className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium"
               >
                 <Edit size={16} /> แก้ไขโปรไฟล์
               </button>
@@ -451,12 +451,12 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               <button
                 onClick={() => {
                   console.log("Button Clicked!");
-                  setReviewTargetId(16); // <--- ใส่เลข postId ของจริงที่มีใน DB เพื่อทดสอบ
+                  setReviewTargetId(17); // <--- ใส่เลข postId ของจริงที่มีใน DB เพื่อทดสอบ
                   setShowReviewModal(true);
                 }}
-                className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-sm font-medium border border-blue-200"
+                className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium"
               >
-                <Star size={17} /> เขียนรีวิว (Demo)
+                <Star size={16} /> เขียนรีวิว(Demo)
               </button>
               <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
                 <Stat label="โพสต์ทั้งหมด" value={String(posts.length)} />
