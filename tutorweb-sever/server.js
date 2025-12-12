@@ -1780,6 +1780,107 @@ async function createCalendarEventsForTutorApproval(postId, joinerId) {
   });
 }
 
+// --- API สำหรับดึงข้อมูลโพสต์ติวเตอร์เพื่อแสดงในหน้ารีวิว ---
+app.get('/api/review-info/:tutorPostId', async (req, res) => {
+  try {
+    const { tutorPostId } = req.params;
+
+    // JOIN 3 ตาราง: tutor_posts -> register (เอาชื่อ) -> tutor_profiles (เอารูป/ข้อมูลอื่นถ้าอยากได้)
+    const [rows] = await pool.execute(`
+      SELECT 
+        tp.subject,
+        r.name,
+        r.lastname
+      FROM tutor_posts tp
+      JOIN register r ON tp.tutor_id = r.user_id
+      WHERE tp.tutor_post_id = ?
+    `, [tutorPostId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'ไม่พบโพสต์นี้' });
+    }
+
+    const info = rows[0];
+    res.json({
+      success: true,
+      subject: info.subject,
+      tutorName: `${info.name} ${info.lastname}`
+    });
+
+  } catch (err) {
+    console.error('GET /api/review-info error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// --- API สำหรับบันทึกรีวิว (Mockup) ---
+app.post('/api/reviews', async (req, res) => {
+  try {
+    const { tutor_post_id, student_id, rating, comment } = req.body;
+
+    // 1. หา tutor_id จาก tutor_post_id ก่อน
+    const [posts] = await pool.execute('SELECT tutor_id FROM tutor_posts WHERE tutor_post_id = ?', [tutor_post_id]);
+
+    if (posts.length === 0) return res.status(404).json({ success: false, message: 'Post not found' });
+    const tutor_id = posts[0].tutor_id;
+
+    // 2. บันทึกลงตาราง reviews
+    const [result] = await pool.execute(
+      `INSERT INTO reviews (booking_id, tutor_id, student_id, rating, comment, created_at) 
+       VALUES (0, ?, ?, ?, ?, NOW())`,
+      [tutor_id, student_id, rating, comment]
+    );
+
+    res.json({ success: true, message: 'บันทึกรีวิวสำเร็จ', reviewId: result.insertId });
+
+  } catch (err) {
+    console.error('POST /api/reviews error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.get('/api/tutor-posts/:id', async (req, res) => {
+  try {
+    const postId = req.params.id;
+
+    // ✅ แก้จาก JOIN เป็น LEFT JOIN
+    // เพื่อให้ดึงข้อมูลโพสต์ได้ แม้ว่าจะหาข้อมูลคนโพสต์ไม่เจอ
+    const [rows] = await pool.execute(
+      `SELECT 
+        tp.tutor_post_id, 
+        tp.subject, 
+        tp.tutor_id,
+        r.name, 
+        r.lastname 
+       FROM tutor_posts tp
+       LEFT JOIN register r ON tp.tutor_id = r.user_id 
+       WHERE tp.tutor_post_id = ?`,
+      [postId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'ไม่พบโพสต์นี้ในฐานข้อมูล' });
+    }
+
+    const post = rows[0];
+
+    res.json({
+      tutor_post_id: post.tutor_post_id,
+      subject: post.subject || "ไม่ระบุวิชา", // กันค่า null
+      owner_id: post.tutor_id,
+      user: {
+        // ถ้าหาชื่อไม่เจอ ให้แสดงค่า default
+        first_name: post.name || "ไม่ทราบชื่อ", 
+        last_name: post.lastname || ""
+      }
+    });
+
+  } catch (err) {
+    console.error('GET /api/tutor-posts/:id error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 
 // ---------- Health ----------
 app.get('/health', (req, res) => res.json({ ok: true, time: new Date() }));
