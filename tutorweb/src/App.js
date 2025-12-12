@@ -5,7 +5,7 @@ import Home from './components/Home';
 import Notification from './components/Notification';
 import StudentInfo from './pages/Student_Info';
 import TutorInfo from './pages/Tutor_Info';
-import Booking from './components/Booking';
+import Review from './components/Review';
 import MyPost from './components/MyPost';
 import Favorite from './components/Favorite';
 import Profile from './components/Profile';
@@ -118,8 +118,8 @@ function App() {
       case 'tutor_info':
         // ส่ง setCurrentPage ไปให้ด้วย
         return <TutorInfo user={user} setCurrentPage={setCurrentPage} />;
-      case 'booking':
-        return <Booking />;
+      case 'review':
+        return <Review />;
       case 'mypost':
         return (
           <MyPost
@@ -145,7 +145,7 @@ function App() {
           return <TutorProfile setCurrentPage={setCurrentPage} onEditProfile={handleEditProfile} />;
         } else {
           // ส่ง onEditProfile ไปให้ Profile ด้วย
-          return <Profile setCurrentPage={setCurrentPage} user={user} onEditProfile={handleEditProfile}/>;
+          return <Profile setCurrentPage={setCurrentPage} user={user} onEditProfile={handleEditProfile} />;
         }
       case 'tutor_layout':
         return <TutorLayout />;
@@ -214,6 +214,13 @@ function App() {
                     </button>
                   </li>
                 )}
+                {/* {userType !== 'tutor' && (
+                  <li>
+                    <button onClick={() => setCurrentPage('review')} className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
+                      <i className="bi bi-star-fill font-bold text-2xl"></i> รีวิวติวเตอร์
+                    </button>
+                  </li>
+                )} */}
                 <li>
                   <button onClick={() => setCurrentPage('profile')} className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
                     <i className="bi bi-person-circle font-bold text-2xl"></i> โปรไฟล์ของฉัน

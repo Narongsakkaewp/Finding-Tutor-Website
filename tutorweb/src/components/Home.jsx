@@ -414,14 +414,8 @@ function TutorPostForm({ tutorId, onSuccess, onClose }) {
       >
         <option value="" disabled>-- เลือกระดับชั้นของนักเรียน --</option>
         <option value="ประถมศึกษา">ประถมศึกษา</option>
-        <option value="ม.1">มัธยมศึกษาปีที่ 1</option>
-        <option value="ม.2">มัธยมศึกษาปีที่ 2</option>
-        <option value="ม.3">มัธยมศึกษาปีที่ 3</option>
-        <option value="ม.4">มัธยมศึกษาปีที่ 4</option>
-        <option value="ม.5">มัธยมศึกษาปีที่ 5</option>
-        <option value="ม.6">มัธยมศึกษาปีที่ 6</option>
-        <option value="ปริญญาตรี">ปริญญาตรี</option>
-        <option value="บุคคลทั่วไป">บุคคลทั่วไป</option>
+        <option value="มัธยมต้น">มัธยมศึกษาตอนต้น (ม.1-ม.3)</option>
+        <option value="มัธยมปลาย">มัธยมศึกษาตอนปลาย (ม.4-ม.6)</option>
       </select>
 
       <textarea name="description" placeholder="รายละเอียดเพิ่มเติม" value={formData.description} onChange={handleChange} className="border rounded p-2 w-full" rows="3" />
