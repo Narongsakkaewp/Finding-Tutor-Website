@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import logo from "../assets/logo/FindingTutor_Logo.png";
+import { Menu, ChevronDown, User, LogOut, Settings } from "lucide-react"; // ใช้ไอคอนจาก lucide-react เพื่อความสวยงาม
 
 const Navbar = ({
-  userType, // รับ userType มาจาก App.js โดยตรง
+  userType,
   onLogout,
   onEditProfile,
   setSidebarOpen,
   sidebarOpen,
-  setCurrentPage
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [displayName, setDisplayName] = useState("User");
@@ -18,7 +18,7 @@ const Navbar = ({
     let userId = null;
     let localUser = null;
 
-    // --- 1. ดึงข้อมูลพื้นฐานจาก localStorage ก่อน ---
+    // --- 1. ดึงข้อมูลพื้นฐานจาก localStorage ---
     try {
       const rawUser = localStorage.getItem("user");
       if (rawUser) {
@@ -27,15 +27,13 @@ const Navbar = ({
         const name = localUser.nickname || localUser.name || "User";
         setDisplayName(String(name));
 
-        // ลองตั้งค่ารูปภาพจาก localStorage ก่อน ถ้ามี
         if (localUser.profile_picture_url) {
           setAvatar(localUser.profile_picture_url);
         }
       }
     } catch { }
 
-    // --- 2. ยิง API ไปถามรูปโปรไฟล์ล่าสุด (ส่วนสำคัญอยู่ตรงนี้) ---
-    // เช็คให้แน่ใจว่าเรารู้ ID และ ประเภท ของผู้ใช้แล้ว
+    // --- 2. ยิง API ไปถามรูปโปรไฟล์ล่าสุด ---
     if (userId && userType) {
       let profileApiUrl = '';
       if (userType === 'student') {
@@ -44,29 +42,23 @@ const Navbar = ({
         profileApiUrl = `http://localhost:5000/api/tutor-profile/${userId}`;
       }
 
-      // ถ้ารู้ URL ที่จะยิง API แล้ว ก็เริ่ม fetch ข้อมูล
       if (profileApiUrl) {
         fetch(profileApiUrl)
           .then(res => res.json())
           .then(profileData => {
-            // ถ้าเจอ URL รูปภาพในข้อมูลที่ได้กลับมา
             if (profileData && profileData.profile_picture_url) {
-              // อัปเดต State `avatar` เพื่อให้รูปแสดงผลทันที
               setAvatar(profileData.profile_picture_url);
-
-              // (Optional but recommended) อัปเดต localStorage ให้มีรูปภาพล่าสุดด้วย
-              // เพื่อให้ครั้งต่อไปโหลดเร็วขึ้น
               if (localUser) {
                 localUser.profile_picture_url = profileData.profile_picture_url;
                 localStorage.setItem("user", JSON.stringify(localUser));
               }
             }
           })
-          .catch(console.error); // ถ้า fetch ไม่สำเร็จ ก็จะแสดง error ใน console แต่แอปไม่พัง
+          .catch(console.error);
       }
     }
 
-    // --- 3. Logic สำหรับปิด dropdown (เหมือนเดิม) ---
+    // --- 3. Logic ปิด dropdown ---
     const onClick = (e) => {
       if (ddRef.current && !ddRef.current.contains(e.target)) {
         setDropdownOpen(false);
@@ -75,84 +67,131 @@ const Navbar = ({
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
 
-  }, [userType]); // ให้ useEffect ทำงานใหม่ทุกครั้งที่ userType เปลี่ยนแปลง
+  }, [userType]);
 
   return (
-    <nav className="flex items-center justify-between bg-white p-4 text-black shadow border-b">
-      <button
-        className="md:hidden mr-2 text-2xl"
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-      >
-        <i className="bi bi-list"></i>
-      </button>
+    <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm transition-all duration-300">
+      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          
+          {/* Left Side: Hamburger & Logo */}
+          <div className="flex items-center gap-4">
+            <button
+              className="md:hidden p-2 text-gray-500 hover:bg-gray-100 transition-colors focus:outline-none"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              <Menu size={24} />
+            </button>
 
-      <div>
-        <img src={logo} alt="Logo" className="hidden md:flex font-bold text-xl h-16" />
-      </div>
+            <div className="flex-shrink-0 flex items-center">
+              <img src={logo} alt="Logo" className="h-10 w-auto md:h-16 object-contain" />
+            </div>
+          </div>
 
-      <div className="flex-1 mx-4 flex items-center gap-4 ">
-        <div className="ml-auto">
-          {userType && (
-            <span className="text-gray-600 font-semibold whitespace-nowrap">
-              คุณคือ: {userType === "student" ? "นักเรียน" : "ติวเตอร์"}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="relative" ref={ddRef}>
-        <button
-          className="flex items-center gap-2 focus:outline-none"
-          onClick={() => setDropdownOpen((s) => !s)}
-          aria-haspopup="menu"
-          aria-expanded={dropdownOpen}
-        >
-          <div className="w-10 h-10 rounded-full border overflow-hidden bg-gray-200 flex items-center justify-center">
-            {avatar ? (
-              <img src={avatar} alt="User" className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-sm font-medium">
-                {displayName?.[0]?.toUpperCase() || "U"}
+          {/* Right Side: User Profile & Dropdown */}
+          <div className="flex items-center gap-3 sm:gap-6">
+            
+            {/* User Role Badge (Hidden on mobile for space) */}
+            {userType && (
+              <span className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${
+                userType === 'student' 
+                  ? 'bg-blue-50 text-blue-700 border-blue-100' 
+                  : 'bg-purple-50 text-purple-700 border-purple-100'
+              }`}>
+                {userType === "student" ? "🎓 นักเรียน" : "👨‍🏫 ติวเตอร์"}
               </span>
             )}
-          </div>
-          <span className="hidden sm:block max-w-[160px] truncate">{displayName}</span>
-          <i className="bi bi-caret-down-fill" />
-        </button>
 
-        {dropdownOpen && (
-          <div
-            className="absolute right-0 mt-2 w-44 bg-white border rounded shadow-lg z-50"
-            role="menu"
-          >
-            <ul>
-              <li>
-                <button
-                  onClick={() => {
-                    onEditProfile();
-                    setDropdownOpen(false);
-                  }}
-                  className="block w-full text-left px-4 py-2 hover:bg-gray-100"
-                  role="menuitem"
+            {/* Profile Dropdown */}
+            <div className="relative" ref={ddRef}>
+              <button
+                className="flex items-center gap-3 focus:outline-none group p-1 pr-3 rounded-full hover:bg-gray-50 transition-all border border-transparent hover:border-gray-200"
+                onClick={() => setDropdownOpen((s) => !s)}
+                aria-haspopup="menu"
+                aria-expanded={dropdownOpen}
+              >
+                {/* Avatar */}
+                <div className="relative">
+                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 ring-2 ring-white shadow-sm flex items-center justify-center">
+                    {avatar ? (
+                        <img src={avatar} alt="User" className="w-full h-full object-cover" />
+                    ) : (
+                        <span className="text-sm font-bold text-gray-500">
+                        {displayName?.[0]?.toUpperCase() || "U"}
+                        </span>
+                    )}
+                    </div>
+                    {/* Online status indicator (Optional) */}
+                    <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full"></div>
+                </div>
+
+                {/* Name & Arrow */}
+                <div className="hidden md:flex items-center gap-2">
+                    <div className="flex flex-col items-start">
+                        <span className="text-md font-semibold text-gray-700 max-w-[120px] truncate leading-tight">
+                            {displayName}
+                        </span>
+                        {/* Mobile view role fallback */}
+                        {/* <span className="text-[10px] text-gray-400 leading-tight capitalize">{userType}</span> */}
+                    </div>
+                    <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+
+              {/* Dropdown Menu */}
+              {dropdownOpen && (
+                <div
+                  className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50 transform origin-top-right animate-in fade-in zoom-in-95 duration-100"
+                  role="menu"
                 >
-                  แก้ไขโปรไฟล์
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => {
-                    onLogout();
-                    setDropdownOpen(false);
-                  }}
-                  className="block w-full text-left px-4 py-2 hover:bg-gray-100"
-                  role="menuitem"
-                >
-                  ออกจากระบบ
-                </button>
-              </li>
-            </ul>
+                  {/* Mobile Role Badge (Shown inside dropdown on mobile) */}
+                  <div className="px-4 py-2 border-b border-gray-50 md:hidden">
+                    <p className="text-xs text-gray-500 font-medium mb-1">เข้าสู่ระบบ</p>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                        userType === 'student' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
+                    }`}>
+                        {userType === "student" ? "นักเรียน" : "ติวเตอร์"}
+                    </span>
+                  </div>
+
+                  <div className="py-1">
+                    <button
+                        onClick={() => {
+                        onEditProfile();
+                        setDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 flex items-center gap-3 transition-colors"
+                        role="menuitem"
+                    >
+                        <User size={16} />
+                        แก้ไขโปรไฟล์
+                    </button>
+                    {/* ตัวอย่างเมนูเพิ่มเติม (ถ้ามี) */}
+                    {/* <button className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 flex items-center gap-3 transition-colors">
+                        <Settings size={16} /> ตั้งค่า
+                    </button> */}
+                  </div>
+
+                  <div className="border-t border-gray-100 my-1"></div>
+
+                  <div className="py-1">
+                    <button
+                        onClick={() => {
+                        onLogout();
+                        setDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition-colors"
+                        role="menuitem"
+                    >
+                        <LogOut size={16} />
+                        ออกจากระบบ
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </nav>
   );

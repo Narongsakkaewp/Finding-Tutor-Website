@@ -5,7 +5,6 @@ import Home from './components/Home';
 import Notification from './components/Notification';
 import StudentInfo from './pages/Student_Info';
 import TutorInfo from './pages/Tutor_Info';
-import Review from './components/Review';
 import MyPost from './components/MyPost';
 import Favorite from './components/Favorite';
 import Profile from './components/Profile';
@@ -13,6 +12,16 @@ import TutorProfile from './components/TutorProfile';
 import MyPostDetails from './components/MyPostDetails';
 import TutorLayout from './components/TutorLayout';
 import StudentCalendar from './components/StudentCalendar';
+
+// ✅ 1. Import ไอคอนสวยๆ จาก lucide-react เพื่อใช้แทน Bootstrap Icons
+import { 
+  LayoutDashboard, 
+  Bell, 
+  FileText, 
+  Heart, 
+  User, 
+  LogOut 
+} from "lucide-react";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -51,13 +60,6 @@ function App() {
       .catch(console.error);
   }, [user]);
 
-  /*const goToProfileByRole = (roleLike) => {
-    const r = String(roleLike || '').toLowerCase();
-    if (r === 'student') setCurrentPage('student_info');
-    else if (r === 'tutor') setCurrentPage('tutor_info');
-    else setCurrentPage('home');
-  };*/
-
   const handleLoginSuccess = (payload = {}) => {
     const role = (payload.userType || payload.role || payload.user?.role || '').toLowerCase();
     setIsAuthenticated(true);
@@ -67,7 +69,7 @@ function App() {
     }
     setUserType(role);
     localStorage.setItem('userType', role);
-    setCurrentPage('home'); // ไปหน้า home หลัง login
+    setCurrentPage('home');
   };
 
   const handleLogout = () => {
@@ -90,6 +92,7 @@ function App() {
     setBackPage(from);
     setCurrentPage('mypost_details');
   };
+
   const handleEditProfile = () => {
     if (userType === 'student') {
       setCurrentPage('student_info');
@@ -102,8 +105,7 @@ function App() {
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'home':
-        return <Home />;
+      case 'home': return <Home />;
       case 'notification':
         return (
           <Notification
@@ -112,14 +114,8 @@ function App() {
             onOpenPost={(id) => openPostDetails(id, 'notification')}
           />
         );
-      case 'student_info':
-        // ส่ง setCurrentPage ไปให้ด้วย เพื่อให้ปุ่มยกเลิกทำงานได้
-        return <StudentInfo user={user} setCurrentPage={setCurrentPage} />;
-      case 'tutor_info':
-        // ส่ง setCurrentPage ไปให้ด้วย
-        return <TutorInfo user={user} setCurrentPage={setCurrentPage} />;
-      case 'review':
-        return <Review />;
+      case 'student_info': return <StudentInfo user={user} setCurrentPage={setCurrentPage} />;
+      case 'tutor_info': return <TutorInfo user={user} setCurrentPage={setCurrentPage} />;
       case 'mypost':
         return (
           <MyPost
@@ -137,32 +133,52 @@ function App() {
             onBack={() => setCurrentPage(backPage || 'mypost')}
           />
         );
-      case 'favorite':
-        return <Favorite />;
+      case 'favorite': return <Favorite />;
       case 'profile':
         if (userType === 'tutor') {
-          // ส่ง onEditProfile ไปให้ TutorProfile ด้วย
           return <TutorProfile setCurrentPage={setCurrentPage} onEditProfile={handleEditProfile} />;
         } else {
-          // ส่ง onEditProfile ไปให้ Profile ด้วย
           return <Profile setCurrentPage={setCurrentPage} user={user} onEditProfile={handleEditProfile} />;
         }
-      case 'tutor_layout':
-        return <TutorLayout />;
-      case 'student_calendar':
-        return <StudentCalendar />;
-      default:
-        return <Home />;
+      case 'tutor_layout': return <TutorLayout />;
+      case 'student_calendar': return <StudentCalendar />;
+      default: return <Home />;
     }
   };
 
+  // ✅ Helper Component: ปุ่มเมนูใน Sidebar (ออกแบบใหม่)
+  const SidebarItem = ({ id, label, icon: Icon, badge }) => {
+    const isActive = currentPage === id;
+    return (
+      <li>
+        <button
+          onClick={() => {
+            setCurrentPage(id);
+            setSidebarOpen(false); // ปิด Sidebar บนมือถือเมื่อกดเลือก
+          }}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
+            isActive 
+              ? 'bg-indigo-50 text-indigo-600 font-semibold shadow-sm' // Active State
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'   // Normal State
+          }`}
+        >
+          <Icon size={22} className={`transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
+          <span className="flex-1 text-left text-sm">{label}</span>
+          
+          {badge > 0 && (
+            <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm px-1.5">
+              {badge > 99 ? '99+' : badge}
+            </span>
+          )}
+        </button>
+      </li>
+    );
+  };
+
   return (
-    <div>
+    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       {!isAuthenticated ? (
-        <Index
-          setIsAuthenticated={setIsAuthenticated}
-          onLoginSuccess={handleLoginSuccess}
-        />
+        <Index setIsAuthenticated={setIsAuthenticated} onLoginSuccess={handleLoginSuccess} />
       ) : (
         <>
           <Navbar
@@ -170,65 +186,70 @@ function App() {
             sidebarOpen={sidebarOpen}
             setCurrentPage={setCurrentPage}
             onLogout={handleLogout}
-            onEditProfile={handleEditProfile} // Prop นี้จะถูกต้องแล้ว
-            userType={userType}              // Prop นี้จะถูกต้องแล้ว
+            onEditProfile={handleEditProfile}
+            userType={userType}
           />
-          <div className="flex">
+          
+          <div className="flex flex-1 relative">
+            
+            {/* Mobile Overlay (ฉากหลังดำจางๆ เวลาเปิด Sidebar บนมือถือ) */}
             {sidebarOpen && (
               <div
-                className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+                className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-40 md:hidden transition-opacity"
                 onClick={() => setSidebarOpen(false)}
               />
             )}
-            <div
-              className={`fixed z-50 top-0 left-0 w-64 bg-white border-r transform 
-               ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-               transition-transform duration-300 ease-in-out 
-               md:translate-x-0 h-screen md:static md:block`}
+
+            {/* ✅ Sidebar Design ใหม่ */}
+            <aside
+              className={`fixed md:sticky top-0 md:top-16 left-0 h-screen md:h-[calc(100vh-4rem)] w-72 bg-white border-r border-gray-100 shadow-2xl md:shadow-none z-50 transform transition-transform duration-300 ease-in-out ${
+                sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+              }`}
             >
-              <ul className="p-6 space-y-4">
-                <li>
-                  <button onClick={() => setCurrentPage('home')} className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
-                    <i className="bi bi-house-door-fill font-bold text-2xl"></i> หน้าหลัก
-                  </button>
-                </li>
-                <li>
-                  <button onClick={() => setCurrentPage('notification')} className="flex items-center text-gray-700 hover:text-blue-600 gap-2 relative">
-                    <i className="bi bi-bell-fill font-bold text-2xl"></i> การแจ้งเตือน
-                    {newNotificationCount > 0 && (
-                      <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
-                        {newNotificationCount}
-                      </span>
+              <div className="flex flex-col h-full overflow-y-auto custom-scrollbar px-4 py-6">
+                
+                {/* กลุ่มเมนูหลัก */}
+                <div className="mb-6">
+                  <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">เมนูหลัก</p>
+                  <ul className="space-y-1">
+                    <SidebarItem id="home" label="หน้าหลัก" icon={LayoutDashboard} />
+                    <SidebarItem id="notification" label="การแจ้งเตือน" icon={Bell} badge={newNotificationCount} />
+                    <SidebarItem id="mypost" label="โพสต์" icon={FileText} />
+                  </ul>
+                </div>
+
+                <div className="border-t border-gray-100 my-2 mx-4"></div>
+
+                {/* กลุ่มเมนูส่วนตัว */}
+                <div className="mt-4">
+                  <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">ส่วนตัว</p>
+                  <ul className="space-y-1">
+                    <SidebarItem id="profile" label="โปรไฟล์ของฉัน" icon={User} />
+                    
+                    {userType === 'student' && (
+                      <SidebarItem id="favorite" label="รายการที่สนใจ" icon={Heart} />
                     )}
-                  </button>
-                </li>
-                <li>
-                  <button onClick={() => setCurrentPage('mypost')} className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
-                    <i className="bi bi-file-earmark-post font-bold text-2xl"></i> โพสต์
-                  </button>
-                </li>
-                {userType !== 'tutor' && (
-                  <li>
-                    <button onClick={() => setCurrentPage('favorite')} className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
-                      <i className="bi bi-heart-fill font-bold text-2xl"></i> รายการที่สนใจ
+                  </ul>
+                </div>
+                
+                {/* ปุ่ม Logout (แสดงเฉพาะบนมือถือ) */}
+                 <div className="mt-auto md:hidden pt-6 border-t border-gray-100">
+                    <button 
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-rose-600 hover:bg-rose-50 transition-colors font-medium text-sm"
+                    >
+                        <LogOut size={20} />
+                        ออกจากระบบ
                     </button>
-                  </li>
-                )}
-                {/* {userType !== 'tutor' && (
-                  <li>
-                    <button onClick={() => setCurrentPage('review')} className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
-                      <i className="bi bi-star-fill font-bold text-2xl"></i> รีวิวติวเตอร์
-                    </button>
-                  </li>
-                )} */}
-                <li>
-                  <button onClick={() => setCurrentPage('profile')} className="flex items-center text-gray-700 hover:text-blue-600 gap-2">
-                    <i className="bi bi-person-circle font-bold text-2xl"></i> โปรไฟล์ของฉัน
-                  </button>
-                </li>
-              </ul>
-            </div>
-            <div className="flex-1">{renderPage()}</div>
+                 </div>
+
+              </div>
+            </aside>
+
+            {/* Main Content Area */}
+            <main className="flex-1 w-full md:w-auto p-4 md:p-6 overflow-x-hidden">
+              {renderPage()}
+            </main>
           </div>
         </>
       )}

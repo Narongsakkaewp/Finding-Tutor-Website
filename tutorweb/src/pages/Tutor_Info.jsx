@@ -85,24 +85,59 @@ export default function TutorInfoPage({ setCurrentPage }) {
     }, []);
 
     useEffect(() => {
-        if (!currentUser?.user_id) {
-            setError("ไม่พบข้อมูลผู้ใช้, กรุณาล็อกอินใหม่");
+        if (!currentUser?.user_id || db.length === 0) {
             return;
         }
 
         const fetchProfile = async () => {
             try {
                 const response = await fetch(`http://localhost:5000/api/tutor-profile/${currentUser.user_id}`);
-                if (!response.ok) {
-                    throw new Error("ไม่สามารถดึงข้อมูลโปรไฟล์ติวเตอร์ได้");
-                }
+                if (!response.ok) throw new Error("ดึงข้อมูลไม่สำเร็จ");
                 const data = await response.json();
 
+                let addr = { details: '', subdistrict: '', district: '', province: '', postalCode: '' };
+
+                if (data.address) {
+                    const parts = data.address.split(' ').filter(Boolean);
+                    // ดึงจากหลังมาหน้า (Zip -> Province -> District -> Subdistrict)
+                    if (parts.length >= 1) addr.postalCode = parts[parts.length - 1];
+                    if (parts.length >= 2) addr.province = parts[parts.length - 2];
+                    if (parts.length >= 3) addr.district = parts[parts.length - 3];
+                    if (parts.length >= 4) addr.subdistrict = parts[parts.length - 4];
+                    if (parts.length > 4) addr.details = parts.slice(0, parts.length - 4).join(' ');
+                }
+
+                let districtNames = [];
+                let subdistrictNames = [];
+
+                if (addr.province) {
+                    const selectedProvinceData = db.find(p => p.name_th === addr.province);
+                    if (selectedProvinceData) {
+                        districtNames = selectedProvinceData.districts.map(d => d.name_th).sort();
+
+                        if (addr.district) {
+                            const selectedDistrictData = selectedProvinceData.districts.find(d => d.name_th === addr.district);
+                            if (selectedDistrictData) {
+                                subdistrictNames = selectedDistrictData.sub_districts.map(s => s.name_th).sort();
+                            }
+                        }
+                    }
+                }
+                setAddressData(prev => ({
+                    ...prev,
+                    districts: districtNames,
+                    subdistricts: subdistrictNames
+                }));
                 setFormData({
                     profile_picture_url: data.profile_picture_url || '',
                     nickname: data.nickname || '',
                     phone: data.phone || '',
-                    address: data.address || '',
+                    // ใส่ข้อมูลที่อยู่ที่แยกแล้ว
+                    province: addr.province || '',
+                    district: addr.district || '',
+                    subdistrict: addr.subdistrict || '',
+                    postalCode: addr.postalCode || '',
+                    addressDetails: addr.details || '',
                     about_me: data.about_me || '',
                     education: data.education || [],
                     teaching_experience: data.teaching_experience || [],
@@ -111,12 +146,13 @@ export default function TutorInfoPage({ setCurrentPage }) {
                     hourly_rate: data.hourly_rate || '',
                 });
             } catch (err) {
-                setError(err.message);
+                console.error(err);
             }
         };
 
         fetchProfile();
-    }, [currentUser]);
+
+    }, [currentUser, db]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
