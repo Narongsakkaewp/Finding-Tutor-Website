@@ -25,6 +25,53 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
+// Keyword ชื่อวิชาที่ใช้สำหรับการค้นหา "ติวเตอร์"
+const KEYWORD_MAP = {
+  // หมวดคณิต
+  'math': ['คณิต', 'เลข', 'calculus', 'algebra'],
+  'คณิต': ['math', 'calculus'],
+  'เลข': ['math'],
+
+  // หมวดภาษา
+  'eng': ['อังกฤษ', 'english', 'toeic', 'ielts'],
+  'อังกฤษ': ['eng', 'english'],
+  'thai': ['ไทย'],
+  'ไทย': ['thai'],
+  'jap': ['ญี่ปุ่น', 'japanese'],
+  'ญี่ปุ่น': ['jap'],
+
+  // หมวดวิทย์
+  'sci': ['วิทย์', 'bio', 'chem', 'phy'],
+  'วิทย์': ['sci', 'science'],
+  'phy': ['ฟิสิกส์'],
+  'ฟิสิกส์': ['phy', 'physics'],
+  'chem': ['เคมี'],
+  'เคมี': ['chem'],
+  'bio': ['ชีว'],
+  'ชีว': ['bio', 'biology'],
+
+  // หมวดคอมพิวเตอร์
+  'com': ['คอม', 'code', 'program', 'python', 'java', 'การเขียนโปรแกรม'],
+  'คอม': ['com', 'code', 'it'],
+  'code': ['program', 'python', 'react', 'web'],
+  'เขียนโปรแกรม': ['code', 'program']
+};
+
+// ฟังก์ชันช่วยขยายคำค้นหา
+function expandSearchTerm(term) {
+  const lowerTerm = term.toLowerCase();
+  let terms = [lowerTerm];
+
+  // วนลูปเช็คว่าคำที่พิมพ์มา มีคำเหมือนใน Dictionary ไหม
+  Object.keys(KEYWORD_MAP).forEach(key => {
+    if (lowerTerm.includes(key)) {
+      terms = [...terms, ...KEYWORD_MAP[key]];
+    }
+  });
+
+  return terms;
+}
+
 // Test DB
 (async () => {
   try {
@@ -127,38 +174,54 @@ app.post('/api/login', async (req, res) => {
 // ---------- โพสต์นักเรียนตามวิชา ----------
 app.get('/api/subjects/:subject/posts', async (req, res) => {
   try {
-    const subject = req.params.subject;
+    const rawSubject = req.params.subject;
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 5, 50);
     const offset = (page - 1) * limit;
+    const searchTerms = expandSearchTerm(rawSubject);
+
+    const whereConditions = searchTerms.map(() =>
+      `(sp.subject LIKE ? OR sp.description LIKE ?)`
+    ).join(' OR ');
+
+    const sqlParams = [];
+    searchTerms.forEach(term => {
+      const likeTerm = `%${term}%`;
+      sqlParams.push(likeTerm, likeTerm);
+    });
 
     const [rows] = await pool.execute(
       `SELECT 
           sp.student_post_id, sp.student_id, sp.subject, sp.description,
           sp.preferred_days, sp.preferred_time, sp.location, sp.group_size, sp.budget,
+          sp.grade_level,  /* <--- เพิ่มบรรทัดนี้ เพื่อดึงระดับชั้นออกมา */
           COALESCE(sp.created_at, NOW()) AS created_at,
-          r.name       AS student_name,
-          r.lastname   AS student_lastname
-       FROM student_posts sp
-       LEFT JOIN register r ON r.user_id = sp.student_id
-       WHERE sp.subject = ?
-       ORDER BY sp.student_post_id DESC
-       LIMIT ? OFFSET ?`,
-      [subject, limit, offset]
+          r.name        AS student_name,
+          r.lastname    AS student_lastname,
+          spro.profile_picture_url
+        FROM student_posts sp
+        LEFT JOIN register r ON r.user_id = sp.student_id
+        LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id /* เพิ่ม JOIN รูปโปรไฟล์ */
+        WHERE ${whereConditions}
+        ORDER BY sp.student_post_id DESC
+        LIMIT ? OFFSET ?`,
+      [...sqlParams, limit, offset]
     );
 
+    // นับจำนวนทั้งหมด (Count)
     const [[{ total }]] = await pool.query(
-      'SELECT COUNT(*) AS total FROM student_posts WHERE subject = ?',
-      [subject]
+      `SELECT COUNT(*) AS total FROM student_posts sp WHERE ${whereConditions}`,
+      sqlParams
     );
 
+    // Map ข้อมูลส่งกลับ
     const items = rows.map(r => {
       const fullName = `${r.student_name || ''}${r.student_lastname ? ' ' + r.student_lastname : ''}`.trim();
       return {
         _id: r.student_post_id,
         authorId: {
           name: fullName || `นักเรียน #${r.student_id}`,
-          avatarUrl: ''
+          avatarUrl: r.profile_picture_url || '/default-avatar.png' /* ส่งรูปไปด้วย */
         },
         content: r.description,
         meta: {
@@ -167,7 +230,9 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
           location: r.location,
           group_size: r.group_size,
           budget: Number(r.budget),
+          grade_level: r.grade_level || 'ไม่ระบุ',
         },
+        grade_level: r.grade_level || 'ไม่ระบุ',
         subject: r.subject,
         createdAt: r.created_at,
         images: [],
@@ -188,10 +253,6 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
   }
 });
 
-
-
-// ---------- /api/tutors (รายชื่อติวเตอร์) ----------
-// --- /api/tutors (เวอร์ชันตรงกับฐานข้อมูลของคุณ) ---
 // ---------- /api/tutors (รายชื่อติวเตอร์) ----------
 app.get('/api/tutors', async (req, res) => {
   try {
@@ -199,61 +260,67 @@ app.get('/api/tutors', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 12, 50);
     const offset = (page - 1) * limit;
 
+    const searchQuery = (req.query.search || '').trim();
 
-    // ฟิลเตอร์เพิ่มเติม (เลือกใส่ก็ได้)
-    const search = (req.query.search || '').trim().toLowerCase();
-    const subject = (req.query.subject || '').trim();
-
-    // เงื่อนไขค้นหา
-    const where = [`LOWER(r.type) IN ('tutor','teacher')`];
+    let whereClause = `WHERE LOWER(r.type) IN ('tutor','teacher')`;
     const params = [];
 
-    if (search) {
-      where.push(`(LOWER(r.name) LIKE ? OR LOWER(r.lastname) LIKE ? OR LOWER(tp.nickname) LIKE ?)`);
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
-    }
-    if (subject) {
-      where.push(`tp.can_teach_subjects LIKE ?`);
-      params.push(`%${subject}%`);
-    }
-    const whereClause = `WHERE ${where.join(' AND ')}`;
+    if (searchQuery) {
+      const searchTerms = expandSearchTerm(searchQuery);
+      const orConditions = searchTerms.map(term => `(
+          LOWER(r.name) LIKE ? 
+          OR LOWER(r.lastname) LIKE ? 
+          OR LOWER(tp.nickname) LIKE ? 
+          OR LOWER(tp.can_teach_subjects) LIKE ?
+          OR LOWER(tp.about_me) LIKE ? 
+      )`).join(' OR ');
 
-    // ดึงรายการ
+      whereClause += ` AND (${orConditions})`;
+
+      // ใส่ value เข้า params ตามจำนวนเงื่อนไขที่สร้าง
+      searchTerms.forEach(term => {
+        const likeTerm = `%${term}%`;
+        params.push(likeTerm, likeTerm, likeTerm, likeTerm, likeTerm);
+      });
+    }
+
+    // ... (ส่วน subject filter ถ้ามี) ...
     const [rows] = await pool.execute(
       `SELECT 
-      r.user_id, r.name, r.lastname,
-      tp.nickname,
-      tp.can_teach_subjects,
-      tp.profile_picture_url,
-      tp.address,
-      tp.hourly_rate
-   FROM register r
-   LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
-   ${whereClause}
-   ORDER BY r.user_id DESC
-   LIMIT ? OFFSET ?`,
+          r.user_id, r.name, r.lastname,
+          tp.nickname,
+          tp.can_teach_subjects,
+          tp.profile_picture_url,
+          tp.address,
+          tp.hourly_rate,
+          tp.about_me
+       FROM register r
+       LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+       ${whereClause}
+       ORDER BY r.user_id DESC
+       LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     );
 
-    // นับจำนวนทั้งหมด (อย่าพึ่ง COALESCE role/user_type)
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total
-   FROM register r
-   LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
-   ${whereClause}`,
+         FROM register r
+         LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+         ${whereClause}`,
       params
     );
 
     const items = rows.map(r => ({
       id: `t-${r.user_id}`,
       dbTutorId: r.user_id,
-      name: `${r.name || ''}${r.lastname ? ' ' + r.lastname : ''}`.trim() || `ติวเตอร์ #${r.user_id}`,
-      nickname: r.nickname || null,
-      subject: r.can_teach_subjects || 'ยังไม่ระบุวิชาที่สอน',
-      image: r.profile_picture_url || 'https://via.placeholder.com/400',
-      city: r.address || 'ยังไม่ระบุที่อยู่',
+      name: `${r.name || ''} ${r.lastname || ''}`.trim(),
+      nickname: r.nickname,
+      subject: r.can_teach_subjects || 'ไม่ระบุ',
+      image: r.profile_picture_url || '/default-avatar.png',
+      city: r.address,
       price: Number(r.hourly_rate || 0),
-      rating: 4.8,
+      about_me: r.about_me || '',
+      rating: 0,
       reviews: 0,
     }));
 
@@ -265,13 +332,12 @@ app.get('/api/tutors', async (req, res) => {
         hasMore: offset + items.length < total,
       }
     });
+
   } catch (e) {
     console.error('API /api/tutors Error:', e);
     res.status(500).json({ message: 'Server error' });
   }
 });
-
-
 
 // ---------- โพสต์ติวเตอร์ (ฟีด) ----------
 app.get('/api/tutor-posts', async (req, res) => {
@@ -287,20 +353,33 @@ app.get('/api/tutor-posts', async (req, res) => {
 
     const where = [];
     const params = [];
+
+    // --- เพิ่ม Logic ค้นหา (Search) ---
     if (Number.isInteger(tutorId)) {
       where.push('tp.tutor_id = ?');
       params.push(tutorId);
     }
+
+    // ถ้ามีการค้นหาด้วย subject (รองรับ Smart Search)
     if (subject) {
-      where.push('tp.subject LIKE ?');
-      params.push(`%${subject}%`);
+      const keywords = expandSearchTerm(subject);
+      const conditions = keywords.map(() =>
+        `(tp.subject LIKE ? OR tp.description LIKE ?)`
+      ).join(' OR ');
+      where.push(`(${conditions})`);
+
+      keywords.forEach(kw => {
+        params.push(`%${kw}%`, `%${kw}%`);
+      });
     }
+
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
     const [rows] = await pool.query(
       `
       SELECT
         tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
+        tp.target_student_level, /* ✅ เพิ่ม: ดึงระดับชั้นออกมา */
         tp.teaching_days, tp.teaching_time, tp.location, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
         r.name, r.lastname,
@@ -340,11 +419,7 @@ app.get('/api/tutor-posts', async (req, res) => {
     );
 
     const [[{ total }]] = await pool.query(
-      `
-      SELECT COUNT(*) AS total
-      FROM tutor_posts tp
-      ${whereSql}
-      `,
+      `SELECT COUNT(*) AS total FROM tutor_posts tp ${whereSql}`,
       params
     );
 
@@ -360,6 +435,7 @@ app.get('/api/tutor-posts', async (req, res) => {
           avatarUrl: r.profile_picture_url || ''
         },
         meta: {
+          target_student_level: r.target_student_level || 'ไม่ระบุ', /* ✅ ส่งค่าระดับชั้นไปให้ Frontend */
           teaching_days: r.teaching_days,
           teaching_time: r.teaching_time,
           location: r.location,
@@ -384,7 +460,6 @@ app.get('/api/tutor-posts', async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
-
 
 // alias: /api/tutors/:tutorId/posts
 app.get('/api/tutors/:tutorId/posts', async (req, res) => {
@@ -533,15 +608,40 @@ app.post('/api/register', async (req, res) => {
 });
 
 // --------- Student Feed ----------
+// --------- Student Feed (แก้ไขให้รองรับ Search + ระดับชั้น) ----------
 app.get('/api/student_posts', async (req, res) => {
   try {
     const me = Number(req.query.me) || 0;
+    const search = (req.query.search || '').trim(); // รับคำค้นหา
 
+    // 1. สร้างเงื่อนไขการค้นหา (Smart Search)
+    let searchClause = '';
+    const queryParams = [me, me, me]; // พารามิเตอร์เริ่มต้นสำหรับ JOIN (3 ตัว)
+
+    if (search) {
+      // ใช้ฟังก์ชัน expandSearchTerm ที่มีอยู่แล้วเพื่อขยายคำค้น
+      const keywords = expandSearchTerm(search);
+
+      // สร้างเงื่อนไข OR: ค้นหาใน subject หรือ description
+      const conditions = keywords.map(() =>
+        `(sp.subject LIKE ? OR sp.description LIKE ?)`
+      ).join(' OR ');
+
+      searchClause = `WHERE (${conditions})`;
+
+      // เพิ่มคำค้นหาลงใน parameters (2 ครั้งต่อ 1 คำค้น)
+      keywords.forEach(kw => {
+        queryParams.push(`%${kw}%`, `%${kw}%`);
+      });
+    }
+
+    // 2. รัน SQL Query
     const [rows] = await pool.query(`
       SELECT
         sp.student_post_id, sp.student_id, sp.subject, sp.description,
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
         sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
+        sp.grade_level,  /* ✅ เพิ่ม: ดึงระดับชั้นออกมาด้วย */
         r.name, r.lastname,
         spro.profile_picture_url,
         COALESCE(jc.join_count, 0) AS join_count,
@@ -570,9 +670,13 @@ app.get('/api/student_posts', async (req, res) => {
       ) fvc ON fvc.post_id = sp.student_post_id
       LEFT JOIN posts_favorites fme
         ON fme.post_id = sp.student_post_id AND fme.post_type='student' AND fme.user_id = ?
+      
+      ${searchClause} /* ✅ ใส่เงื่อนไขค้นหาตรงนี้ */
+      
       ORDER BY sp.student_post_id DESC
-    `, [me, me, me]);
+    `, queryParams);
 
+    // 3. Map ข้อมูลส่งกลับ
     const posts = rows.map(r => ({
       id: r.student_post_id,
       owner_id: r.student_id,
@@ -584,6 +688,7 @@ app.get('/api/student_posts', async (req, res) => {
       group_size: Number(r.group_size || 0),
       budget: Number(r.budget || 0),
       contact_info: r.contact_info || '',
+      grade_level: r.grade_level || 'ไม่ระบุ', // ✅ ส่งระดับชั้นไปให้ Frontend
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
       join_count: Number(r.join_count || 0),
       joined: !!r.joined,
@@ -603,6 +708,7 @@ app.get('/api/student_posts', async (req, res) => {
     return sendDbError(res, err);
   }
 });
+
 // ===== POST: สร้างโพสต์นักเรียน =====
 app.post('/api/student_posts', async (req, res) => {
   try {
@@ -1211,7 +1317,9 @@ function localDateStr(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
-// >>> ดึงปฏิทินของผู้ใช้ (รวม calendar_events + student_posts ของเจ้าของโพสต์)
+// server.js
+
+// >>> ดึงปฏิทินของผู้ใช้ (ฉบับแสดงทั้งหมด ไม่ซ่อนโพสต์)
 app.get('/api/calendar/:userId', async (req, res) => {
   try {
     const userId = Number(req.params.userId);
@@ -1219,71 +1327,107 @@ app.get('/api/calendar/:userId', async (req, res) => {
       return res.status(400).json({ message: 'invalid user id' });
     }
 
-    // รับช่วงเวลาแบบ YYYY-MM-DD (ถ้าไม่ส่งจะเป็น ±30 วันจากวันนี้)
+    // รับช่วงเวลา
     let { start, end } = req.query;
     const today = localDateStr();
     if (!start) { const d = new Date(); d.setDate(d.getDate() - 30); start = localDateStr(d); }
     if (!end) { const d = new Date(); d.setDate(d.getDate() + 30); end = localDateStr(d); }
 
-    // 1) อีเวนต์ที่เกิดจากการอนุมัติ (ถูกบันทึกไว้ใน calendar_events)
+    // 1) ดึงอีเวนต์นัดหมาย (Calendar Events)
+    // ใช้ uniqueCalMap เพื่อกรองเฉพาะ event ที่ id ซ้ำกันเองในตาราง (ป้องกัน error DB)
     const [rowsCal] = await pool.query(
       `SELECT event_id, user_id, post_id, title, subject, event_date, event_time, location, created_at
        FROM calendar_events
        WHERE user_id = ?
          AND (event_date BETWEEN ? AND ? OR event_date IS NULL)
-       ORDER BY COALESCE(event_date, ?) ASC, COALESCE(event_time,'00:00:00') ASC`,
+       ORDER BY COALESCE(event_date, ?) ASC`,
       [userId, start, end, today]
     );
 
-    const calItems = rowsCal.map(r => ({
-      event_id: r.event_id,
-      user_id: r.user_id,
-      post_id: r.post_id,
-      title: r.title,
-      subject: r.subject,
-      event_date: r.event_date,   // 'YYYY-MM-DD' หรือ null
-      event_time: r.event_time,   // 'HH:MM:SS' หรือ null
-      location: r.location || null,
-      created_at: r.created_at,
-      source: 'calendar'
-    }));
+    const uniqueCalMap = new Map();
+    rowsCal.forEach(r => {
+      const key = r.post_id ? `post-${r.post_id}-${r.subject}` : `evt-${r.event_id}`;
+      if (!uniqueCalMap.has(key)) {
+        uniqueCalMap.set(key, {
+          event_id: r.event_id,
+          user_id: r.user_id,
+          post_id: r.post_id,
+          title: r.title, // เช่น "ติว: คณิต"
+          subject: r.subject,
+          event_date: r.event_date,
+          event_time: r.event_time,
+          location: r.location || null,
+          created_at: r.created_at,
+          source: 'calendar'
+        });
+      }
+    });
+    const calItems = Array.from(uniqueCalMap.values());
 
-    // 2) แปลง "โพสต์ของเจ้าของเอง" ให้เป็น event (ใช้ preferred_days/time)
-    const [rowsPosts] = await pool.query(
+    // 2) ดึงโพสต์หาติวเตอร์ (student_posts)
+    // ✅ แก้ไข: ไม่มีการกรองทิ้ง (ลบ .filter ออก) แสดงหมดเลย
+    const [rowsStudentPosts] = await pool.query(
       `SELECT student_post_id, student_id, subject, preferred_days, preferred_time, location, created_at
        FROM student_posts
        WHERE student_id = ?`,
       [userId]
     );
 
-    const postsAsEvents = rowsPosts
-      .map(p => {
-        const event_date = parseDateFromPreferredDays(p.preferred_days); // รองรับรูปแบบไทย เช่น "19 พฤศจิกายน 2568"
-        const event_time = toSqlTimeMaybe(p.preferred_time);
-        return {
-          event_id: `sp-${p.student_post_id}`,
-          user_id: p.student_id,
-          post_id: p.student_post_id,
-          title: `โพสต์: ${p.subject || 'เรียนพิเศษ'}`,
-          subject: p.subject || null,
-          event_date,                      // อาจเป็น null ถ้า parse ไม่ได้
-          event_time,
-          location: p.location || null,
-          created_at: p.created_at,
-          source: 'student_post'
-        };
-      })
-      .filter(ev => ev.event_date && ev.event_date >= start && ev.event_date <= end);
-
-    // รวมและเรียงลำดับ (วันที่ + เวลา)
-    const items = [...calItems, ...postsAsEvents].sort((a, b) => {
-      const da = a.event_date || '9999-12-31';
-      const db = b.event_date || '9999-12-31';
-      if (da !== db) return da < db ? -1 : 1;
-      const ta = a.event_time || '00:00:00';
-      const tb = b.event_time || '00:00:00';
-      return ta < tb ? -1 : ta > tb ? 1 : 0;
+    const studentPostsAsEvents = rowsStudentPosts.map(p => {
+      const event_date = parseDateFromPreferredDays(p.preferred_days);
+      const event_time = toSqlTimeMaybe(p.preferred_time);
+      return {
+        event_id: `sp-${p.student_post_id}`,
+        user_id: p.student_id,
+        post_id: p.student_post_id,
+        title: `โพสต์หาครู: ${p.subject || 'เรียนพิเศษ'}`, // เปลี่ยนชื่อให้ชัดเจน
+        subject: p.subject || null,
+        event_date,
+        event_time,
+        location: p.location || null,
+        created_at: p.created_at,
+        source: 'student_post'
+      };
     });
+
+    // 3) ดึงโพสต์สอนพิเศษ (tutor_posts)
+    // ✅ แก้ไข: ไม่มีการกรองทิ้ง (ลบ .filter ออก) แสดงหมดเลย
+    const [rowsTutorPosts] = await pool.query(
+      `SELECT tutor_post_id, tutor_id, subject, teaching_days, teaching_time, location, created_at
+       FROM tutor_posts
+       WHERE tutor_id = ?`,
+      [userId]
+    );
+
+    const tutorPostsAsEvents = rowsTutorPosts.map(p => {
+      const event_date = parseDateFromPreferredDays(p.teaching_days);
+      const event_time = toSqlTimeMaybe(p.teaching_time);
+      return {
+        event_id: `tp-${p.tutor_post_id}`,
+        user_id: p.tutor_id,
+        post_id: p.tutor_post_id,
+        title: `โพสต์รับสอน: ${p.subject || 'วิชาทั่วไป'}`, // เปลี่ยนชื่อให้ชัดเจน
+        subject: p.subject || null,
+        event_date,
+        event_time,
+        location: p.location || null,
+        created_at: p.created_at,
+        source: 'tutor_post'
+      };
+    });
+
+    // รวมทั้งหมด
+    const allEvents = [...calItems, ...studentPostsAsEvents, ...tutorPostsAsEvents];
+
+    // กรองเฉพาะที่มีวันที่ถูกต้อง และอยู่ในช่วงเวลา
+    const items = allEvents
+      .filter(ev => ev.event_date && ev.event_date >= start && ev.event_date <= end)
+      .sort((a, b) => {
+        const da = a.event_date || '9999-12-31';
+        const db = b.event_date || '9999-12-31';
+        if (da !== db) return da < db ? -1 : 1;
+        return (a.event_time || '00:00:00') < (b.event_time || '00:00:00') ? -1 : 1;
+      });
 
     return res.json({ items, range: { start, end } });
   } catch (e) {
@@ -1291,7 +1435,6 @@ app.get('/api/calendar/:userId', async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 });
-
 
 // === ดึงคำขอเข้าร่วมของ tutor post (pending เท่านั้น) ===
 app.get('/api/tutor_posts/:id/requests', async (req, res) => {
@@ -1666,14 +1809,12 @@ function parseDateFromPreferredDays(s) {
   if (!s) return null;
   s = String(s).trim();
 
-  // ISO: 2025-11-20
   let m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (m) {
     const [, y, mo, d] = m;
     return `${y.padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
 
-  // dd/mm/yyyy หรือ dd-mm-yyyy (รองรับ พ.ศ.)
   m = s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
   if (m) {
     const d = String(m[1]).padStart(2, '0');
@@ -1683,7 +1824,6 @@ function parseDateFromPreferredDays(s) {
     return `${y}-${mo}-${d}`;
   }
 
-  // ไทย: 20 พฤศจิกายน 2568 / 2 ต.ค. 2568
   const months = {
     'มกราคม': 1, 'กุมภาพันธ์': 2, 'มีนาคม': 3, 'เมษายน': 4, 'พฤษภาคม': 5, 'มิถุนายน': 6,
     'กรกฎาคม': 7, 'สิงหาคม': 8, 'กันยายน': 9, 'ตุลาคม': 10, 'พฤศจิกายน': 11, 'ธันวาคม': 12,
@@ -1700,6 +1840,7 @@ function parseDateFromPreferredDays(s) {
   }
   return null;
 }
+
 function toSqlTimeMaybe(v) {
   if (!v) return null;
   if (/^\d{2}:\d{2}$/.test(v)) return `${v}:00`;
@@ -1842,9 +1983,6 @@ app.post('/api/reviews', async (req, res) => {
 app.get('/api/tutor-posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
-
-    // ✅ แก้จาก JOIN เป็น LEFT JOIN
-    // เพื่อให้ดึงข้อมูลโพสต์ได้ แม้ว่าจะหาข้อมูลคนโพสต์ไม่เจอ
     const [rows] = await pool.execute(
       `SELECT 
         tp.tutor_post_id, 
@@ -1870,13 +2008,58 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
       owner_id: post.tutor_id,
       user: {
         // ถ้าหาชื่อไม่เจอ ให้แสดงค่า default
-        first_name: post.name || "ไม่ทราบชื่อ", 
+        first_name: post.name || "ไม่ทราบชื่อ",
         last_name: post.lastname || ""
       }
     });
 
   } catch (err) {
     console.error('GET /api/tutor-posts/:id error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// --- ดึงรีวิวของติวเตอร์มาแสดงในหน้า TutorProfile.jsx ---
+app.get('/api/tutors/:tutorId/reviews', async (req, res) => {
+  try {
+    const tutorId = Number(req.params.tutorId);
+    if (!Number.isFinite(tutorId)) return res.status(400).json({ message: 'Invalid tutor ID' });
+
+    const sql = `
+      SELECT 
+        rv.review_id,
+        rv.rating,
+        rv.comment,
+        rv.created_at,
+        -- ข้อมูลนักเรียนจากตาราง register
+        r.name AS student_name,
+        r.lastname AS student_lastname,
+        -- รูปโปรไฟล์จากตาราง student_profiles (ถ้ามี)
+        sp.profile_picture_url
+      FROM reviews rv
+      JOIN register r ON rv.student_id = r.user_id
+      LEFT JOIN student_profiles sp ON rv.student_id = sp.user_id
+      WHERE rv.tutor_id = ?
+      ORDER BY rv.created_at DESC
+    `;
+
+    const [rows] = await pool.query(sql, [tutorId]);
+
+    const reviews = rows.map(row => ({
+      id: row.review_id,
+      rating: Number(row.rating),
+      comment: row.comment,
+      createdAt: row.created_at,
+      reviewer: {
+        name: `${row.student_name} ${row.student_lastname || ''}`.trim(),
+        avatar: row.profile_picture_url || '/default-avatar.png'
+      }
+    }));
+
+    res.json(reviews);
+
+  } catch (err) {
+    console.error('GET /api/tutors/:tutorId/reviews error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

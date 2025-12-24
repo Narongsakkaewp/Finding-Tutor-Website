@@ -215,7 +215,7 @@ function Notification({ userId, onOpenPost, onReadAll }) {
             onClick={handleReadAll}
             className="text-sm px-3 py-1 rounded border bg-white hover:bg-gray-50"
           >
-            มาร์คว่าอ่านทั้งหมด
+            ทําเครื่องหมายว่าอ่านแล้ว
           </button>
         )}
       </div>
