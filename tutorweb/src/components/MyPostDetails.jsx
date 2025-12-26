@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 
 const API_BASE = "http://localhost:5000";
 
@@ -24,7 +24,7 @@ const normalizePost = (p = {}) => ({
   },
 });
 
-function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
+function MyPostDetails({ postId, onBack, me, postsCache = [], postType = null }) {
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,17 +39,105 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
 
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/student_posts?me=${me || 0}`);
-        const data = await res.json();
-        const list = Array.isArray(data)
-          ? data
-          : Array.isArray(data.items)
-          ? data.items
-          : Array.isArray(data.data)
-          ? data.data
-          : [];
-        const normalized = list.map(normalizePost);
-        const single = normalized.find((p) => Number(p.id) === Number(postId));
+        let single = null;
+
+        // check cache again (in case postsCache was populated after first check)
+        const found2 = postsCache.find((p) => Number(p.id) === Number(postId));
+        if (found2) {
+          single = found2;
+        }
+
+        const isTutorType = String(postType || "").toLowerCase().includes("tutor");
+
+        // ถ้า notification บอกว่าเป็นโพสต์ติวเตอร์ ให้ลองดึง tutor post ก่อน
+        if (!single && isTutorType) {
+          try {
+            console.debug("MyPostDetails: attempting tutor fetch for id=", postId);
+            const rt = await fetch(`${API_BASE}/api/tutor-posts/${postId}`);
+            if (rt.ok) {
+              const t = await rt.json();
+              single = normalizePost({
+                id: t.id ?? t.tutor_post_id,
+                owner_id: t.owner_id ?? t.tutor_id ?? t.user_id,
+                createdAt: t.created_at ?? t.createdAt,
+                subject: t.subject,
+                description: t.description,
+                location: t.location,
+                group_size: 0,
+                budget: Number(t.price ?? 0),
+                preferred_days: t.teaching_days || "",
+                preferred_time: t.teaching_time || "",
+                contact_info: t.contact_info || "",
+                join_count: Number(t.join_count ?? 0),
+                joined: !!t.joined,
+                user: {
+                  first_name: t.name || "",
+                  last_name: t.lastname || "",
+                  profile_image: t.profile_picture_url || "",
+                },
+              });
+            } else {
+              console.debug("MyPostDetails: tutor fetch returned", rt.status, rt.statusText);
+            }
+          } catch (err) {
+            console.error("MyPostDetails tutor fetch error:", err);
+          }
+        }
+
+        // ถ้ายังไม่เจอ ให้ค้นจาก student posts (เดิม)
+        if (!single) {
+          try {
+            const res = await fetch(`${API_BASE}/api/student_posts?me=${me || 0}`);
+            const data = await res.json();
+            const list = Array.isArray(data)
+              ? data
+              : Array.isArray(data.items)
+              ? data.items
+              : Array.isArray(data.data)
+              ? data.data
+              : [];
+            const normalized = list.map(normalizePost);
+            single = normalized.find((p) => Number(p.id) === Number(postId));
+          } catch (e2) {
+            console.error("MyPostDetails student fetch error:", e2);
+          }
+        }
+
+        // fallback: ถ้ายังไม่เจอ ให้ลองดึง tutor อีกครั้ง (ในกรณีไม่ได้ลองก่อน)
+        if (!single && !isTutorType) {
+          try {
+            console.debug("MyPostDetails: attempting tutor fallback fetch for id=", postId);
+            const r2 = await fetch(`${API_BASE}/api/tutor-posts/${postId}`);
+            if (r2.ok) {
+              const t = await r2.json();
+              single = normalizePost({
+                id: t.id ?? t.tutor_post_id,
+                owner_id: t.owner_id ?? t.tutor_id ?? t.user_id,
+                createdAt: t.created_at ?? t.createdAt,
+                subject: t.subject,
+                description: t.description,
+                location: t.location,
+                group_size: 0,
+                budget: Number(t.price ?? 0),
+                preferred_days: t.teaching_days || "",
+                preferred_time: t.teaching_time || "",
+                contact_info: t.contact_info || "",
+                join_count: Number(t.join_count ?? 0),
+                joined: !!t.joined,
+                user: {
+                  first_name: t.name || "",
+                  last_name: t.lastname || "",
+                  profile_image: t.profile_picture_url || "",
+                },
+              });
+            } else {
+              console.debug("MyPostDetails fallback tutor fetch returned", r2.status, r2.statusText);
+            }
+          } catch (err) {
+            console.error("MyPostDetails tutor fallback error:", err);
+          }
+        }
+
         if (single) setPost(single);
       } catch (e) {
         console.error(e);
@@ -57,7 +145,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [] }) {
         setLoading(false);
       }
     })();
-  }, [postId, me, postsCache]);
+  }, [postId, me, postsCache, postType]);
 
   // ล็อกให้ปุ่มอนุมัติ/ปฏิเสธแสดงเสมอ
   const canModerate = true;
@@ -145,7 +233,7 @@ function JoinRequestsManager({ postId, canModerate }) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const loadRequests = async () => {
+  const loadRequests = useCallback(async () => {
     if (!postId) return;
     setLoading(true);
     try {
@@ -158,11 +246,11 @@ function JoinRequestsManager({ postId, canModerate }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [postId]);
 
   useEffect(() => {
     loadRequests();
-  }, [postId]);
+  }, [loadRequests]);
 
   const approve = async (req) => {
     if (!window.confirm(`ยืนยันอนุมัติให้ ${req.name} ${req.lastname || ""} ?`))

@@ -42,6 +42,7 @@ function App() {
   });
 
   const [selectedPostId, setSelectedPostId] = useState(null);
+  const [selectedPostType, setSelectedPostType] = useState(null);
   const [postsCache, setPostsCache] = useState([]);
   const [backPage, setBackPage] = useState('mypost');
 
@@ -86,9 +87,10 @@ function App() {
     localStorage.removeItem('token');
   };
 
-  const openPostDetails = (postId, from = 'mypost') => {
+  const openPostDetails = (postId, from = 'mypost', type = null) => {
     if (!postId) return;
     setSelectedPostId(Number(postId));
+    setSelectedPostType(type);
     setBackPage(from);
     setCurrentPage('mypost_details');
   };
@@ -111,7 +113,7 @@ function App() {
           <Notification
             userId={user?.user_id}
             onReadAll={() => setNewNotificationCount(0)}
-            onOpenPost={(id) => openPostDetails(id, 'notification')}
+            onOpenPost={(id, type, path) => openPostDetails(id, 'notification', type)}
           />
         );
       case 'student_info': return <StudentInfo user={user} setCurrentPage={setCurrentPage} />;
@@ -128,6 +130,7 @@ function App() {
         return (
           <MyPostDetails
             postId={selectedPostId}
+            postType={selectedPostType}
             me={user?.user_id}
             postsCache={postsCache}
             onBack={() => setCurrentPage(backPage || 'mypost')}
