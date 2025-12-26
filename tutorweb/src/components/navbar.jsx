@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import logo from "../assets/logo/FindingTutor_Logo.png";
-import { Menu, ChevronDown, User, LogOut, Settings } from "lucide-react"; // ใช้ไอคอนจาก lucide-react เพื่อความสวยงาม
+import { Menu, ChevronDown, Edit, LogOut, Settings } from "lucide-react"; // ใช้ไอคอนจาก lucide-react เพื่อความสวยงาม
 
 const Navbar = ({
   userType,
@@ -163,13 +163,13 @@ const Navbar = ({
                         className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 flex items-center gap-3 transition-colors"
                         role="menuitem"
                     >
-                        <User size={16} />
+                        <Edit size={16} />
                         แก้ไขโปรไฟล์
                     </button>
                     {/* ตัวอย่างเมนูเพิ่มเติม (ถ้ามี) */}
-                    {/* <button className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 flex items-center gap-3 transition-colors">
+                    <button className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 flex items-center gap-3 transition-colors">
                         <Settings size={16} /> ตั้งค่า
-                    </button> */}
+                    </button>
                   </div>
 
                   <div className="border-t border-gray-100 my-1"></div>

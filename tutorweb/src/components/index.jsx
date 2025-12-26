@@ -9,29 +9,8 @@ import { Star, CheckCircle, Users, BookOpen, ChevronRight, Menu, X } from "lucid
 const API_BASE = "http://localhost:5000";
 const priceText = (p) => new Intl.NumberFormat("th-TH").format(p);
 
-// Mock Data: รีวิว
 const REVIEWS = [
-  {
-    name: "สมชาย ใจดี",
-    role: "นักเรียนชั้น ม.6",
-    rating: 5,
-    comment: "เว็บไซต์นี้ดีมากครับ ทำให้ผมหาติวเตอร์วิชาฟิสิกส์ที่ถูกใจได้ง่ายมากๆ ตอนนี้สอบติดคณะวิศวะฯ ที่หวังแล้วครับ!",
-    avatar: "https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=200&auto=format&fit=crop"
-  },
-  {
-    name: "คุณครูสมศรี",
-    role: "ติวเตอร์วิชาคณิตศาสตร์",
-    rating: 5,
-    comment: "เป็นแพลตฟอร์มที่ดีสำหรับติวเตอร์ค่ะ ระบบใช้งานง่าย ช่วยให้เราเข้าถึงนักเรียนได้มากขึ้นจริงๆ ค่ะ",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop"
-  },
-  {
-    name: "มานี รักเรียน",
-    role: "ผู้ปกครอง",
-    rating: 4,
-    comment: "หาติวเตอร์สอนภาษาอังกฤษให้น้องป.6 ได้จากที่นี่เลยค่ะ สะดวกดี มีติวเตอร์ให้เลือกเยอะมาก",
-    avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?q=80&w=200&auto=format&fit=crop"
-  }
+
 ];
 
 // --- Sub-components ---
@@ -81,7 +60,7 @@ function TutorCard({ item, onOpen }) {
         
         <div className="flex items-center justify-between pt-4 border-t border-gray-100">
           <span className="text-xs font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded-md">
-            {item.city || "ออนไลน์"}
+            {item.city || "ไม่พบสถานที่"}
           </span>
           <span className="text-lg font-bold text-indigo-600">
             ฿{priceText(item.price)}<span className="text-xs font-normal text-gray-400">/ชม.</span>

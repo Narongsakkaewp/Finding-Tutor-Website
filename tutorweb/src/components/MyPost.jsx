@@ -4,6 +4,7 @@ import {
   MapPin, Calendar, Clock, Users, DollarSign, Heart,
   Filter, Search, Plus, X, ChevronDown, Mail, Phone, User
 } from "lucide-react";
+import LongdoLocationPicker from './LongdoLocationPicker';
 
 const API_BASE = "http://localhost:5000";
 
@@ -34,7 +35,7 @@ const normalizeStudentPost = (p = {}) => ({
   createdAt: p.createdAt || p.created_at || p.created || new Date().toISOString(),
   subject: p.subject || p.title || "",
   description: p.description || p.content || "",
-  grade_level: p.grade_level || p.meta?.grade_level || "ไม่ระบุ",
+  grade_level: p.grade_level || (p.meta && p.meta.grade_level) || "ไม่ระบุ",
   location: p.location || p.place || p.location_name || "",
   group_size: Number(p.group_size ?? p.seats ?? p.groupSize ?? 0),
   budget: Number(p.budget ?? p.price ?? p.cost ?? 0),
@@ -105,9 +106,11 @@ const postGradeLevelOptions = [
   { value: "ประถมศึกษา", label: "ประถมศึกษา" },
   { value: "มัธยมต้น", label: "มัธยมศึกษาตอนต้น (ม.1-ม.3)" },
   { value: "มัธยมปลาย", label: "มัธยมศึกษาตอนปลาย (ม.4-ม.6)" },
-  { value: "มหาวิทยาลัย", label: "มหาวิทยาลัย" },
+  { value: "ปริญญาตรี", label: "ปริญญาตรี" },
   { value: "บุคคลทั่วไป", label: "บุคคลทั่วไป" },
 ];
+
+const today = new Date().toISOString().split("T")[0];
 
 /* ---------- UI Components ---------- */
 function Modal({ open, onClose, children, title }) {
@@ -176,7 +179,7 @@ function MyPost({ setPostsCache }) {
     preferred_time: "",
     grade_level: "",
     location: "",
-    group_size: "1",
+    group_size: "",
     budget: "",
     contact_info: "",
     target_student_level: [],
@@ -212,7 +215,7 @@ function MyPost({ setPostsCache }) {
         setPosts(normalized);
         setPostsCache?.(normalized);
       } else {
-        const url = `${API_BASE}/api/tutor-posts?page=1&limit=100`;
+        const url = `${API_BASE}/api/tutor-posts?page=1&limit=100&me=${meId}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -246,6 +249,16 @@ function MyPost({ setPostsCache }) {
         return { ...prev, target_student_level: [...currentLevels, levelValue] };
       }
     });
+  };
+
+  const handleLocationSelect = (address, locationObj) => {
+    setFormData(prev => ({
+      ...prev,
+      location: address // เอาชื่อสถานที่มาใส่ใน field location
+      // ถ้าอยากเก็บ lat/lon ลง database ด้วย ให้เพิ่มตรงนี้:
+      // lat: locationObj.lat,
+      // lon: locationObj.lon
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -465,53 +478,139 @@ function MyPost({ setPostsCache }) {
                 onClose={() => setExpanded(false)}
                 title={feedType === "student" ? "นักเรียนสร้างโพสต์" : "ติวเตอร์สร้างโพสต์"}
               >
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <input type="text" name="subject" placeholder="วิชา/หัวข้อ" value={formData.subject} onChange={handleChange} required className="border rounded p-2 w-full" />
-                  <textarea name="description" placeholder="รายละเอียด..." value={formData.description} onChange={handleChange} required className="border rounded p-2 w-full" />
+                <form onSubmit={handleSubmit} className="space-y-5"> {/* เพิ่ม space-y ให้ห่างกันหน่อย */}
+
+                  {/* วิชา/หัวข้อ */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">วิชา / หัวข้อ</label>
+                    <input type="text" name="subject" value={formData.subject} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                  </div>
+
+                  {/* รายละเอียด */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียดเพิ่มเติม</label>
+                    <textarea name="description" rows="3" value={formData.description} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+                  </div>
 
                   {feedType === "student" ? (
                     <>
-                      <div className="grid md:grid-cols-2 gap-3">
-                        <input type="date" name="preferred_days" value={formData.preferred_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-                        <input type="time" name="preferred_time" value={formData.preferred_time} onChange={handleChange} required className="border rounded p-2 w-full" />
+                      {/* วันและเวลาที่สะดวก */}
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">วันที่สะดวก</label>
+                          <input type="date" name="preferred_days" value={formData.preferred_days} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" min={today} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">เวลาที่สะดวก</label>
+                          <input type="time" name="preferred_time" value={formData.preferred_time} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
                       </div>
-                      <select name="grade_level" value={formData.grade_level} onChange={handleChange} required className="border rounded p-2 w-full">
-                        <option value="">เลือกระดับของผู้เรียน</option>
-                        {postGradeLevelOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                      </select>
-                      <input type="text" name="location" placeholder="สถานที่" value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-                      <div className="grid md:grid-cols-2 gap-3">
-                        <input type="number" name="group_size" placeholder="จำนวนคน" min="1" value={formData.group_size} onChange={handleChange} required className="border rounded p-2 w-full" />
-                        <input type="number" name="budget" placeholder="งบประมาณ" min="0" value={formData.budget} onChange={handleChange} required className="border rounded p-2 w-full" />
+
+                      {/* ระดับชั้น */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ระดับชั้นของผู้เรียน</label>
+                        <select name="grade_level" value={formData.grade_level} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                          <option value="">-- กรุณาเลือก --</option>
+                          {postGradeLevelOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
                       </div>
-                      <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ" value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
+
+                      {/* สถานที่ */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">สถานที่เรียน</label>
+                        {/* ใช้ Longdo Map Component ที่เราทำไว้ */}
+                        <LongdoLocationPicker
+                          onLocationSelect={handleLocationSelect}
+                          defaultLocation={formData.location}
+                          showMap={false}
+                        />
+                      </div>
+
+                      {/* จำนวนคนและงบประมาณ */}
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนผู้เรียน (คน)</label>
+                          <input type="number" name="group_size" min="1" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">งบประมาณ (บาท)</label>
+                          <input type="number" name="budget" min="0" value={formData.budget} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                      </div>
+
+                      {/* ข้อมูลติดต่อ */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ (เช่น Line ID, เบอร์โทร)</label>
+                        <input type="text" name="contact_info" value={formData.contact_info} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                      </div>
                     </>
                   ) : (
                     <>
-                      <div className="mt-2 space-y-2 border rounded-md p-4">
-                        <label className="block text-sm font-medium text-gray-700">ระดับชั้นที่สอน</label>
-                        {postGradeLevelOptions.map(option => (
-                          <div key={option.value} className="flex items-center">
-                            <input id={`level-${option.value}`} type="checkbox" value={option.value} checked={(formData.target_student_level || []).includes(option.value)} onChange={() => handleLevelChange(option.value)} className="h-4 w-4 text-blue-600 rounded" />
-                            <label htmlFor={`level-${option.value}`} className="ml-2 text-sm text-gray-900">{option.label}</label>
-                          </div>
-                        ))}
+                      {/* ส่วนของ Tutor */}
+                      <div className="border rounded-xl p-4">
+                        <label className="block text-sm font-bold text-gray-800 mb-3">ระดับชั้นที่รับสอน (เลือกได้มากกว่า 1)</label>
+                        <div className="flex flex-wrap gap-3">
+                          {postGradeLevelOptions.map(option => (
+                            <label
+                              key={option.value}
+                              className="flex items-center space-x-2 cursor-pointer px-3 py-2 bg-white hover:bg-blue-50 border border-gray-200 rounded-lg transition-all shadow-sm select-none">
+                              <input
+                                id={`level-${option.value}`}
+                                type="checkbox"
+                                value={option.value}
+                                checked={(formData.target_student_level || []).includes(option.value)}
+                                onChange={() => handleLevelChange(option.value)}
+                                className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                              />
+                              <span className="text-sm text-gray-700 whitespace-nowrap">{option.label}</span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
-                      <div className="grid md:grid-cols-2 gap-3">
-                        <input type="date" name="teaching_days" value={formData.teaching_days} onChange={handleChange} required className="border rounded p-2 w-full" />
-                        <input type="time" name="teaching_time" value={formData.teaching_time} onChange={handleChange} required className="border rounded p-2 w-full" />
+
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">วันที่สะดวกสอน</label>
+                          <input type="date" name="teaching_days" value={formData.teaching_days} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" min={today} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">เวลาที่สะดวกสอน</label>
+                          <input type="time" name="teaching_time" value={formData.teaching_time} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
                       </div>
-                      <div className="grid md:grid-cols-2 gap-3">
-                        <input type="text" name="location" placeholder="สถานที่" value={formData.location} onChange={handleChange} required className="border rounded p-2 w-full" />
-                        <input type="number" name="price" placeholder="ราคา/ชม." value={formData.price} onChange={handleChange} required className="border rounded p-2 w-full" />
+
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">สถานที่สอน</label>
+                          <LongdoLocationPicker
+                            onLocationSelect={handleLocationSelect}
+                            defaultLocation={formData.location}
+                            showMap={false}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">ราคาต่อชั่วโมง (บาท)</label>
+                          <input type="number" name="price" min="0" value={formData.price} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
+                          <input type="text" name="contact_info" value={formData.contact_info} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
                       </div>
-                      <input type="text" name="contact_info" placeholder="ข้อมูลติดต่อ" value={formData.contact_info} onChange={handleChange} required className="border rounded p-2 w-full" />
                     </>
                   )}
 
-                  <div className="flex justify-end gap-2 pt-4">
-                    <button type="button" onClick={() => setExpanded(false)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">ยกเลิก</button>
-                    <button disabled={loading} type="submit" className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">{loading ? "กำลังโพสต์..." : "โพสต์"}</button>
+                  <div className="flex justify-end gap-3 pt-6 border-t mt-4">
+                    <button type="button" onClick={() => setExpanded(false)} className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium transition-colors">ยกเลิก</button>
+                    <button disabled={loading} type="submit" className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium shadow-sm hover:shadow transition-all disabled:opacity-70 disabled:cursor-not-allowed">
+                      {loading ? (
+                        <span className="flex items-center gap-2">
+                          <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          กำลังโพสต์...
+                        </span>
+                      ) : "สร้างโพสต์"}
+                    </button>
                   </div>
                 </form>
               </Modal>
@@ -550,8 +649,8 @@ function MyPost({ setPostsCache }) {
                       </p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${post.post_type === 'student'
-                            ? 'bg-rose-200 text-rose-700'
-                            : 'bg-green-200 text-green-700'
+                          ? 'bg-rose-200 text-rose-700'
+                          : 'bg-green-200 text-green-700'
                           }`}>
                           {post.post_type === 'student' ? 'นักเรียน' : 'ติวเตอร์'}
                         </span>
@@ -569,17 +668,17 @@ function MyPost({ setPostsCache }) {
                   {/* Post Details */}
                   {post.post_type === "student" ? (
                     <div className="text-sm text-gray-600 grid md:grid-cols-2 gap-y-1">
-                      <p>📚 ระดับชั้น: {post.grade_level}</p>
-                      <p>📍 สถานที่: {post.location}</p>
-                      <p>👥 จำนวนคน: {post.group_size} คน</p>
-                      <p>💰 งบประมาณ: {post.budget} บาท</p>
-                      <p>📅 วันสะดวก: {post.preferred_days}</p>
-                      <p>⏰ เวลา: {post.preferred_time}</p>
+                      <p><span className="font-bold text-red-500">📚 ระดับชั้น: </span> {post.grade_level}</p>
+                      <p><span className="font-bold">📍 สถานที่: </span> {post.location}</p>
+                      <p><span className="font-bold">👥 จำนวนคน: </span> {post.group_size} คน</p>
+                      <p><span className="font-bold">💰 งบประมาณ: </span> {post.budget} บาท</p>
+                      <p><span className="font-bold">📅 วันสะดวก: </span> {post.preferred_days}</p>
+                      <p><span className="font-bold">⏰ เวลา: </span> {post.preferred_time}</p>
                       <p>✉️ ข้อมูลติดต่อ: {post.contact_info}</p>
                     </div>
                   ) : (
                     <div className="text-sm text-gray-600 grid md:grid-cols-2 gap-y-1">
-                      <p>📚 ระดับชั้นที่สอน: {post.meta?.target_student_level}</p>
+                      <p> <span> </span>📚 ระดับชั้นที่สอน: {post.meta?.target_student_level}</p>
                       <p>📅 วันที่สอน: {post.meta?.teaching_days}</p>
                       <p>⏰ ช่วงเวลา: {post.meta?.teaching_time}</p>
                       <p>📍 สถานที่: {post.meta?.location}</p>
@@ -631,7 +730,6 @@ function MyPost({ setPostsCache }) {
           </div>
         )}
 
-        {/* ✅ 3. User Profile Modal */}
         {viewingUser && (
           <Modal open={!!viewingUser} onClose={() => setViewingUser(null)} title="ข้อมูลผู้ใช้งาน">
             <div className="flex flex-col items-center p-4">

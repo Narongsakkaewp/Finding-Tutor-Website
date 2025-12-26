@@ -1,10 +1,11 @@
+// src/pages/Profile.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import Review from "../components/Review";
+import Review from "../components/Review"; 
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, MoreVertical, Trash2, EyeOff, MapPin, Mail, Phone, GraduationCap, AppWindow, Star } from "lucide-react";
+import { Edit, MoreVertical, Trash2, EyeOff, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X } from "lucide-react";
 
-/* ---------- helpers ---------- */
+/* ---------- Helpers ---------- */
 
 const normalizePost = (p = {}) => ({
   _id: p._id ?? p.id ?? p.student_post_id,
@@ -22,6 +23,19 @@ const normalizePost = (p = {}) => ({
 
 const fullNameOf = (u) =>
   [u?.name || u?.first_name || "", u?.lastname || u?.last_name || ""].join(" ").trim();
+
+// ✅ ฟังก์ชันช่วยแปลงวันที่เป็น YYYY-MM-DD แบบ Local Time (แก้ปัญหา Timezone เพี้ยน)
+const toLocalYMD = (date) => {
+  if (!date) return "";
+  // แปลง input ให้เป็น Date Object เสมอก่อนดึงค่า
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return ""; // กัน error กรณีวันที่ไม่ถูกต้อง
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 /* ---------- Subcomponents ---------- */
 
@@ -82,18 +96,8 @@ function ConfirmDialog({ open, title = "ยืนยันการลบ", desc
         <h4 className="text-lg font-bold">{title}</h4>
         <p className="mt-2 text-sm text-gray-600">{desc}</p>
         <div className="mt-4 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
-          >
-            ยกเลิก
-          </button>
-          <button
-            onClick={onConfirm}
-            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
-          >
-            ลบโพสต์
-          </button>
+          <button onClick={onCancel} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50">ยกเลิก</button>
+          <button onClick={onConfirm} className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700">ลบโพสต์</button>
         </div>
       </div>
     </div>
@@ -102,73 +106,47 @@ function ConfirmDialog({ open, title = "ยืนยันการลบ", desc
 
 function AvatarModal({ src, alt, onClose }) {
   if (!src) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-      onClick={onClose} // กดที่พื้นหลังเพื่อปิด
-    >
-      <div
-        className="relative max-w-lg w-full max-h-[80vh]"
-        onClick={(e) => e.stopPropagation()} // ป้องกันการกดที่รูปแล้วปิด
-      >
-        <img
-          src={src}
-          alt={alt}
-          className="w-full h-full object-contain rounded-lg shadow-xl"
-        />
-        {/* ปุ่มปิด (X) */}
-        <button
-          onClick={onClose}
-          className="absolute -top-3 -right-3 bg-white text-gray-700 rounded-full p-1.5 shadow-lg hover:bg-gray-200 transition"
-          aria-label="Close"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+      <div className="relative max-w-lg w-full max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+        <img src={src} alt={alt} className="w-full h-full object-contain rounded-lg shadow-xl" />
+        <button onClick={onClose} className="absolute -top-3 -right-3 bg-white text-gray-700 rounded-full p-1.5 shadow-lg hover:bg-gray-200 transition">
+          <X size={20} />
         </button>
       </div>
     </div>
   );
 }
 
-/* ---------- Main ---------- */
+/* ---------- Main Component ---------- */
 
 function Profile({ user, setCurrentPage, onEditProfile }) {
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
-  const [savedTutors, setSavedTutors] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [events, setEvents] = useState([]); // calendar events
+  const [events, setEvents] = useState([]); 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dailyEvents, setDailyEvents] = useState([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [reviewTargetId, setReviewTargetId] = useState(null); // เก็บ ID ติวเตอร์ที่จะรีวิว (Mockup ไปก่อนก็ได้)
+  const [reviewTargetId, setReviewTargetId] = useState(null);
 
-  // ===== สำหรับเมนู/ซ่อน/ลบ
-  const [openMenuFor, setOpenMenuFor] = useState(null);   // id ของการ์ดที่เปิดเมนู
-  const [hiddenPostIds, setHiddenPostIds] = useState(new Set()); // id ที่ถูกซ่อน
+  const [openMenuFor, setOpenMenuFor] = useState(null);
+  const [hiddenPostIds, setHiddenPostIds] = useState(new Set());
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
   const currentUser = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("user"));
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(localStorage.getItem("user")); } catch { return null; }
   }, []);
 
-  // โหลดโปรไฟล์, โพสต์ และอีเวนต์
+  // โหลดข้อมูล
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       try {
         const me = currentUser?.user_id || 0;
 
-        // ----- โปรไฟล์ -----
+        // 1. Profile
         let prof = {
           avatarUrl: currentUser?.profile_picture_url || "/default-avatar.png",
           fullName: fullNameOf(currentUser) || currentUser?.email || "ผู้ใช้",
@@ -182,14 +160,10 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           bio: "",
           education: [],
         };
-
         try {
           const pfRes = await fetch(`http://localhost:5000/api/profile/${me}`);
           if (pfRes.ok) {
-            // --- ดึงข้อมูลจาก Schema ที่คุณระบุ ---
             const p = await pfRes.json();
-
-            // สร้าง array การศึกษาจากฟิลด์ต่างๆ
             const education = [];
             if (p.institution) {
               education.push({
@@ -199,153 +173,100 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                 major: p.major || null,
               });
             }
-
             prof = {
               ...prof,
               fullName: fullNameOf(p) || prof.fullName,
               nickname: p.nickname ?? prof.nickname,
               avatarUrl: p.profile_picture_url || prof.avatarUrl,
-              city: p.address || null, // ใช้ p.address
+              city: p.address || null,
               school: p.institution ?? prof.school,
-              email: p.email ?? prof.email, // email ที่ join มา
-              phone: p.phone || null, // ใช้ p.phone
+              email: p.email ?? prof.email,
+              phone: p.phone || null,
               subjects: p.subjects ?? prof.subjects,
               gradeLevel: p.grade_level ?? prof.gradeLevel,
-
-              // --- ข้อมูลใหม่ที่ต้องการ ---
-              bio: p.about || "", // แมพ 'about' ไปที่ 'bio'
-              education: education, // array ที่สร้างขึ้น
+              bio: p.about || "",
+              education: education,
             };
           }
-        } catch { /* ใช้ข้อมูล localStorage หากโหลดไม่ได้ */ }
-
+        } catch { }
         if (!cancelled) setProfile(prof);
 
-        // ----- โหลดโพสต์ -----
+        // 2. Posts
         const r = await fetch(`http://localhost:5000/api/student_posts?me=${me}&mine=1`);
         const data = await r.json();
-        const onlyMine = Array.isArray(data)
-          ? data.filter((p) => Number(p.owner_id) === Number(me))
-          : [];
-        const normalized = onlyMine.map(normalizePost);
-        if (!cancelled) setPosts(normalized);
+        const onlyMine = Array.isArray(data) ? data.filter((p) => Number(p.owner_id) === Number(me)) : [];
+        if (!cancelled) setPosts(onlyMine.map(normalizePost));
 
-        // ----- โหลดกิจกรรม (calendar_events) -----
+        // 3. Calendar Events
         const evRes = await fetch(`http://localhost:5000/api/calendar/${me}`);
         if (evRes.ok) {
           const evData = await evRes.json();
           if (!cancelled) setEvents(evData.items || []);
         }
-
-        if (!cancelled) setSavedTutors([]);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      } catch (e) { console.error(e); } 
+      finally { if (!cancelled) setLoading(false); }
     })();
-
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.user_id]);
 
-  // กรองกิจกรรมตามวันที่เลือก
+  // ✅ กรองกิจกรรม (แก้ไข Logic ให้ Robust ที่สุด)
   useEffect(() => {
-    const todayISO = selectedDate.toISOString().slice(0, 10);
-    const matches = events.filter((ev) => ev.event_date === todayISO);
+    // 1. แปลงวันที่ที่เลือกในปฏิทินให้เป็น String YYYY-MM-DD (Local)
+    const selectedDateStr = toLocalYMD(selectedDate);
+    
+    const matches = events.filter((ev) => {
+        if(!ev.event_date) return false;
+        // 2. แปลงวันที่จาก DB (ซึ่งอาจเป็น ISO UTC string) ให้เป็น Date Object ก่อน
+        // เพื่อให้มันปรับ Timezone กลับมาเป็นเวลาไทย
+        const eventDateObj = new Date(ev.event_date); 
+        // 3. แปลงเป็น YYYY-MM-DD แบบ Local
+        const evDateStr = toLocalYMD(eventDateObj); 
+        
+        return evDateStr === selectedDateStr;
+    });
+    
     setDailyEvents(matches);
   }, [selectedDate, events]);
 
-  // ===== handlers เมนู/ซ่อน/ลบ =====
-  const handleToggleMenu = (id) => {
-    setOpenMenuFor((prev) => (prev === id ? null : id));
-  };
-
-  const handleHidePost = (id) => {
-    setHiddenPostIds((prev) => new Set(prev).add(id));
-  };
-
+  // Handlers
+  const handleToggleMenu = (id) => setOpenMenuFor((prev) => (prev === id ? null : id));
+  const handleHidePost = (id) => setHiddenPostIds((prev) => new Set(prev).add(id));
   const handleAskDelete = (id) => setConfirm({ open: true, id });
+  const cancelDelete = () => setConfirm({ open: false, id: null });
+  const restoreAllHidden = () => setHiddenPostIds(new Set());
 
   const doDeletePost = async () => {
     const id = confirm.id;
     setConfirm({ open: false, id: null });
-
-    // optimistic remove
     const before = posts;
     const after = posts.filter((p) => (p._id ?? p.id) !== id);
     setPosts(after);
-
     try {
       const res = await fetch(`http://localhost:5000/api/student_posts/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
-      if (!res.ok) {
-        setPosts(before);
-        alert("ลบไม่สำเร็จ (API ลบยังไม่พร้อมหรือเกิดข้อผิดพลาด)");
-      }
-    } catch (e) {
-      setPosts(before);
-      alert("ลบไม่สำเร็จ (เครือข่ายผิดพลาด)");
-    }
+      if (!res.ok) { setPosts(before); alert("ลบไม่สำเร็จ"); }
+    } catch (e) { setPosts(before); alert("ลบไม่สำเร็จ"); }
   };
 
-  const cancelDelete = () => setConfirm({ open: false, id: null });
-
-  const restoreAllHidden = () => setHiddenPostIds(new Set());
-  const hiddenCount = hiddenPostIds.size;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-600">
-        กำลังโหลดโปรไฟล์...
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-600">
-        ไม่พบข้อมูลผู้ใช้ (Server อาจไม่พร้อมใช้งาน)
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-600">กำลังโหลดโปรไฟล์...</div>;
+  if (!profile) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-600">ไม่พบข้อมูลผู้ใช้</div>;
 
   const mockRecommendedTutors = [
-    {
-      user_id: 101,
-      profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=S',
-      name: 'สมศักดิ์',
-      lastname: 'เก่งกาจ',
-      can_teach_subjects: 'คณิตศาสตร์ ม.ปลาย, แคลคูลัส'
-    },
-    {
-      user_id: 102,
-      profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=A',
-      name: 'อลิสา',
-      lastname: 'ใจดี',
-      can_teach_subjects: 'GAT ภาษาอังกฤษ, TOEIC'
-    },
-    {
-      user_id: 103,
-      profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=N',
-      name: 'นนทรี',
-      lastname: 'บีทีเอส',
-      can_teach_subjects: 'ฟิสิกส์ (PAT3), ตะลุยโจทย์'
-    }
+    { user_id: 101, profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=S', name: 'สมศักดิ์', lastname: 'เก่งกาจ', can_teach_subjects: 'คณิตศาสตร์ ม.ปลาย, แคลคูลัส' },
+    { user_id: 102, profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=A', name: 'อลิสา', lastname: 'ใจดี', can_teach_subjects: 'GAT ภาษาอังกฤษ, TOEIC' },
+    { user_id: 103, profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=N', name: 'นนทรี', lastname: 'บีทีเอส', can_teach_subjects: 'ฟิสิกส์ (PAT3), ตะลุยโจทย์' }
   ];
-
-  const recommendLoading = false;
+  const hiddenCount = hiddenPostIds.size;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
-        {/* Header */}
+        
+        {/* Header Profile */}
         <div className="bg-white rounded-3xl shadow-sm border p-6">
           <div className="flex flex-col md:flex-row md:items-center gap-6">
-
-            {/* --- ส่วนซ้าย (รูป, ชื่อ, bio, การศึกษา, ติดต่อ) --- */}
             <div className="flex items-start gap-5 flex-grow">
               <img
                 src={profile.avatarUrl || "/default-avatar.png"}
@@ -356,106 +277,54 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               <div className="flex-grow">
                 <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
                   {profile.fullName}
-                  {profile.nickname && (
-                    <span className="text-gray-500 font-medium ml-2">
-                      ({profile.nickname})
-                    </span>
-                  )}
+                  {profile.nickname && <span className="text-gray-500 font-medium ml-2">({profile.nickname})</span>}
                 </h1>
                 <p className="text-gray-600 mt-1">
-                  {profile.gradeLevel || "นักเรียน"}
-                  {profile.school && ` • ${profile.school}`}
+                  {profile.gradeLevel || "นักเรียน"} {profile.school && ` • ${profile.school}`}
                 </p>
-
-                {/* --- ส่วน "การศึกษา" --- */}
                 {profile.education && profile.education.length > 0 && (
                   <div className="mt-3 border-t pt-3">
                     <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-1">
-                      <GraduationCap size={16} />
-                      การศึกษาปัจจุบัน:
+                      <GraduationCap size={16} /> การศึกษาปัจจุบัน:
                     </h4>
                     <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
                       {profile.education.map((edu, index) => (
                         <li key={index} className="mt-1">
                           <span className="font-semibold">{edu.degree} ที่ {edu.institution}</span>
-                          {edu.faculty && (
-                            <div className="pl-5 text-gray-500">
-                              คณะ {edu.faculty}
-                            </div>
-                          )}
-                          {edu.major && (
-                            <div className="pl-5 text-gray-500">
-                              สาขา {edu.major}
-                            </div>
-                          )}
+                          {edu.faculty && <div className="pl-5 text-gray-500">คณะ {edu.faculty}</div>}
+                          {edu.major && <div className="pl-5 text-gray-500">สาขา {edu.major}</div>}
                         </li>
                       ))}
                     </ul>
                   </div>
                 )}
-
-                {/* --- ส่วน "Bio" (เกี่ยวกับฉัน) --- */}
                 <div>
                   <h4 className="flex items-center mt-3 border-t pt-3 gap-2 text-sm font-semibold text-gray-700 mb-1">
-                    <AppWindow size={16} />
-                    เกี่ยวกับฉัน:
+                    <AppWindow size={16} /> เกี่ยวกับฉัน:
                   </h4>
-                  {profile.bio && (
-                    <p className="pl-5 text-sm text-gray-700 whitespace-pre-line">
-                      {profile.bio}
-                    </p>
-                  )}
+                  {profile.bio && <p className="pl-5 text-sm text-gray-700 whitespace-pre-line">{profile.bio}</p>}
                 </div>
-
-
-                {/* --- ส่วน "ข้อมูลติดต่อ" --- */}
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                  {/* Address */}
-                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50">
-                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5">
-                      <MapPin size={16} className="text-gray-600" />
-                    </div>
+                  <a href={profile.city ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.city)}` : "#"} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 border rounded-lg p-2 bg-gray-50 transition-colors ${profile.city ? "hover:bg-gray-100 cursor-pointer" : "cursor-default"}`} onClick={(e) => !profile.city && e.preventDefault()}>
+                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><MapPin size={16} className="text-gray-600" /></div>
                     <span className="text-gray-700 truncate">{profile.city || "ยังไม่ระบุที่อยู่"}</span>
+                  </a>
+                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50 hover:bg-gray-100">
+                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><Phone size={16} className="text-gray-600" /></div>
+                    <a href={`tel:${profile.phone}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">{profile.phone || "ยังไม่ระบุเบอร์"}</a>
                   </div>
-                  {/* Phone */}
-                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50">
-                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5">
-                      <Phone size={16} className="text-gray-600" />
-                    </div>
-                    <a href={`tel:${profile.phone}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">
-                      {profile.phone || "ยังไม่ระบุเบอร์"}
-                    </a>
-                  </div>
-                  {/* Email */}
-                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50">
-                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5">
-                      <Mail size={16} className="text-gray-600" />
-                    </div>
-                    <a href={`mailto:${profile.email}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">
-                      {profile.email || "ยังไม่ระบุอีเมล"}
-                    </a>
+                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50 hover:bg-gray-100">
+                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><Mail size={16} className="text-gray-600" /></div>
+                    <a href={`mailto:${profile.email}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">{profile.email || "ยังไม่ระบุอีเมล"}</a>
                   </div>
                 </div>
               </div>
             </div>
-
-            {/* --- ส่วนขวา (ปุ่มแก้ไข, Stats) --- */}
             <div className="md:ml-auto flex flex-col items-stretch md:items-end gap-3 self-start">
-              <button
-                onClick={onEditProfile}
-                className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium"
-              >
+              <button onClick={onEditProfile} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
                 <Edit size={16} /> แก้ไขโปรไฟล์
               </button>
-              {/* ปุ่มรีวิว ทดสอบ */}
-              <button
-                onClick={() => {
-                  console.log("Button Clicked!");
-                  setReviewTargetId(17); // <--- ใส่เลข postId ของจริงที่มีใน DB เพื่อทดสอบ
-                  setShowReviewModal(true);
-                }}
-                className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium"
-              >
+              <button onClick={() => { setReviewTargetId(17); setShowReviewModal(true); }} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
                 <Star size={16} /> เขียนรีวิว(Demo)
               </button>
               <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
@@ -478,8 +347,12 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                     onClickDay={(value) => setSelectedDate(value)}
                     tileClassName={({ date, view }) => {
                       if (view === "month") {
-                        const iso = date.toISOString().slice(0, 10);
-                        if (events.some((ev) => ev.event_date === iso)) {
+                        const tileDateStr = toLocalYMD(date);
+                        if (events.some((ev) => {
+                            if(!ev.event_date) return false;
+                            const d = new Date(ev.event_date);
+                            return toLocalYMD(d) === tileDateStr;
+                        })) {
                           return "bg-blue-200 text-blue-800 font-semibold rounded-lg";
                         }
                       }
@@ -494,10 +367,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                   ) : (
                     <ul className="space-y-2">
                       {dailyEvents.map((ev) => (
-                        <li
-                          key={ev.event_id}
-                          className="border rounded-lg p-3 bg-gray-50 hover:bg-gray-100 transition"
-                        >
+                        <li key={ev.event_id} className="border rounded-lg p-3 bg-gray-50 hover:bg-gray-100 transition">
                           <div className="font-semibold">{ev.title}</div>
                           <div className="text-sm text-gray-600">
                             📘 {ev.subject} — ⏰ {ev.event_time?.slice(0, 5)}<br />
@@ -512,147 +382,74 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
             </Card>
 
             <Card title="โพสต์ของฉัน">
-              {/* ปุ่มยกเลิกซ่อนทั้งหมด */}
               {hiddenCount > 0 && (
                 <div className="mb-3 flex justify-end">
-                  <button
-                    onClick={restoreAllHidden}
-                    className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50"
-                    title="นำโพสต์ที่ซ่อนทั้งหมดกลับมาแสดง"
-                  >
-                    แสดงโพสต์ที่ซ่อนทั้งหมด ({hiddenCount})
-                  </button>
+                  <button onClick={restoreAllHidden} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50">แสดงโพสต์ที่ซ่อนทั้งหมด ({hiddenCount})</button>
                 </div>
               )}
-
-              {!posts.length ? (
-                <Empty line="ยังไม่มีโพสต์" />
-              ) : (
+              {!posts.length ? <Empty line="ยังไม่มีโพสต์" /> : (
                 <div className="space-y-4">
-                  {posts
-                    .filter((p) => !hiddenPostIds.has(p._id ?? p.id))
-                    .map((p) => {
-                      const id = p._id ?? p.id;
-                      return (
-                        <div key={id} className="relative border rounded-xl p-4 bg-white shadow-sm">
-                          {/* เมนูสามจุด */}
-                          <button
-                            onClick={() => handleToggleMenu(id)}
-                            className="absolute right-2 top-2 rounded-md p-1.5 hover:bg-gray-100"
-                            aria-label="more"
-                          >
-                            <MoreVertical size={18} />
-                          </button>
-                          <PostActionMenu
-                            open={openMenuFor === id}
-                            onClose={() => setOpenMenuFor(null)}
-                            onHide={() => handleHidePost(id)}
-                            onDelete={() => handleAskDelete(id)}
-                          />
-
-                          {/* เนื้อหาโพสต์ */}
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={profile.avatarUrl || "/default-avatar.png"}
-                              alt="avatar"
-                              className="w-9 h-9 rounded-full object-cover"
-                            />
-                            <div>
-                              <div className="text-sm font-semibold">{profile.fullName}</div>
-                              <div className="text-xs text-gray-500">
-                                {new Date(p.createdAt).toLocaleString("th-TH")}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="mt-2 text-gray-800 whitespace-pre-line">
-                            {p.content}
-                          </div>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 mt-3">
-                            <div>📘 {p.subject || "-"}</div>
-                            <div>📅 {p.meta?.preferred_days || "-"}</div>
-                            <div>⏰ {p.meta?.preferred_time || "-"}</div>
-                            <div>📍 {p.meta?.location || "-"}</div>
-                            <div>👥 {p.meta?.group_size || "-"}</div>
-                            <div>💸 {p.meta?.budget ? `฿${p.meta.budget}` : "-"}</div>
+                  {posts.filter((p) => !hiddenPostIds.has(p._id ?? p.id)).map((p) => {
+                    const id = p._id ?? p.id;
+                    return (
+                      <div key={id} className="relative border rounded-xl p-4 bg-white shadow-sm">
+                        <button onClick={() => handleToggleMenu(id)} className="absolute right-2 top-2 rounded-md p-1.5 hover:bg-gray-100">
+                          <MoreVertical size={18} />
+                        </button>
+                        <PostActionMenu open={openMenuFor === id} onClose={() => setOpenMenuFor(null)} onHide={() => handleHidePost(id)} onDelete={() => handleAskDelete(id)} />
+                        <div className="flex items-center gap-3">
+                          <img src={profile.avatarUrl || "/default-avatar.png"} alt="avatar" className="w-9 h-9 rounded-full object-cover" />
+                          <div>
+                            <div className="text-sm font-semibold">{profile.fullName}</div>
+                            <div className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleString("th-TH")}</div>
                           </div>
                         </div>
-                      );
-                    })}
+                        <div className="mt-2 text-gray-800 whitespace-pre-line">{p.content}</div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 mt-3">
+                          <div>📘 {p.subject || "-"}</div>
+                          <div>📅 {p.meta?.preferred_days || "-"}</div>
+                          <div>⏰ {p.meta?.preferred_time || "-"}</div>
+                          <div>📍 {p.meta?.location || "-"}</div>
+                          <div>👥 {p.meta?.group_size || "-"}</div>
+                          <div>💸 {p.meta?.budget ? `฿${p.meta.budget}` : "-"}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </Card>
           </div>
 
           <div className="space-y-6">
-
-            {/* --- 1. การ์ดติวเตอร์แนะนำ (แสดงผลจาก Mockup) --- */}
             <Card title="ติวเตอร์แนะนำสำหรับคุณ">
-              {recommendLoading ? (
-                <div className="text-sm text-gray-500">กำลังค้นหา...</div>
-              ) : !mockRecommendedTutors.length ? (
-                <Empty line="ไม่พบติวเตอร์แนะนำ" />
-              ) : (
+              {!mockRecommendedTutors.length ? <Empty line="ไม่พบติวเตอร์แนะนำ" /> : (
                 <ul className="space-y-3">
                   {mockRecommendedTutors.map((tutor) => (
                     <li key={tutor.user_id} className="flex items-center gap-3 p-2 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                      <img
-                        src={tutor.profile_picture_url || '/default-avatar.png'}
-                        alt={tutor.name || 'tutor'}
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
+                      <img src={tutor.profile_picture_url || '/default-avatar.png'} alt={tutor.name} className="w-10 h-10 rounded-full object-cover" />
                       <div>
                         <div className="text-sm font-semibold">{tutor.name} {tutor.lastname || ''}</div>
-                        <div className="text-xs text-gray-500 truncate" title={tutor.can_teach_subjects}>
-                          {tutor.can_teach_subjects || 'ไม่ระบุวิชา'}
-                        </div>
+                        <div className="text-xs text-gray-500 truncate" title={tutor.can_teach_subjects}>{tutor.can_teach_subjects || 'ไม่ระบุวิชา'}</div>
                       </div>
                     </li>
                   ))}
                 </ul>
               )}
             </Card>
-
-            {/* --- 2. การ์ดวิชาที่สนใจ (แสดงผลจาก profile.subjects) --- */}
             <Card title="วิชาที่สนใจ">
-              {!profile.subjects?.length ? (
-                <Empty line="ยังไม่มีวิชา" />
-              ) : (
+              {!profile.subjects?.length ? <Empty line="ยังไม่มีวิชา" /> : (
                 <ul className="list-disc pl-5 space-y-1 text-gray-700">
-                  {profile.subjects.map((s, i) => (
-                    <li key={i}>{s.name}</li>
-                  ))}
+                  {profile.subjects.map((s, i) => <li key={i}>{s.name}</li>)}
                 </ul>
               )}
             </Card>
-
           </div>
         </div>
       </div>
-
-      {isAvatarModalOpen && (
-        <AvatarModal
-          src={profile.avatarUrl}
-          alt={profile.fullName}
-          onClose={() => setIsAvatarModalOpen(false)}
-        />
-      )}
-
-      {/* Confirm Delete */}
-      <ConfirmDialog
-        open={confirm.open}
-        title="ยืนยันการลบโพสต์"
-        desc="เมื่อยืนยันแล้วจะไม่สามารถกู้คืนโพสต์นี้ได้"
-        onConfirm={doDeletePost}
-        onCancel={cancelDelete}
-      />
-
-      {showReviewModal && (
-        <Review
-          postId={reviewTargetId}
-          studentId={currentUser?.user_id}
-          onClose={() => setShowReviewModal(false)}
-        />
-      )}
+      {isAvatarModalOpen && <AvatarModal src={profile.avatarUrl} alt={profile.fullName} onClose={() => setIsAvatarModalOpen(false)} />}
+      <ConfirmDialog open={confirm.open} title="ยืนยันการลบโพสต์" desc="เมื่อยืนยันแล้วจะไม่สามารถกู้คืนโพสต์นี้ได้" onConfirm={doDeletePost} onCancel={cancelDelete} />
+      {showReviewModal && <Review postId={reviewTargetId} studentId={currentUser?.user_id} onClose={() => setShowReviewModal(false)} />}
     </div>
   );
 }

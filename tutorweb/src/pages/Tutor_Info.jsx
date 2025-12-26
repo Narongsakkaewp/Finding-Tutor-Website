@@ -10,9 +10,11 @@ const getCurrentUser = () => {
 };
 
 const gradeLevelOptions = [
-    { value: 'ประถม', label: 'ประถมศึกษา' },
+    { value: 'ประถมศึกษา', label: 'ประถมศึกษา' },
     { value: 'มัธยมต้น', label: 'มัธยมศึกษาตอนต้น (ม.1-ม.3)' },
     { value: 'มัธยมปลาย', label: 'มัธยมศึกษาตอนปลาย (ม.4-ม.6)' },
+    { value: 'ปริญญาตรี', label: 'ปริญญาตรี' },
+    { value: 'บุคคลทั่วไป', label: 'บุคคลทั่วไป' },
 ];
 
 const subjectOptions = [
@@ -614,7 +616,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
                             <div>
                                 <label htmlFor="subjects" className="block text-sm font-medium text-gray-700">วิชาที่สอน</label>
 
-                                <div className="mt-1 flex flex-wrap gap-2 p-2 border border rounded-md min-h-[42px]">
+                                <div className="mt-1 flex flex-wrap gap-2 p-2 border rounded-md min-h-[42px]">
                                     {formData.can_teach_subjects.length > 0 ? (
                                         formData.can_teach_subjects.map(subject => (
                                             <span key={subject} className="flex items-center bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded-full">
