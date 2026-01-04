@@ -133,6 +133,7 @@ function App() {
             postType={selectedPostType}
             me={user?.user_id}
             postsCache={postsCache}
+            setPostsCache={setPostsCache}
             onBack={() => setCurrentPage(backPage || 'mypost')}
           />
         );

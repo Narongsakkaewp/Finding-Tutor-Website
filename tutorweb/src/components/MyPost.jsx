@@ -90,6 +90,7 @@ const normalizeTutorPost = (p = {}) => {
     join_count: Number(p.join_count ?? 0),
     joined: !!p.joined,
     pending_me: !!p.pending_me,
+    group_size: Number(p.group_size ?? p.meta?.group_size ?? 0),
     post_type: "tutor",
     user: p.user || {
       first_name: first,
@@ -496,6 +497,7 @@ function MyPost({ setPostsCache }) {
                     <>
                       {/* วันและเวลาที่สะดวก */}
                       <div className="grid md:grid-cols-2 gap-4">
+                        
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">วันที่สะดวก</label>
                           <input type="date" name="preferred_days" value={formData.preferred_days} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" min={today} />
@@ -576,6 +578,10 @@ function MyPost({ setPostsCache }) {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">เวลาที่สะดวกสอน</label>
                           <input type="time" name="teaching_time" value={formData.teaching_time} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนผู้เรียน (คน)</label>
+                          <input type="number" name="group_size" min="1" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                       </div>
 
@@ -682,6 +688,9 @@ function MyPost({ setPostsCache }) {
                       <p>📅 วันที่สอน: {post.meta?.teaching_days}</p>
                       <p>⏰ ช่วงเวลา: {post.meta?.teaching_time}</p>
                       <p>📍 สถานที่: {post.meta?.location}</p>
+                      {typeof post.group_size === 'number' && post.group_size > 0 ? (
+                        <p>👥 จำนวนคน: {post.group_size} คน</p>
+                      ) : null}
                       <p>💸 ราคา: {Number(post.meta?.price || 0).toFixed(2)} บาท/ชม.</p>
                       <p className="md:col-span-2">☎️ ติดต่อ: {post.meta?.contact_info}</p>
                     </div>
@@ -691,14 +700,14 @@ function MyPost({ setPostsCache }) {
                     <div className="text-sm text-gray-600">
                       {post.post_type === "student" ? (
                         <>
-                          เข้าร่วมแล้ว (อนุมัติ): <b>{post.join_count}</b> / {post.group_size} คน
+                          เข้าร่วมแล้ว : <b>{post.join_count}</b> / {post.group_size} คน
                           {post.joined && <span className="ml-2 px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 rounded-full">คุณเข้าร่วมแล้ว</span>}
                           {post.pending_me && !post.joined && <span className="ml-2 px-2 py-0.5 text-xs bg-amber-50 text-amber-700 rounded-full">รออนุมัติ</span>}
                         </>
                       ) : (
                         <>
                           <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full mr-2">โพสต์รับสอน</span>
-                          <span className="text-gray-600">ผู้เข้าร่วม: <b>{Number(post.join_count || 0)}</b></span>
+                          <span className="text-gray-600">ผู้เข้าร่วม: {post.group_size ? (<b>{Number(post.join_count || 0)} / {post.group_size} คน</b>) : (<b>{Number(post.join_count || 0)} คน</b>)}</span>
                         </>
                       )}
                     </div>

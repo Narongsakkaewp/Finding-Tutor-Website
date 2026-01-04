@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, Star, MapPin, Phone, Mail, GraduationCap, AppWindow, X } from "lucide-react";
+import { Edit, Star, MapPin, Phone, Trash2, EyeOff, Mail, GraduationCap, AppWindow, X } from "lucide-react";
 
 /* ---------- Helpers (สำหรับ Tutor) ---------- */
 
@@ -85,6 +85,44 @@ function ReviewCard({ review }) {
             </div>
         </div>
     );
+}
+
+function PostActionMenu({ open, onClose, onHide, onDelete }) {
+  if (!open) return null;
+  return (
+    <div className="absolute right-2 top-8 z-20 w-40 overflow-hidden rounded-xl border bg-white shadow-xl">
+      <button
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
+        onClick={() => { onHide(); onClose(); }}
+      >
+        <EyeOff size={16} /> ซ่อนโพสต์
+      </button>
+      <button
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+        onClick={() => { onDelete(); onClose(); }}
+      >
+        <Trash2 size={16} /> ลบโพสต์
+      </button>
+    </div>
+  );
+}
+
+/* ===== กล่องยืนยันลบ ===== */
+function ConfirmDialog({ open, title = "ยืนยันการลบ", desc = "ลบโพสต์นี้ถาวรหรือไม่?", onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
+      <div className="relative z-10 w-[92%] max-w-sm rounded-2xl border bg-white p-5 shadow-xl">
+        <h4 className="text-lg font-bold">{title}</h4>
+        <p className="mt-2 text-sm text-gray-600">{desc}</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onCancel} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50">ยกเลิก</button>
+          <button onClick={onConfirm} className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700">ลบโพสต์</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function AvatarModal({ src, alt, onClose }) {
@@ -386,6 +424,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                 </div>
             </div>
             {isAvatarModalOpen && <AvatarModal src={profile.avatarUrl} alt={profile.fullName} onClose={() => setIsAvatarModalOpen(false)} />}
+            <ConfirmDialog open={confirm.open} title="ยืนยันการลบโพสต์" desc="เมื่อยืนยันแล้วจะไม่สามารถกู้คืนโพสต์นี้ได้" onConfirm={doDeletePost} onCancel={cancelDelete} />
         </div>
     );
 }

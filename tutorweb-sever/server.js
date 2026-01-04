@@ -115,7 +115,7 @@ async function getJoiners(postId) {
     `SELECT j.user_id, j.joined_at, r.name, r.lastname
        FROM student_post_joins j
        LEFT JOIN register r ON r.user_id = j.user_id
-      WHERE j.student_post_id = ?
+      WHERE j.student_post_id = ? AND j.status = 'approved'
       ORDER BY j.joined_at ASC, j.user_id ASC`,
     [postId]
   );
@@ -380,7 +380,7 @@ app.get('/api/tutor-posts', async (req, res) => {
       SELECT
         tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
         tp.target_student_level, /* ✅ เพิ่ม: ดึงระดับชั้นออกมา */
-        tp.teaching_days, tp.teaching_time, tp.location, tp.price, tp.contact_info,
+        tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
         r.name, r.lastname,
         tpro.profile_picture_url,
@@ -429,6 +429,7 @@ app.get('/api/tutor-posts', async (req, res) => {
         subject: r.subject,
         content: r.description,
         createdAt: r.created_at,
+        group_size: Number(r.group_size || 0),
         authorId: {
           id: r.tutor_id,
           name: `${r.name || ''}${r.lastname ? ' ' + r.lastname : ''}`.trim() || `ติวเตอร์ #${r.tutor_id}`,
@@ -527,7 +528,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
     const [rows] = await pool.query(`
       SELECT
         tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
-        tp.teaching_days, tp.teaching_time, tp.location, tp.price, tp.contact_info,
+        tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
         r.name, r.lastname, tpro.profile_picture_url
       FROM tutor_posts tp
@@ -540,21 +541,48 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
     if (!rows.length) return res.status(404).json({ message: 'not found' });
 
     const r = rows[0];
-    res.json({
-      id: r.tutor_post_id,
-      owner_id: r.tutor_id,
-      subject: r.subject,
-      description: r.description,
-      meta: {
-        teaching_days: r.teaching_days,
-        teaching_time: r.teaching_time,
-        location: r.location,
-        price: Number(r.price || 0),
-        contact_info: r.contact_info
-      },
-      user: { first_name: r.name || '', last_name: r.lastname || '', profile_image: r.profile_picture_url || '' },
-      createdAt: r.created_at
-    });
+
+    // คืนค่า join_count ของผู้ที่อนุมัติแล้วเพื่อให้ UI แสดงตัวเลขได้ถูกต้อง
+    try {
+      const [[cnt]] = await pool.query(
+        'SELECT COUNT(*) AS c FROM tutor_post_joins WHERE tutor_post_id = ? AND status = "approved"',
+        [postId]
+      );
+      return res.json({
+        id: r.tutor_post_id,
+        owner_id: r.tutor_id,
+        subject: r.subject,
+        description: r.description,
+        group_size: Number(r.group_size || 0),
+        meta: {
+          teaching_days: r.teaching_days,
+          teaching_time: r.teaching_time,
+          location: r.location,
+          price: Number(r.price || 0),
+          contact_info: r.contact_info
+        },
+        user: { first_name: r.name || '', last_name: r.lastname || '', profile_image: r.profile_picture_url || '' },
+        createdAt: r.created_at,
+        join_count: Number(cnt.c || 0)
+      });
+    } catch (e) {
+      console.error('Error fetching join count for tutor post:', e);
+      return res.json({
+        id: r.tutor_post_id,
+        owner_id: r.tutor_id,
+        subject: r.subject,
+        description: r.description,
+        meta: {
+          teaching_days: r.teaching_days,
+          teaching_time: r.teaching_time,
+          location: r.location,
+          price: Number(r.price || 0),
+          contact_info: r.contact_info
+        },
+        user: { first_name: r.name || '', last_name: r.lastname || '', profile_image: r.profile_picture_url || '' },
+        createdAt: r.created_at
+      });
+    }
   } catch (e) {
     console.error('GET /api/tutor-posts/:id error', e);
     res.status(500).json({ message: 'Server error' });
@@ -819,6 +847,7 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
       teaching_days: b.teaching_days ?? b.days ?? null,
       teaching_time: b.teaching_time ?? b.time ?? null,
       location: b.location ?? b.place ?? null,
+      group_size: Number(b.group_size ?? 0) || 0,
       price: Number(b.price ?? b.hourly_rate ?? 0) || 0,
       contact_info: b.contact_info ?? b.contact ?? null
     };
@@ -829,12 +858,12 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
 
     const sql = `
       INSERT INTO tutor_posts
-      (tutor_id, subject, description, target_student_level, teaching_days, teaching_time, location, price, contact_info, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      (tutor_id, subject, description, target_student_level, teaching_days, teaching_time, location, group_size, price, contact_info, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `;
     const vals = [
       payload.tutor_id, payload.subject, payload.description, payload.target_student_level,
-      payload.teaching_days, payload.teaching_time, payload.location, payload.price, payload.contact_info
+      payload.teaching_days, payload.teaching_time, payload.location, payload.group_size, payload.price, payload.contact_info
     ];
 
     const [result] = await pool.execute(sql, vals);
@@ -842,7 +871,7 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
     const [rows] = await pool.query(
       `SELECT 
       tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description, tp.target_student_level, tp.teaching_days, tp.teaching_time,
-      tp.location, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname
+      tp.location, tp.group_size, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname
     FROM tutor_posts tp
     LEFT JOIN register r ON r.user_id = tp.tutor_id
     WHERE tp.tutor_post_id = ?`,
@@ -870,6 +899,7 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
           last_name: r.lastname || '',
 
         },
+        group_size: Number(r.group_size || 0),
         createdAt: r.created_at
       }
     });
@@ -931,27 +961,60 @@ async function doJoinUnified(type, postId, me) {
     }
   }
 
-  await pool.query(
-    'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-    [
-      post.owner_id,            // ✅ เจ้าของโพสต์ต้องได้รับแจ้งเตือน
-      me,                       // ✅ คนที่กด join เป็นผู้กระทำ
-      cfg.notifyType,
-      cfg.notifyMessage(postId),
-      postId
-    ]
-  );
-
+  // สำหรับ tutor: สร้าง/อัปเดตแถวใน tutor_post_joins เพื่อบันทึกคำขอเข้าร่วม
+  if (cfg.joinsTable === 'tutor_post_joins') {
+    try {
+      await pool.query(
+        `INSERT INTO tutor_post_joins
+          (tutor_post_id, user_id, status, requested_at, name, lastname)
+         SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
+         FROM register r
+         WHERE r.user_id = ?
+         ON DUPLICATE KEY UPDATE
+           status = IF(VALUES(status)='pending' AND status <> 'approved', 'pending', status),
+           requested_at = VALUES(requested_at),
+           name = VALUES(name),
+           lastname = VALUES(lastname)
+        `,
+        [postId, me, me]
+      );
+    } catch (e) {
+      console.error('Insert tutor_post_joins error:', e);
+      // ไม่ต้องหยุด flow ของการแจ้งเตือน แต่ log ไว้
+    }
+  }
 
   let countSql = `SELECT COUNT(*) AS c FROM ${cfg.joinsTable} WHERE ${cfg.joinPostIdCol} = ?`;
   if (cfg.countApprovedOnly) countSql += ` AND status='approved'`;
   const [[cntRow]] = await pool.query(countSql, [postId]);
 
+  // เตรียมข้อความแจ้งเตือน: ถ้าเป็น tutor ให้ใส่ชื่อผู้ขอเข้าร่วมลงในข้อความด้วย
+  let notifyMessage = cfg.notifyMessage(postId);
+  if (cfg.joinsTable === 'tutor_post_joins') {
+    try {
+      const [[actorRow]] = await pool.query('SELECT name, lastname FROM register WHERE user_id = ?', [me]);
+      let subject = '';
+      try {
+        const [[pRow]] = await pool.query('SELECT subject FROM tutor_posts WHERE tutor_post_id = ?', [postId]);
+        subject = pRow?.subject || '';
+      } catch (e) {
+        console.error('Fetch post subject error:', e);
+      }
+
+      if (actorRow) {
+        notifyMessage = `มีคำขอเข้าร่วมจาก ${actorRow.name || ''}${actorRow.lastname ? ' ' + actorRow.lastname : ''} (โพสต์ติวเตอร์ #${postId}${subject ? `: ${subject}` : ''})`;
+      }
+    } catch (e) {
+      console.error('Fetch actor name error:', e);
+    }
+  }
+
   // ✅ แจ้งเตือน (5 คอลัมน์ตามตารางจริง)
-  await pool.query(
+  const [ins] = await pool.query(
     'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-    [post.owner_id, me, cfg.notifyType, cfg.notifyMessage(postId), postId]
+    [post.owner_id, me, cfg.notifyType, notifyMessage, postId]
   );
+  console.debug('Inserted notification id:', ins.insertId, 'for post', postId, 'actor', me);
 
   return { http: 200, body: { success: true, joined: true, pending_me: true, join_count: Number(cntRow.c || 0) } };
 }
@@ -1019,25 +1082,7 @@ app.post('/api/tutor_posts/:id/join', async (req, res) => {
   try {
     const out = await doJoinUnified('tutor', postId, me);
 
-    // ✅ สร้างแจ้งเตือนให้ "เจ้าของโพสต์ติวเตอร์" ทราบว่ามีคำขอเข้าร่วม
-    if (out?.success || out?.body?.success) {
-      const [[ownerRow]] = await pool.query(
-        'SELECT tutor_id AS owner_id, subject FROM tutor_posts WHERE tutor_post_id=?',
-        [postId]
-      );
-      if (ownerRow) {
-        await pool.query(
-          'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?,?,?,?,?)',
-          [
-            ownerRow.owner_id,   // ผู้รับแจ้งเตือน = เจ้าของโพสต์ติวเตอร์
-            me,                  // ผู้กระทำ = คนที่กด Join
-            'tutor_join_request',
-            `มีคำขอเข้าร่วมโพสต์ติวเตอร์ #${postId}${ownerRow.subject ? ` (${ownerRow.subject})` : ''}`,
-            postId
-          ]
-        );
-      }
-    }
+    // Note: notifications are created inside doJoinUnified to keep behavior consistent
     return res.status(out.http).json(out.body);
   } catch (e) {
     console.error('tutor_posts join error', e);
@@ -1065,25 +1110,7 @@ app.post('/api/tutor-posts/:id/join', async (req, res) => {
   try {
     const out = await doJoinUnified('tutor', postId, me);
 
-    // ✅ แจ้งเตือนเจ้าของโพสต์ติวเตอร์ (เหมือนด้านบน)
-    if (out?.success || out?.body?.success) {
-      const [[ownerRow]] = await pool.query(
-        'SELECT tutor_id AS owner_id, subject FROM tutor_posts WHERE tutor_post_id=?',
-        [postId]
-      );
-      if (ownerRow) {
-        await pool.query(
-          'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?,?,?,?,?)',
-          [
-            ownerRow.owner_id,
-            me,
-            'tutor_join_request',
-            `มีคำขอเข้าร่วมโพสต์ติวเตอร์ #${postId}${ownerRow.subject ? ` (${ownerRow.subject})` : ''}`,
-            postId
-          ]
-        );
-      }
-    }
+    // Note: notifications are created inside doJoinUnified to keep behavior consistent
 
     return res.status(out.http).json(out.body);
   } catch (e) {
@@ -1156,7 +1183,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
       [post.student_id, me, 'join_request', `มีคำขอเข้าร่วมโพสต์ #${postId}`, postId]
     );
 
-    return res.json({ success: true, joined: true, join_count: cntApproved.c });
+    return res.json({ success: true, joined: true, join_count: Number(cntApproved.c || 0) });
   } catch (err) {
     console.error(err);
     return sendDbError(res, err);
@@ -1183,7 +1210,7 @@ app.delete('/api/student_posts/:id/join', async (req, res) => {
 
     const joiners = await getJoiners(postId);
 
-    return res.json({ success: true, joined: false, join_count: cnt.c, joiners });
+    return res.json({ success: true, joined: false, join_count: Number(cnt.c || 0), joiners });
   } catch (err) {
     return sendDbError(res, err);
   }
@@ -1199,6 +1226,28 @@ app.get('/api/student_posts/:id/joiners', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// >>> ดึงรายชื่อผู้เข้าร่วมโพสต์ติวเตอร์ (approved เท่านั้น)
+app.get('/api/tutor_posts/:id/joiners', async (req, res) => {
+  try {
+    const postId = Number(req.params.id);
+    if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
+
+    const [rows] = await pool.query(
+      `SELECT j.user_id, j.joined_at, r.name, r.lastname
+       FROM tutor_post_joins j
+       LEFT JOIN register r ON r.user_id = j.user_id
+      WHERE j.tutor_post_id = ? AND j.status = 'approved'
+      ORDER BY j.joined_at ASC, j.user_id ASC`,
+      [postId]
+    );
+
+    res.json(rows.map(x => ({ user_id: x.user_id, joined_at: x.joined_at, name: x.name || '', lastname: x.lastname || '' })));
+  } catch (e) {
+    console.error('GET /api/tutor_posts/:id/joiners error', e);
+    return sendDbError(res, e);
   }
 });
 
@@ -1299,7 +1348,22 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
       }
 
       conn.release();
-      return res.json({ success: true, status: newStatus });
+
+      // คืนค่า join_count ปัจจุบันและรายชื่อผู้เข้าร่วมที่อนุมัติแล้ว
+      try {
+        const [[cnt]] = await pool.query(
+          'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status = "approved"',
+          [postId]
+        );
+        const [joiners] = await pool.query(
+          'SELECT user_id, name, lastname FROM student_post_joins WHERE student_post_id = ? AND status = "approved" ORDER BY joined_at ASC',
+          [postId]
+        );
+        return res.json({ success: true, status: newStatus, join_count: Number(cnt.c || 0), joiners });
+      } catch (e) {
+        console.error('Error fetching joiners/count after student request update:', e);
+        return res.json({ success: true, status: newStatus });
+      }
     } catch (e) {
       conn.release();
       throw e;
@@ -1482,13 +1546,32 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
 
+    console.error('PUT /api/tutor_posts/:id/requests/:userId params:', { postId, userId, action, newStatus });
+
     const [r] = await pool.query(
       `UPDATE tutor_post_joins
        SET status=?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at)
        WHERE tutor_post_id=? AND user_id=?`,
       [newStatus, newStatus, postId, userId]
     );
-    if (!r.affectedRows) return res.status(404).json({ message: 'request not found' });
+
+    console.debug('UPDATE tutor_post_joins result:', r);
+
+    if (!r.affectedRows) {
+      // เพิ่ม log ข้อมูลเชิงสืบค้นเพิ่มเติม
+      console.warn(`No rows updated for postId=${postId} userId=${userId}. Verifying existence...`);
+      try {
+        const [check] = await pool.query(
+          'SELECT tutor_post_id, user_id, status FROM tutor_post_joins WHERE tutor_post_id = ? AND user_id = ?',
+          [postId, userId]
+        );
+        console.debug('Existence check result:', check);
+      } catch (ex) {
+        console.error('Existence check error:', ex);
+      }
+
+      return res.status(404).json({ message: 'request not found' });
+    }
 
     if (newStatus === 'approved') {
       // ... code สร้าง calendar ...
@@ -1501,7 +1584,21 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
       await deleteCalendarEventForUser(userId, postId);
     }
 
-    res.json({ success: true, status: newStatus });
+    // คืนค่า join_count ปัจจุบันและรายชื่อผู้เข้าร่วมที่อนุมัติแล้ว
+    try {
+      const [[cnt]] = await pool.query(
+        `SELECT COUNT(*) AS c FROM tutor_post_joins WHERE tutor_post_id = ? AND status = 'approved'`,
+        [postId]
+      );
+      const [joiners] = await pool.query(
+        `SELECT user_id, name, lastname FROM tutor_post_joins WHERE tutor_post_id = ? AND status = 'approved' ORDER BY joined_at ASC`,
+        [postId]
+      );
+      return res.json({ success: true, status: newStatus, join_count: Number(cnt.c || 0), joiners });
+    } catch (e) {
+      console.error('Error fetching joiners/count after update:', e);
+      return res.json({ success: true, status: newStatus });
+    }
   } catch (e) {
     return sendDbError(res, e);
   }
