@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Review from "../components/Review"; 
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, MoreVertical, Trash2, EyeOff, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X } from "lucide-react";
+import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive } from "lucide-react";
 
 /* ---------- Helpers ---------- */
 
@@ -24,13 +24,10 @@ const normalizePost = (p = {}) => ({
 const fullNameOf = (u) =>
   [u?.name || u?.first_name || "", u?.lastname || u?.last_name || ""].join(" ").trim();
 
-// ✅ ฟังก์ชันช่วยแปลงวันที่เป็น YYYY-MM-DD แบบ Local Time (แก้ปัญหา Timezone เพี้ยน)
 const toLocalYMD = (date) => {
   if (!date) return "";
-  // แปลง input ให้เป็น Date Object เสมอก่อนดึงค่า
   const d = new Date(date);
-  if (isNaN(d.getTime())) return ""; // กัน error กรณีวันที่ไม่ถูกต้อง
-
+  if (isNaN(d.getTime())) return "";
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -69,20 +66,23 @@ function Empty({ line = "ไม่พบข้อมูล" }) {
 function PostActionMenu({ open, onClose, onHide, onDelete }) {
   if (!open) return null;
   return (
-    <div className="absolute right-2 top-8 z-20 w-40 overflow-hidden rounded-xl border bg-white shadow-xl">
-      <button
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
-        onClick={() => { onHide(); onClose(); }}
-      >
-        <EyeOff size={16} /> ซ่อนโพสต์
-      </button>
-      <button
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-        onClick={() => { onDelete(); onClose(); }}
-      >
-        <Trash2 size={16} /> ลบโพสต์
-      </button>
-    </div>
+    <>
+      <div className="fixed inset-0 z-10" onClick={onClose}></div>
+      <div className="absolute right-2 top-8 z-20 w-40 overflow-hidden rounded-xl border bg-white shadow-xl animate-in fade-in zoom-in duration-100">
+        <button
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
+          onClick={() => { onHide(); onClose(); }}
+        >
+          <EyeOff size={16} className="text-gray-500" /> ซ่อนโพสต์
+        </button>
+        <button
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"
+          onClick={() => { onDelete(); onClose(); }}
+        >
+          <Trash2 size={16} /> ลบโพสต์
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -90,14 +90,14 @@ function PostActionMenu({ open, onClose, onHide, onDelete }) {
 function ConfirmDialog({ open, title = "ยืนยันการลบ", desc = "ลบโพสต์นี้ถาวรหรือไม่?", onConfirm, onCancel }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative z-10 w-[92%] max-w-sm rounded-2xl border bg-white p-5 shadow-xl">
-        <h4 className="text-lg font-bold">{title}</h4>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-10 w-full max-w-sm rounded-2xl border bg-white p-5 shadow-xl animate-in fade-in zoom-in duration-200">
+        <h4 className="text-lg font-bold text-gray-900">{title}</h4>
         <p className="mt-2 text-sm text-gray-600">{desc}</p>
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onCancel} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50">ยกเลิก</button>
-          <button onClick={onConfirm} className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700">ลบโพสต์</button>
+        <div className="mt-6 flex justify-end gap-3">
+          <button onClick={onCancel} className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50 transition">ยกเลิก</button>
+          <button onClick={onConfirm} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition">ลบโพสต์</button>
         </div>
       </div>
     </div>
@@ -118,6 +118,60 @@ function AvatarModal({ src, alt, onClose }) {
   );
 }
 
+/* ✅ Modal สำหรับจัดการโพสต์ที่ซ่อนไว้ */
+function HiddenPostsModal({ open, onClose, posts, hiddenIds, onRestore, onRestoreAll }) {
+  if (!open) return null;
+  const hiddenPosts = posts.filter(p => hiddenIds.has(p._id ?? p.id));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
+          <div className="flex items-center gap-2">
+            <Archive className="text-gray-500" size={20} />
+            <h3 className="font-bold text-lg text-gray-800">รายการที่ซ่อนไว้ ({hiddenPosts.length})</h3>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
+          {hiddenPosts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                <Archive size={48} className="mb-3 opacity-20" />
+                <p>ไม่มีโพสต์ที่ซ่อนไว้</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {hiddenPosts.map(p => (
+                <div key={p._id ?? p.id} className="bg-white p-4 rounded-xl border shadow-sm flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                           <span className="font-bold text-gray-800 truncate">{p.subject || "(ไม่มีหัวข้อ)"}</span>
+                           <span className="text-xs text-gray-400">• {new Date(p.createdAt).toLocaleDateString("th-TH")}</span>
+                        </div>
+                        <p className="text-sm text-gray-600 line-clamp-1">{p.content}</p>
+                    </div>
+                    <button onClick={() => onRestore(p._id ?? p.id)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 text-sm font-medium hover:bg-blue-100 transition whitespace-nowrap">
+                        <Eye size={16} /> เลิกซ่อน
+                    </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {hiddenPosts.length > 0 && (
+            <div className="p-4 border-t bg-white flex justify-end">
+                <button onClick={onRestoreAll} className="text-sm text-gray-600 hover:text-blue-600 font-medium px-4 py-2 hover:bg-gray-50 rounded-lg transition">เลิกซ่อนทั้งหมด</button>
+                <button onClick={onClose} className="ml-2 bg-gray-800 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-gray-900 transition">ปิดหน้าต่าง</button>
+            </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Main Component ---------- */
 
 function Profile({ user, setCurrentPage, onEditProfile }) {
@@ -131,7 +185,17 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   const [reviewTargetId, setReviewTargetId] = useState(null);
 
   const [openMenuFor, setOpenMenuFor] = useState(null);
-  const [hiddenPostIds, setHiddenPostIds] = useState(new Set());
+  const [showHiddenModal, setShowHiddenModal] = useState(false);
+  
+  const [hiddenPostIds, setHiddenPostIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem("hiddenStudentPosts");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
@@ -139,13 +203,11 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
     try { return JSON.parse(localStorage.getItem("user")); } catch { return null; }
   }, []);
 
-  // โหลดข้อมูล
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const me = currentUser?.user_id || 0;
-
         // 1. Profile
         let prof = {
           avatarUrl: currentUser?.profile_picture_url || "/default-avatar.png",
@@ -209,36 +271,50 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
     return () => { cancelled = true; };
   }, [currentUser?.user_id]);
 
-  // ✅ กรองกิจกรรม (แก้ไข Logic ให้ Robust ที่สุด)
   useEffect(() => {
-    // 1. แปลงวันที่ที่เลือกในปฏิทินให้เป็น String YYYY-MM-DD (Local)
     const selectedDateStr = toLocalYMD(selectedDate);
-    
     const matches = events.filter((ev) => {
         if(!ev.event_date) return false;
-        // 2. แปลงวันที่จาก DB (ซึ่งอาจเป็น ISO UTC string) ให้เป็น Date Object ก่อน
-        // เพื่อให้มันปรับ Timezone กลับมาเป็นเวลาไทย
         const eventDateObj = new Date(ev.event_date); 
-        // 3. แปลงเป็น YYYY-MM-DD แบบ Local
         const evDateStr = toLocalYMD(eventDateObj); 
-        
         return evDateStr === selectedDateStr;
     });
-    
     setDailyEvents(matches);
   }, [selectedDate, events]);
 
   // Handlers
   const handleToggleMenu = (id) => setOpenMenuFor((prev) => (prev === id ? null : id));
-  const handleHidePost = (id) => setHiddenPostIds((prev) => new Set(prev).add(id));
+
+  const handleHidePost = (id) => {
+    setHiddenPostIds((prev) => {
+        const newSet = new Set(prev).add(id);
+        localStorage.setItem("hiddenStudentPosts", JSON.stringify([...newSet]));
+        return newSet;
+    });
+  };
+
+  const handleRestorePost = (id) => {
+    setHiddenPostIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        localStorage.setItem("hiddenStudentPosts", JSON.stringify([...newSet]));
+        return newSet;
+    });
+  };
+
+  const handleRestoreAll = () => {
+    setHiddenPostIds(new Set());
+    localStorage.removeItem("hiddenStudentPosts");
+    setShowHiddenModal(false);
+  };
+
   const handleAskDelete = (id) => setConfirm({ open: true, id });
   const cancelDelete = () => setConfirm({ open: false, id: null });
-  const restoreAllHidden = () => setHiddenPostIds(new Set());
 
   const doDeletePost = async () => {
     const id = confirm.id;
     setConfirm({ open: false, id: null });
-    const before = posts;
+    const before = [...posts];
     const after = posts.filter((p) => (p._id ?? p.id) !== id);
     setPosts(after);
     try {
@@ -246,8 +322,12 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
-      if (!res.ok) { setPosts(before); alert("ลบไม่สำเร็จ"); }
-    } catch (e) { setPosts(before); alert("ลบไม่สำเร็จ"); }
+      if (!res.ok) throw new Error("Failed to delete");
+    } catch (e) { 
+      console.error(e);
+      setPosts(before); 
+      alert("เกิดข้อผิดพลาดในการลบโพสต์"); 
+    }
   };
 
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-600">กำลังโหลดโปรไฟล์...</div>;
@@ -258,7 +338,8 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
     { user_id: 102, profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=A', name: 'อลิสา', lastname: 'ใจดี', can_teach_subjects: 'GAT ภาษาอังกฤษ, TOEIC' },
     { user_id: 103, profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=N', name: 'นนทรี', lastname: 'บีทีเอส', can_teach_subjects: 'ฟิสิกส์ (PAT3), ตะลุยโจทย์' }
   ];
-  const hiddenCount = hiddenPostIds.size;
+  
+  const hiddenCount = posts.filter(p => hiddenPostIds.has(p._id ?? p.id)).length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -282,6 +363,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                 <p className="text-gray-600 mt-1">
                   {profile.gradeLevel || "นักเรียน"} {profile.school && ` • ${profile.school}`}
                 </p>
+                {/* Education */}
                 {profile.education && profile.education.length > 0 && (
                   <div className="mt-3 border-t pt-3">
                     <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-1">
@@ -304,8 +386,9 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                   </h4>
                   {profile.bio && <p className="pl-5 text-sm text-gray-700 whitespace-pre-line">{profile.bio}</p>}
                 </div>
+                {/* Contact Info */}
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                  <a href={profile.city ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.city)}` : "#"} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 border rounded-lg p-2 bg-gray-50 transition-colors ${profile.city ? "hover:bg-gray-100 cursor-pointer" : "cursor-default"}`} onClick={(e) => !profile.city && e.preventDefault()}>
+                   <a href={profile.city ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.city)}` : "#"} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 border rounded-lg p-2 bg-gray-50 transition-colors ${profile.city ? "hover:bg-gray-100 cursor-pointer" : "cursor-default"}`} onClick={(e) => !profile.city && e.preventDefault()}>
                     <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><MapPin size={16} className="text-gray-600" /></div>
                     <span className="text-gray-700 truncate">{profile.city || "ยังไม่ระบุที่อยู่"}</span>
                   </a>
@@ -313,9 +396,9 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                     <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><Phone size={16} className="text-gray-600" /></div>
                     <a href={`tel:${profile.phone}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">{profile.phone || "ยังไม่ระบุเบอร์"}</a>
                   </div>
-                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50 hover:bg-gray-100">
+                   <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50 hover:bg-gray-100">
                     <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><Mail size={16} className="text-gray-600" /></div>
-                    <a href={`mailto:${profile.email}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">{profile.email || "ยังไม่ระบุอีเมล"}</a>
+                    <span className="text-gray-700 truncate">{profile.email || "ยังไม่ระบุอีเมล"}</span>
                   </div>
                 </div>
               </div>
@@ -337,66 +420,77 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
         {/* Content */}
         <div className="mt-6 grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
+            
+            {/* ✅ Calendar Section (กู้คืน Layout เดิม: ซ้ายปฏิทิน ขวารายการ) */}
             <Card title="ตารางเวลาของฉัน">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                <div className="flex justify-center">
-                  <ReactCalendar
-                    className="border rounded-xl p-4 bg-white shadow-sm w-full max-w-sm"
-                    locale="en-US"
-                    value={selectedDate}
-                    onClickDay={(value) => setSelectedDate(value)}
-                    tileClassName={({ date, view }) => {
-                      if (view === "month") {
-                        const tileDateStr = toLocalYMD(date);
-                        if (events.some((ev) => {
-                            if(!ev.event_date) return false;
-                            const d = new Date(ev.event_date);
-                            return toLocalYMD(d) === tileDateStr;
-                        })) {
-                          return "bg-blue-200 text-blue-800 font-semibold rounded-lg";
-                        }
-                      }
-                      return null;
-                    }}
-                  />
-                </div>
+                 {/* 1. ส่วนปฏิทิน */}
+                 <div className="flex justify-center">
+                    <ReactCalendar
+                        className="border rounded-xl p-4 bg-white shadow-sm w-full max-w-sm"
+                        locale="en-US"
+                        value={selectedDate}
+                        onClickDay={(value) => setSelectedDate(value)}
+                        tileClassName={({ date, view }) => {
+                            if (view === "month" && events.some(ev => ev.event_date && toLocalYMD(new Date(ev.event_date)) === toLocalYMD(date))) {
+                                return "bg-blue-200 text-blue-800 font-semibold rounded-lg";
+                            }
+                            return null;
+                        }}
+                    />
+                 </div>
 
-                <Card title="การติวของฉัน">
-                  {!dailyEvents.length ? (
-                    <Empty line="ยังไม่มีการติวในวันนี้" />
-                  ) : (
-                    <ul className="space-y-2">
-                      {dailyEvents.map((ev) => (
-                        <li key={ev.event_id} className="border rounded-lg p-3 bg-gray-50 hover:bg-gray-100 transition">
-                          <div className="font-semibold">{ev.title}</div>
-                          <div className="text-sm text-gray-600">
-                            📘 {ev.subject} — ⏰ {ev.event_time?.slice(0, 5)}<br />
-                            📍 {ev.location || "ไม่ระบุสถานที่"}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </Card>
+                 {/* 2. ส่วนรายการกิจกรรม (Daily Events) */}
+                 <div className="bg-gray-50 rounded-xl p-4 border h-full">
+                    <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+                        <AppWindow size={18} /> 
+                        การติววันที่ {selectedDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                    </h4>
+                    {!dailyEvents.length ? (
+                        <div className="text-center py-8 text-gray-400 text-sm">
+                            ไม่มีการติวในวันนี้
+                        </div>
+                    ) : (
+                        <ul className="space-y-2">
+                          {dailyEvents.map((ev) => (
+                            <li key={ev.event_id} className="border rounded-lg p-3 bg-white shadow-sm hover:shadow-md transition">
+                              <div className="font-semibold text-gray-800">{ev.title}</div>
+                              <div className="text-sm text-gray-600 mt-1">
+                                📘 {ev.subject} — ⏰ {ev.event_time?.slice(0, 5)}<br />
+                                📍 {ev.location || "ไม่ระบุสถานที่"}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                    )}
+                 </div>
               </div>
             </Card>
 
             <Card title="โพสต์ของฉัน">
+              {/* ปุ่มเปิดดูรายการที่ซ่อน */}
               {hiddenCount > 0 && (
                 <div className="mb-3 flex justify-end">
-                  <button onClick={restoreAllHidden} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50">แสดงโพสต์ที่ซ่อนทั้งหมด ({hiddenCount})</button>
+                  <button 
+                    onClick={() => setShowHiddenModal(true)} 
+                    className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 transition"
+                  >
+                    <Archive size={14} /> รายการที่ซ่อนไว้ ({hiddenCount})
+                  </button>
                 </div>
               )}
+
               {!posts.length ? <Empty line="ยังไม่มีโพสต์" /> : (
                 <div className="space-y-4">
                   {posts.filter((p) => !hiddenPostIds.has(p._id ?? p.id)).map((p) => {
                     const id = p._id ?? p.id;
                     return (
-                      <div key={id} className="relative border rounded-xl p-4 bg-white shadow-sm">
-                        <button onClick={() => handleToggleMenu(id)} className="absolute right-2 top-2 rounded-md p-1.5 hover:bg-gray-100">
+                      <div key={id} className="relative border rounded-xl p-4 bg-white shadow-sm transition hover:shadow-md">
+                        <button onClick={() => handleToggleMenu(id)} className="absolute right-2 top-2 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                           <MoreVertical size={18} />
                         </button>
                         <PostActionMenu open={openMenuFor === id} onClose={() => setOpenMenuFor(null)} onHide={() => handleHidePost(id)} onDelete={() => handleAskDelete(id)} />
+                        
                         <div className="flex items-center gap-3">
                           <img src={profile.avatarUrl || "/default-avatar.png"} alt="avatar" className="w-9 h-9 rounded-full object-cover" />
                           <div>
@@ -447,9 +541,21 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           </div>
         </div>
       </div>
+      
+      {/* Modals */}
       {isAvatarModalOpen && <AvatarModal src={profile.avatarUrl} alt={profile.fullName} onClose={() => setIsAvatarModalOpen(false)} />}
       <ConfirmDialog open={confirm.open} title="ยืนยันการลบโพสต์" desc="เมื่อยืนยันแล้วจะไม่สามารถกู้คืนโพสต์นี้ได้" onConfirm={doDeletePost} onCancel={cancelDelete} />
       {showReviewModal && <Review postId={reviewTargetId} studentId={currentUser?.user_id} onClose={() => setShowReviewModal(false)} />}
+      
+      {/* Hidden Posts Modal */}
+      <HiddenPostsModal 
+        open={showHiddenModal} 
+        onClose={() => setShowHiddenModal(false)}
+        posts={posts}
+        hiddenIds={hiddenPostIds}
+        onRestore={handleRestorePost}
+        onRestoreAll={handleRestoreAll}
+      />
     </div>
   );
 }

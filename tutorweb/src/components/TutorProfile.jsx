@@ -2,9 +2,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, Star, MapPin, Phone, Trash2, EyeOff, Mail, GraduationCap, AppWindow, X } from "lucide-react";
+import { Edit, Star, MapPin, Phone, Trash2, EyeOff, Mail, GraduationCap, AppWindow, X, Archive, MoreVertical, Eye } from "lucide-react";
 
-/* ---------- Helpers (สำหรับ Tutor) ---------- */
+/* ---------- Helpers ---------- */
 
 const normalizeTutorPost = (p = {}) => ({
     _id: p._id ?? p.tutor_post_id,
@@ -87,42 +87,98 @@ function ReviewCard({ review }) {
     );
 }
 
-function PostActionMenu({ open, onClose, onHide, onDelete }) {
-  if (!open) return null;
-  return (
-    <div className="absolute right-2 top-8 z-20 w-40 overflow-hidden rounded-xl border bg-white shadow-xl">
-      <button
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
-        onClick={() => { onHide(); onClose(); }}
-      >
-        <EyeOff size={16} /> ซ่อนโพสต์
-      </button>
-      <button
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-        onClick={() => { onDelete(); onClose(); }}
-      >
-        <Trash2 size={16} /> ลบโพสต์
-      </button>
-    </div>
-  );
-}
-
-/* ===== กล่องยืนยันลบ ===== */
-function ConfirmDialog({ open, title = "ยืนยันการลบ", desc = "ลบโพสต์นี้ถาวรหรือไม่?", onConfirm, onCancel }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative z-10 w-[92%] max-w-sm rounded-2xl border bg-white p-5 shadow-xl">
-        <h4 className="text-lg font-bold">{title}</h4>
-        <p className="mt-2 text-sm text-gray-600">{desc}</p>
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onCancel} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50">ยกเลิก</button>
-          <button onClick={onConfirm} className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700">ลบโพสต์</button>
+/* Modal จัดการโพสต์ที่ซ่อน */
+function HiddenPostsModal({ open, onClose, posts, hiddenIds, onRestore, onRestoreAll }) {
+    if (!open) return null;
+    const hiddenPosts = posts.filter(p => hiddenIds.has(p._id));
+  
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={onClose} />
+        <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
+          <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
+            <div className="flex items-center gap-2">
+              <Archive className="text-gray-500" size={20} />
+              <h3 className="font-bold text-lg text-gray-800">รายการที่ซ่อนไว้ ({hiddenPosts.length})</h3>
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 transition-colors">
+              <X size={20} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
+            {hiddenPosts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                  <Archive size={48} className="mb-3 opacity-20" />
+                  <p>ไม่มีโพสต์ที่ซ่อนไว้</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {hiddenPosts.map(p => (
+                  <div key={p._id} className="bg-white p-4 rounded-xl border shadow-sm flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                      <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                             <span className="font-bold text-gray-800 truncate">{p.subject || "(ไม่มีหัวข้อ)"}</span>
+                             <span className="text-xs text-gray-400">• {new Date(p.createdAt).toLocaleDateString("th-TH")}</span>
+                          </div>
+                          <p className="text-sm text-gray-600 line-clamp-1">{p.content}</p>
+                      </div>
+                      <button onClick={() => onRestore(p._id)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 text-sm font-medium hover:bg-blue-100 transition whitespace-nowrap">
+                          <Eye size={16} /> เลิกซ่อน
+                      </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {hiddenPosts.length > 0 && (
+              <div className="p-4 border-t bg-white flex justify-end">
+                  <button onClick={onRestoreAll} className="text-sm text-gray-600 hover:text-blue-600 font-medium px-4 py-2 hover:bg-gray-50 rounded-lg transition">เลิกซ่อนทั้งหมด</button>
+                  <button onClick={onClose} className="ml-2 bg-gray-800 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-gray-900 transition">ปิดหน้าต่าง</button>
+              </div>
+          )}
         </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+function PostActionMenu({ open, onClose, onHide, onDelete }) {
+    if (!open) return null;
+    return (
+        <>
+            <div className="fixed inset-0 z-10" onClick={onClose}></div>
+            <div className="absolute right-2 top-8 z-20 w-40 overflow-hidden rounded-xl border bg-white shadow-xl animate-in fade-in zoom-in duration-100">
+                <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
+                    onClick={() => { onHide(); onClose(); }}
+                >
+                    <EyeOff size={16} className="text-gray-500" /> ซ่อนโพสต์
+                </button>
+                <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    onClick={() => { onDelete(); onClose(); }}
+                >
+                    <Trash2 size={16} /> ลบโพสต์
+                </button>
+            </div>
+        </>
+    );
+}
+
+function ConfirmDialog({ open, title = "ยืนยันการลบ", desc = "ลบโพสต์นี้ถาวรหรือไม่?", onConfirm, onCancel }) {
+    if (!open) return null;
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+            <div className="relative z-10 w-full max-w-sm rounded-2xl border bg-white p-5 shadow-xl animate-in fade-in zoom-in duration-200">
+                <h4 className="text-lg font-bold text-gray-900">{title}</h4>
+                <p className="mt-2 text-sm text-gray-600">{desc}</p>
+                <div className="mt-6 flex justify-end gap-3">
+                    <button onClick={onCancel} className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50 transition">ยกเลิก</button>
+                    <button onClick={onConfirm} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition">ลบโพสต์</button>
+                </div>
+            </div>
+        </div>
+    );
 }
 
 function AvatarModal({ src, alt, onClose }) {
@@ -145,7 +201,6 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
     const [profile, setProfile] = useState(null);
     const [tutorPosts, setTutorPosts] = useState([]);
 
-    // ✅ 1. เริ่มต้นแสดงแค่ 3 รีวิว
     const [reviews, setReviews] = useState([]);
     const [visibleReviews, setVisibleReviews] = useState(3);
     const [averageRating, setAverageRating] = useState(0);
@@ -156,6 +211,21 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
 
     const [loading, setLoading] = useState(true);
     const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+
+    // State สำหรับซ่อน/ลบ/เมนู
+    const [openMenuFor, setOpenMenuFor] = useState(null);
+    const [showHiddenModal, setShowHiddenModal] = useState(false);
+    const [confirm, setConfirm] = useState({ open: false, id: null });
+
+    // โหลด Hidden Posts จาก localStorage
+    const [hiddenPostIds, setHiddenPostIds] = useState(() => {
+        try {
+            const saved = localStorage.getItem("hiddenTutorPosts");
+            return saved ? new Set(JSON.parse(saved)) : new Set();
+        } catch {
+            return new Set();
+        }
+    });
 
     const currentUser = useMemo(() => {
         try { return JSON.parse(localStorage.getItem("user")); } catch { return null; }
@@ -189,7 +259,6 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                 if (reviewsRes.ok) {
                     const reviewsData = await reviewsRes.json();
                     setReviews(reviewsData);
-                    // ✅ รีเซ็ตเป็น 3 เสมอเมื่อโหลดใหม่
                     setVisibleReviews(3);
 
                     if (reviewsData.length > 0) {
@@ -232,23 +301,75 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
         setDailyEvents(matches);
     }, [selectedDate, events]);
 
-    // ✅ 2. ฟังก์ชันสลับการแสดงผล (Expand / Collapse)
     const handleToggleReviews = () => {
         if (visibleReviews < reviews.length) {
-            // ถ้ายังไม่ครบ -> แสดงเพิ่มอีก 3 (หรือ 5 ก็ได้ตามใจชอบ)
             setVisibleReviews(prev => prev + 3);
         } else {
-            // ถ้าครบแล้ว -> ย่อกลับเหลือ 3
             setVisibleReviews(3);
+        }
+    };
+
+    // Handlers จัดการโพสต์
+    const handleToggleMenu = (id) => setOpenMenuFor((prev) => (prev === id ? null : id));
+
+    const handleHidePost = (id) => {
+        setHiddenPostIds((prev) => {
+            const newSet = new Set(prev).add(id);
+            localStorage.setItem("hiddenTutorPosts", JSON.stringify([...newSet]));
+            return newSet;
+        });
+    };
+
+    const handleRestorePost = (id) => {
+        setHiddenPostIds((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(id);
+            localStorage.setItem("hiddenTutorPosts", JSON.stringify([...newSet]));
+            return newSet;
+        });
+    };
+
+    const handleRestoreAll = () => {
+        setHiddenPostIds(new Set());
+        localStorage.removeItem("hiddenTutorPosts");
+        setShowHiddenModal(false);
+    };
+
+    const handleAskDelete = (id) => setConfirm({ open: true, id });
+    const cancelDelete = () => setConfirm({ open: false, id: null });
+
+    const doDeletePost = async () => {
+        const id = confirm.id;
+        setConfirm({ open: false, id: null });
+        
+        const before = [...tutorPosts];
+        const after = tutorPosts.filter((p) => p._id !== id);
+        setTutorPosts(after);
+
+        try {
+            const res = await fetch(`http://localhost:5000/api/tutor-posts/${id}`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+            });
+
+            if (!res.ok) {
+                throw new Error("Failed to delete");
+            }
+        } catch (e) {
+            console.error(e);
+            setTutorPosts(before);
+            alert("เกิดข้อผิดพลาดในการลบโพสต์");
         }
     };
 
     if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">กำลังโหลดโปรไฟล์...</div>;
     if (!profile) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">ไม่พบข้อมูลผู้ใช้</div>;
 
+    const hiddenCount = tutorPosts.filter(p => hiddenPostIds.has(p._id)).length;
+
     return (<div className="min-h-screen bg-gray-50">
             <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
-                {/* Header Profile (ส่วนบนเหมือนเดิม) */}
+                {/* Header Profile */}
                 <div className="bg-white rounded-3xl shadow-sm border p-6">
                     <div className="flex flex-col md:flex-row md:items-center gap-6">
                         <div className="flex items-start gap-5 flex-grow">
@@ -304,10 +425,9 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                     </div>
                 </div>
 
-                {/* ✅ Content Grid Layout (ปรับแก้ใหม่) */}
                 <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
-                    {/* 1. ตารางสอน (ซ้ายบน Desktop / บนสุด Mobile) */}
+                    {/* 1. ตารางสอน */}
                     <div className="lg:col-span-2 w-full">
                         <Card title="ตารางสอนของฉัน">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
@@ -332,28 +452,35 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                                         }}
                                     />
                                 </div>
-                                <Card title="รายการสอนวันนี้">
-                                    <div className="flex flex-col h-full">
-                                        {dailyEvents.length > 0 ? (
-                                            <div className="space-y-3">
-                                                {dailyEvents.map((ev, index) => (
-                                                    <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                                        <p className="font-semibold text-blue-800">{ev.title}</p>
-                                                        <p className="text-sm text-gray-600">📘 {ev.subject} — ⏰ {ev.event_time?.slice(0, 5)}</p>
-                                                        <p className="text-xs text-gray-500">📍 {ev.location || "ไม่ระบุสถานที่"}</p>
+                                {/* ✅ ปรับ UI ส่วนนี้ให้เหมือนของนักเรียน (กล่องสีเทา + Header) */}
+                                <div className="bg-gray-50 rounded-xl p-4 border h-full">
+                                    <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                        <AppWindow size={18} />
+                                        ตารางสอนวันที่ {selectedDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                                    </h4>
+                                    {!dailyEvents.length ? (
+                                        <div className="text-center py-8 text-gray-400 text-sm">
+                                            ไม่มีการติวในวันนี้
+                                        </div>
+                                    ) : (
+                                        <ul className="space-y-2">
+                                            {dailyEvents.map((ev, index) => (
+                                                <li key={ev.event_id || index} className="border rounded-lg p-3 bg-white shadow-sm hover:shadow-md transition">
+                                                    <div className="font-semibold text-gray-800">{ev.title}</div>
+                                                    <div className="text-sm text-gray-600 mt-1">
+                                                        📘 {ev.subject} — ⏰ {ev.event_time?.slice(0, 5)}<br />
+                                                        📍 {ev.location || "ไม่ระบุสถานที่"}
                                                     </div>
-                                                ))}
-                                            </div>
-                                        ) : <Empty line="ไม่มีตารางสอนในวันนี้" />}
-                                    </div>
-                                </Card>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
                             </div>
                         </Card>
                     </div>
 
-                    {/* 2. รีวิว (ขวาบน Desktop / กลาง Mobile) */}
-                    {/* ✅ ย้ายโค้ดมาไว้ตรงกลาง เพื่อให้ Mobile แสดงต่อจากตารางสอน */}
-                    {/* ✅ ใช้ lg:row-span-2 เพื่อให้มันกินพื้นที่แนวตั้งด้านขวาใน Desktop */}
+                    {/* 2. รีวิว */}
                     <div className="lg:col-span-1 lg:row-span-2 w-full">
                         <Card title="รีวิวจากนักเรียน">
                             <div className="flex items-center gap-3 mb-4 border-b pb-4">
@@ -392,30 +519,51 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                         </Card>
                     </div>
 
-                    {/* 3. โพสต์รับสอน (ซ้ายล่าง Desktop / ล่างสุด Mobile) */}
+                    {/* 3. โพสต์รับสอน */}
                     <div className="lg:col-span-2 w-full">
                         <Card title="โพสต์รับสอนของฉัน">
+                            {/* ปุ่มเปิดรายการที่ซ่อน */}
+                            {hiddenCount > 0 && (
+                                <div className="mb-3 flex justify-end">
+                                    <button
+                                        onClick={() => setShowHiddenModal(true)}
+                                        className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 transition"
+                                    >
+                                        <Archive size={14} /> รายการที่ซ่อนไว้ ({hiddenCount})
+                                    </button>
+                                </div>
+                            )}
+
                             {tutorPosts.length > 0 ? (
                                 <div className="space-y-4">
-                                    {tutorPosts.map((post) => (
-                                        <div key={post._id} className="border rounded-xl p-4 bg-white shadow-sm">
-                                            <div className="flex items-center gap-3">
-                                                <img src={profile.avatarUrl} alt="avatar" className="w-9 h-9 rounded-full object-cover" />
-                                                <div>
-                                                    <div className="text-sm font-semibold">{profile.fullName}</div>
-                                                    <div className="text-xs text-gray-500">{new Date(post.createdAt).toLocaleString('th-TH')}</div>
+                                    {tutorPosts.filter(p => !hiddenPostIds.has(p._id)).map((post) => {
+                                        const id = post._id;
+                                        return (
+                                            <div key={id} className="relative border rounded-xl p-4 bg-white shadow-sm hover:shadow-md transition">
+                                                
+                                                <button onClick={() => handleToggleMenu(id)} className="absolute right-2 top-2 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                                                    <MoreVertical size={18} />
+                                                </button>
+                                                <PostActionMenu open={openMenuFor === id} onClose={() => setOpenMenuFor(null)} onHide={() => handleHidePost(id)} onDelete={() => handleAskDelete(id)} />
+
+                                                <div className="flex items-center gap-3">
+                                                    <img src={profile.avatarUrl} alt="avatar" className="w-9 h-9 rounded-full object-cover" />
+                                                    <div>
+                                                        <div className="text-sm font-semibold">{profile.fullName}</div>
+                                                        <div className="text-xs text-gray-500">{new Date(post.createdAt).toLocaleString('th-TH')}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-2 text-gray-800 whitespace-pre-line">{post.content}</div>
+                                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 mt-3">
+                                                    <div><span className="font-bold">📘 วิชา :</span> {post.subject || "-"}</div>
+                                                    <div><span className="font-bold">📅 วันที่สอน :</span> {post.meta?.teaching_days || "-"}</div>
+                                                    <div><span className="font-bold">⏰ เวลา :</span> {post.meta?.teaching_time || "-"}</div>
+                                                    <div><span className="font-bold">📍 สถานที่ :</span> {post.meta?.location || "-"}</div>
+                                                    <div><span className="font-bold">💸 ราคา :</span> {post.meta?.price ? `${post.meta.price} บาท/ชม.` : "-"}</div>
                                                 </div>
                                             </div>
-                                            <div className="mt-2 text-gray-800 whitespace-pre-line">{post.content}</div>
-                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 mt-3">
-                                                <div><span className="font-bold">📘 วิชา :</span> {post.subject || "-"}</div>
-                                                <div><span className="font-bold">📅 วันที่สอน :</span> {post.meta?.teaching_days || "-"}</div>
-                                                <div><span className="font-bold">⏰ เวลา :</span> {post.meta?.teaching_time || "-"}</div>
-                                                <div><span className="font-bold">📍 สถานที่ :</span> {post.meta?.location || "-"}</div>
-                                                <div><span className="font-bold">💸 ราคา :</span> {post.meta?.price ? `${post.meta.price} บาท/ชม.` : "-"}</div>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : <Empty line="คุณยังไม่มีโพสต์รับสอน" />}
                         </Card>
@@ -423,8 +571,19 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
 
                 </div>
             </div>
+            
+            {/* Modals */}
             {isAvatarModalOpen && <AvatarModal src={profile.avatarUrl} alt={profile.fullName} onClose={() => setIsAvatarModalOpen(false)} />}
             <ConfirmDialog open={confirm.open} title="ยืนยันการลบโพสต์" desc="เมื่อยืนยันแล้วจะไม่สามารถกู้คืนโพสต์นี้ได้" onConfirm={doDeletePost} onCancel={cancelDelete} />
+            
+            <HiddenPostsModal
+                open={showHiddenModal}
+                onClose={() => setShowHiddenModal(false)}
+                posts={tutorPosts}
+                hiddenIds={hiddenPostIds}
+                onRestore={handleRestorePost}
+                onRestoreAll={handleRestoreAll}
+            />
         </div>
     );
 }

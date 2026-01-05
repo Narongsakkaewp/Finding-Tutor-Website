@@ -1,6 +1,5 @@
 // tutorweb-server/server.js
 const express = require('express');
-const mysql = require('mysql2/promise');
 const cors = require('cors');
 require('dotenv').config();
 
@@ -8,22 +7,13 @@ require('dotenv').config();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const pool = require('./db');
 // -----------------------
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
-
-// ---------- MySQL Pool ----------
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-});
 
 // Keyword ชื่อวิชาที่ใช้สำหรับการค้นหา "ติวเตอร์"
 const KEYWORD_MAP = {
@@ -1190,29 +1180,51 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
   }
 });
 
-app.delete('/api/student_posts/:id/join', async (req, res) => {
+// ✅ API ลบโพสต์นักเรียน
+app.delete('/api/student_posts/:id', async (req, res) => {
   try {
-    const postId = Number(req.params.id);
-    const me = Number(req.body?.user_id || req.query.user_id);
-    if (!Number.isFinite(postId) || !Number.isFinite(me))
-      return res.status(400).json({ success: false, message: 'invalid postId or user_id' });
+    const postId = req.params.id;
+    
+    // ลบข้อมูลที่เกี่ยวข้องในตาราง joins ก่อน (ถ้าไม่ได้ตั้ง cascade ไว้ใน database)
+    await pool.query('DELETE FROM student_post_joins WHERE student_post_id = ?', [postId]);
+    
+    // ลบโพสต์จริง
+    const [result] = await pool.query('DELETE FROM student_posts WHERE student_post_id = ?', [postId]);
 
-    await pool.query(
-      'DELETE FROM student_post_joins WHERE student_post_id = ? AND user_id = ?',
-      [postId, me]
-    );
-    await deleteCalendarEventForUser(me, postId);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
 
-    const [[cnt]] = await pool.query(
-      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ?',
-      [postId]
-    );
+    // ลบ Event ในปฏิทินที่เกี่ยวข้องด้วย
+    await pool.query('DELETE FROM calendar_events WHERE post_id = ?', [postId]);
 
-    const joiners = await getJoiners(postId);
-
-    return res.json({ success: true, joined: false, join_count: Number(cnt.c || 0), joiners });
+    res.json({ success: true, message: 'Deleted successfully' });
   } catch (err) {
-    return sendDbError(res, err);
+    console.error('DELETE /api/student_posts/:id error:', err);
+    res.status(500).json({ message: 'Database error' });
+  }
+});
+
+// ✅ API ลบโพสต์ติวเตอร์
+app.delete('/api/tutor-posts/:id', async (req, res) => {
+  try {
+    const postId = req.params.id;
+    
+    // ลบข้อมูลที่เกี่ยวข้อง (เช่น favorites, join requests) ถ้ามี
+    // await pool.query('DELETE FROM favorites WHERE post_id = ? AND post_type = "tutor"', [postId]); 
+    // await pool.query('DELETE FROM tutor_post_joins WHERE tutor_post_id = ?', [postId]);
+
+    // ลบโพสต์จริง
+    const [result] = await pool.query('DELETE FROM tutor_posts WHERE tutor_post_id = ?', [postId]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    res.json({ success: true, message: 'Deleted successfully' });
+  } catch (err) {
+    console.error('DELETE /api/tutor-posts/:id error:', err);
+    res.status(500).json({ message: 'Database error' });
   }
 });
 
@@ -1604,13 +1616,12 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
   }
 });
 
-
-// ---------- Notifications ----------
+// ---------- Notifications (ฉบับอัปเกรด: ดึงรูป + ชื่อวิชา) ----------
 app.get('/api/notifications/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
     const sql = `
-      SELECT
+      SELECT 
         n.notification_id,
         n.type,
         n.message,
@@ -1619,13 +1630,32 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         n.created_at,
         n.user_id,
         n.actor_id,
-        au.name     AS actor_firstname,
-        au.lastname AS actor_lastname
+        -- ข้อมูลผู้กระทำ (Actor)
+        au.name AS actor_firstname, 
+        au.lastname AS actor_lastname,
+        COALESCE(spro.profile_picture_url, tpro.profile_picture_url) AS actor_avatar,
+        
+        -- ข้อมูลวิชา (Subject) จากโพสต์ที่เกี่ยวข้อง
+        CASE 
+            WHEN n.type IN ('join_request', 'join_approved', 'join_rejected') THEN sp.subject
+            WHEN n.type IN ('tutor_join_request') THEN tp.subject
+            ELSE NULL 
+        END AS post_subject
+
       FROM notifications n
       LEFT JOIN register au ON au.user_id = n.actor_id
+      -- Join เพื่อเอารูปโปรไฟล์ (ลองหาทั้งจาก student และ tutor profile)
+      LEFT JOIN student_profiles spro ON spro.user_id = n.actor_id
+      LEFT JOIN tutor_profiles tpro ON tpro.user_id = n.actor_id
+      
+      -- Join เพื่อเอาชื่อวิชา (Subject)
+      LEFT JOIN student_posts sp ON n.related_id = sp.student_post_id
+      LEFT JOIN tutor_posts tp ON n.related_id = tp.tutor_post_id
+      
       WHERE n.user_id = ?
       ORDER BY n.created_at DESC, n.notification_id DESC
     `;
+
     const [results] = await pool.execute(sql, [user_id]);
     res.json(results);
   } catch (err) {

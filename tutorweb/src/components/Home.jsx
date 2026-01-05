@@ -392,7 +392,7 @@ function TutorPostForm({ tutorId, onSuccess, onClose }) {
         <div className="grid md:grid-cols-2 gap-4">
           <input type="date" placeholder="วันสอน (เช่น ส-อา)" value={formData.teaching_days} onChange={e => setFormData({ ...formData, teaching_days: e.target.value })} className="w-full px-3 py-2 rounded-lg border focus:border-indigo-500 outline-none" min={today} />
           <input type="time" placeholder="เวลา (เช่น 09:00-12:00)" value={formData.teaching_time} onChange={e => setFormData({ ...formData, teaching_time: e.target.value })} className="w-full px-3 py-2 rounded-lg border focus:border-indigo-500 outline-none" />
-          <input type="text" placeholder="สถานที่ (เช่น Zoom, สยาม)" value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value })} className="w-full px-3 py-2 rounded-lg border focus:border-indigo-500 outline-none" />
+          <input type="text" placeholder="สถานที่เรียน" value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value })} className="w-full px-3 py-2 rounded-lg border focus:border-indigo-500 outline-none" />
           <input type="text" placeholder="ช่องทางติดต่อ (Line ID)" value={formData.contact_info} onChange={e => setFormData({ ...formData, contact_info: e.target.value })} className="w-full px-3 py-2 rounded-lg border focus:border-indigo-500 outline-none" />
         </div>
       </div>

@@ -28,7 +28,7 @@ function extractList(data) {
   return [];
 }
 
-/* ---------- normalizers (อัปเดตให้เก็บ email/phone ใน user object) ---------- */
+/* ---------- normalizers ---------- */
 const normalizeStudentPost = (p = {}) => ({
   id: p.id ?? p._id ?? p.student_post_id,
   owner_id: p.owner_id ?? p.student_id ?? p.user_id,
@@ -52,7 +52,6 @@ const normalizeStudentPost = (p = {}) => ({
     first_name: p.first_name || p.name || "",
     last_name: p.last_name || "",
     profile_image: p.profile_picture_url || "/default-avatar.png",
-    // ✅ เพิ่มตรงนี้: เก็บ email และ phone ของเจ้าของโพสต์
     email: p.email || "",
     phone: p.phone || ""
   },
@@ -96,7 +95,6 @@ const normalizeTutorPost = (p = {}) => {
       first_name: first,
       last_name: last,
       profile_image: p.profile_image || p.authorId?.avatarUrl || "/default-avatar.png",
-      // ✅ เพิ่มตรงนี้: เก็บ email และ phone ของเจ้าของโพสต์
       email: p.email || "",
       phone: p.phone || ""
     },
@@ -112,6 +110,63 @@ const postGradeLevelOptions = [
 ];
 
 const today = new Date().toISOString().split("T")[0];
+
+// --- Helper: ลิงก์สถานที่ไป Google Maps ---
+const LocationLink = ({ value }) => {
+  if (!value) return <span>-</span>;
+  // สร้าง URL ค้นหาของ Google Maps
+  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 hover:underline hover:text-blue-800 break-words"
+      title="เปิดใน Google Maps"
+    >
+      {value}
+    </a>
+  );
+};
+
+// --- Helper: ลิงก์ติดต่อ (โทร, อีเมล, ไลน์) ---
+const ContactLink = ({ value }) => {
+  if (!value) return <span>-</span>;
+  const text = value.trim();
+
+  // 1. เช็คว่าเป็น Email หรือไม่ (@ และ .)
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (emailRegex.test(text)) {
+    return <a href={`mailto:${text}`} className="text-indigo-600 hover:underline">{text}</a>;
+  }
+
+  // 2. เช็คว่าเป็นเบอร์โทร (ตัวเลขล้วน หรือมีขีด/เว้นวรรค และยาว 9-10 หลัก)
+  const cleanNumber = text.replace(/[- \(\)]/g, ''); // ลบขีดและวรรคออกเพื่อเช็ค
+  if (/^0\d{8,9}$/.test(cleanNumber)) {
+    return <a href={`tel:${cleanNumber}`} className="text-emerald-600 hover:underline">{text}</a>;
+  }
+
+  // 3. เช็คว่าเป็น Line ID (ดักคำว่า line:, id:, line id:)
+  // หรือถ้าไม่ใช่ Email/Phone ให้สมมติว่าเป็น Line ID ได้ไหม? (อันนี้แล้วแต่เลือก แต่ดัก prefix ชัวร์สุด)
+  const lineMatch = text.match(/^(?:line|id|line\s*id)\s*[:\.]?\s*(.+)/i);
+  if (lineMatch) {
+    const lineId = lineMatch[1]; // ดึง ID ออกมา
+    return (
+      <a
+        href={`https://line.me/ti/p/~${lineId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-green-600 hover:underline font-medium"
+        title="เปิดใน Line"
+      >
+        {text}
+      </a>
+    );
+  }
+
+  // 4. กรณีอื่นๆ (แสดงเป็นข้อความปกติ)
+  return <span>{text}</span>;
+};
 
 /* ---------- UI Components ---------- */
 function Modal({ open, onClose, children, title }) {
@@ -134,23 +189,6 @@ function Modal({ open, onClose, children, title }) {
   );
 }
 
-function Badge({ icon: Icon, text, color = "gray" }) {
-  const colorClasses = {
-    gray: "bg-gray-100 text-gray-600 border border-gray-200",
-    blue: "bg-blue-50 text-blue-700 border border-blue-100",
-    emerald: "bg-emerald-50 text-emerald-700 border border-emerald-100",
-    rose: "bg-rose-50 text-rose-700 border border-rose-100",
-    amber: "bg-amber-50 text-amber-700 border border-amber-100",
-    indigo: "bg-indigo-50 text-indigo-700 border border-indigo-100",
-  };
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${colorClasses[color]}`}>
-      {Icon && <Icon size={14} />}
-      <span className="truncate max-w-[180px]">{text}</span>
-    </span>
-  );
-}
-
 /* ---------- Main Component ---------- */
 function MyPost({ setPostsCache }) {
   const user = pickUser();
@@ -164,8 +202,6 @@ function MyPost({ setPostsCache }) {
 
   const [posts, setPosts] = useState([]);
   const [expanded, setExpanded] = useState(false);
-
-  // ✅ 1. เพิ่ม State สำหรับเก็บข้อมูลคนที่เรากดดู
   const [viewingUser, setViewingUser] = useState(null);
 
   const [loading, setLoading] = useState(false);
@@ -255,10 +291,7 @@ function MyPost({ setPostsCache }) {
   const handleLocationSelect = (address, locationObj) => {
     setFormData(prev => ({
       ...prev,
-      location: address // เอาชื่อสถานที่มาใส่ใน field location
-      // ถ้าอยากเก็บ lat/lon ลง database ด้วย ให้เพิ่มตรงนี้:
-      // lat: locationObj.lat,
-      // lon: locationObj.lon
+      location: address
     }));
   };
 
@@ -340,6 +373,8 @@ function MyPost({ setPostsCache }) {
 
   const handleJoin = async (post) => {
     if (feedType !== "student") return;
+    if (isTutor) return alert("บัญชีติวเตอร์ไม่สามารถกดเข้าร่วมโพสต์ของนักเรียนได้");
+
     if (!meId) return alert("กรุณาเข้าสู่ระบบ");
     setJoinLoading(s => ({ ...s, [post.id]: true }));
     try {
@@ -479,7 +514,7 @@ function MyPost({ setPostsCache }) {
                 onClose={() => setExpanded(false)}
                 title={feedType === "student" ? "นักเรียนสร้างโพสต์" : "ติวเตอร์สร้างโพสต์"}
               >
-                <form onSubmit={handleSubmit} className="space-y-5"> {/* เพิ่ม space-y ให้ห่างกันหน่อย */}
+                <form onSubmit={handleSubmit} className="space-y-5">
 
                   {/* วิชา/หัวข้อ */}
                   <div>
@@ -497,7 +532,6 @@ function MyPost({ setPostsCache }) {
                     <>
                       {/* วันและเวลาที่สะดวก */}
                       <div className="grid md:grid-cols-2 gap-4">
-                        
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">วันที่สะดวก</label>
                           <input type="date" name="preferred_days" value={formData.preferred_days} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" min={today} />
@@ -520,7 +554,6 @@ function MyPost({ setPostsCache }) {
                       {/* สถานที่ */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">สถานที่เรียน</label>
-                        {/* ใช้ Longdo Map Component ที่เราทำไว้ */}
                         <LongdoLocationPicker
                           onLocationSelect={handleLocationSelect}
                           defaultLocation={formData.location}
@@ -638,8 +671,6 @@ function MyPost({ setPostsCache }) {
 
               return (
                 <div key={post.id} className="bg-white border p-4 rounded-2xl shadow-sm">
-
-                  {/* ✅ 2. ส่วน Profile Header ที่คลิกได้ */}
                   <div
                     className="flex items-center gap-3 mb-2 cursor-pointer group"
                     onClick={() => setViewingUser(post.user)}
@@ -675,24 +706,46 @@ function MyPost({ setPostsCache }) {
                   {post.post_type === "student" ? (
                     <div className="text-sm text-gray-600 grid md:grid-cols-2 gap-y-1">
                       <p><span className="font-bold text-red-500">📚 ระดับชั้น: </span> {post.grade_level}</p>
-                      <p><span className="font-bold">📍 สถานที่: </span> {post.location}</p>
+
+                      {/* ✅ แก้ไข: ใช้ LocationLink */}
+                      <p className="flex items-start gap-1">
+                        <span className="font-bold shrink-0">📍 สถานที่: </span>
+                        <LocationLink value={post.location} />
+                      </p>
+
                       <p><span className="font-bold">👥 จำนวนคน: </span> {post.group_size} คน</p>
                       <p><span className="font-bold">💰 งบประมาณ: </span> {post.budget} บาท</p>
                       <p><span className="font-bold">📅 วันสะดวก: </span> {post.preferred_days}</p>
                       <p><span className="font-bold">⏰ เวลา: </span> {post.preferred_time}</p>
-                      <p>✉️ ข้อมูลติดต่อ: {post.contact_info}</p>
+
+                      {/* ✅ แก้ไข: ใช้ ContactLink */}
+                      <p className="flex items-start gap-1">
+                        <span className="font-bold shrink-0">✉️ ข้อมูลติดต่อ: </span>
+                        <ContactLink value={post.contact_info} />
+                      </p>
                     </div>
                   ) : (
                     <div className="text-sm text-gray-600 grid md:grid-cols-2 gap-y-1">
-                      <p> <span> </span>📚 ระดับชั้นที่สอน: {post.meta?.target_student_level}</p>
+                      <p>📚 ระดับชั้นที่สอน: {post.meta?.target_student_level}</p>
                       <p>📅 วันที่สอน: {post.meta?.teaching_days}</p>
                       <p>⏰ ช่วงเวลา: {post.meta?.teaching_time}</p>
-                      <p>📍 สถานที่: {post.meta?.location}</p>
+
+                      {/* ✅ แก้ไข: ใช้ LocationLink */}
+                      <p className="flex items-start gap-1">
+                        <span className="font-bold shrink-0">📍 สถานที่: </span>
+                        <LocationLink value={post.meta?.location} />
+                      </p>
+
                       {typeof post.group_size === 'number' && post.group_size > 0 ? (
                         <p>👥 จำนวนคน: {post.group_size} คน</p>
                       ) : null}
                       <p>💸 ราคา: {Number(post.meta?.price || 0).toFixed(2)} บาท/ชม.</p>
-                      <p className="md:col-span-2">☎️ ติดต่อ: {post.meta?.contact_info}</p>
+
+                      {/* ✅ แก้ไข: ใช้ ContactLink */}
+                      <p className="md:col-span-2 flex items-start gap-1">
+                        <span className="font-bold shrink-0">☎️ ติดต่อ: </span>
+                        <ContactLink value={post.meta?.contact_info} />
+                      </p>
                     </div>
                   )}
 
@@ -718,12 +771,13 @@ function MyPost({ setPostsCache }) {
                         <span className="text-sm">{Number(post.fav_count || 0)}</span>
                       </button>
 
-                      {/* Action Buttons (Join/Unjoin) - Logic เดิม */}
+                      {/* Action Buttons (Join/Unjoin) */}
                       {post.post_type === "student" ? (
                         isOwner ? <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">คุณเป็นเจ้าของโพสต์</span> :
-                          post.joined ? <button disabled={busy} onClick={() => handleUnjoin(post)} className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50">{busy ? "..." : "เลิกร่วม"}</button> :
-                            post.pending_me ? <button disabled={busy} onClick={() => handleUnjoin(post)} className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50">{busy ? "..." : "ยกเลิกคำขอ"}</button> :
-                              <button disabled={busy || isFull} onClick={() => handleJoin(post)} className={`px-4 py-2 rounded-xl text-white ${isFull ? "bg-gray-400" : "bg-purple-600 hover:bg-purple-700"}`}>{isFull ? "เต็มแล้ว" : busy ? "..." : "Join"}</button>
+                          isTutor ? <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">สำหรับนักเรียน</span> :
+                            post.joined ? <button disabled={busy} onClick={() => handleUnjoin(post)} className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50">{busy ? "..." : "เลิกร่วม"}</button> :
+                              post.pending_me ? <button disabled={busy} onClick={() => handleUnjoin(post)} className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50">{busy ? "..." : "ยกเลิกคำขอ"}</button> :
+                                <button disabled={busy || isFull} onClick={() => handleJoin(post)} className={`px-4 py-2 rounded-xl text-white ${isFull ? "bg-gray-400" : "bg-purple-600 hover:bg-purple-700"}`}>{isFull ? "เต็มแล้ว" : busy ? "..." : "Join"}</button>
                       ) : (
                         isOwner ? <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">โพสต์ของฉัน</span> :
                           isTutor ? <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">สำหรับนักเรียน</span> :
