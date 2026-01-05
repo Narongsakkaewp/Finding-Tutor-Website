@@ -7,13 +7,20 @@ require('dotenv').config();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+// -----------------------
 const pool = require('./db');
+const recommendationRoutes = require('./src/routes/recommendationRoutes');
 // -----------------------
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
+app.use((req, res, next) => {
+    req.db = pool;
+    next();
+});
+
 
 // Keyword ชื่อวิชาที่ใช้สำหรับการค้นหา "ติวเตอร์"
 const KEYWORD_MAP = {
@@ -118,6 +125,7 @@ async function getJoiners(postId) {
 }
 
 // ---------- APIs ----------
+app.use('/api/recommendations', recommendationRoutes);
 
 // ประเภทผู้ใช้
 app.get('/api/user/:userId', async (req, res) => {

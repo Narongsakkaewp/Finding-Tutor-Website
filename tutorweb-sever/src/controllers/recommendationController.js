@@ -1,56 +1,56 @@
 // src/controllers/recommendationController.js
-const pool = require('../../db');
 const geolib = require('geolib');
 
-// --- เกณฑ์คะแนน (Configurable Weights) ---
+// --- เกณฑ์คะแนน ---
 const WEIGHTS = {
-    SUBJECT: 40,      // วิชาตรงกัน (สำคัญสุด)
-    GRADE: 20,        // ระดับชั้นสอนได้
-    BUDGET: 20,       // ราคาอยู่ในงบ
-    LOCATION: 20      // ระยะทางใกล้ (หรือสถานที่ตรง)
+    SUBJECT: 40,
+    GRADE: 20,
+    BUDGET: 20,
+    LOCATION: 20
 };
 
-// ฟังก์ชันคำนวณคะแนน (Core Logic)
 const calculateRelevanceScore = (studentReq, tutorPost) => {
     let score = 0;
 
-    // 1. เช็ควิชา (Subject) - ใช้การค้นหาคำ (Partial Match)
-    // เช่น นร.หา "คณิต" เจอครูสอน "คณิตศาสตร์ ม.ปลาย" ถือว่าตรง
-    if (tutorPost.subject.includes(studentReq.subject) || studentReq.subject.includes(tutorPost.subject)) {
+    // กันค่า Null
+    const reqSubject = studentReq.subject || "";
+    const tutorSubject = tutorPost.subject || "";
+    const reqGrade = studentReq.grade_level || "";
+    const tutorTarget = tutorPost.target_student_level || ""; // แก้ให้ตรงกับ DB
+    const reqLocation = studentReq.location || "";
+    const tutorLocation = tutorPost.location || "";
+
+    // 1. วิชา
+    if (tutorSubject.includes(reqSubject) || reqSubject.includes(tutorSubject)) {
         score += WEIGHTS.SUBJECT;
     }
 
-    // 2. เช็คระดับชั้น (Grade Level)
-    // สมมติใน DB เก็บเป็น string คั่นด้วยคอมม่า เช่น "ม.ต้น,ม.ปลาย"
-    if (tutorPost.target_student_level && studentReq.grade_level) {
-        if (tutorPost.target_student_level.includes(studentReq.grade_level)) {
+    // 2. ระดับชั้น
+    if (tutorTarget && reqGrade) {
+        if (tutorTarget.includes(reqGrade)) {
             score += WEIGHTS.GRADE;
         }
     }
 
-    // 3. เช็คราคา (Price/Budget)
-    // ถ้าราคาครู ต่ำกว่าหรือเท่ากับ งบนักเรียน (หรือเกินได้นิดหน่อย +20%)
+    // 3. ราคา (งบนักเรียน vs ราคาครู)
+    // หมายเหตุ: เช็คให้ดีว่า studentReq.budget เป็น number
     if (tutorPost.price <= (studentReq.budget * 1.2)) {
         score += WEIGHTS.BUDGET;
     }
 
-    // 4. เช็คสถานที่ (Location)
-    // กรณีที่ 1: ใช้ Lat/Lon คำนวณระยะทาง (ถ้ามี geolib และมีพิกัดทั้งคู่)
+    // 4. สถานที่
+    // กรณีมี Lat/Lon (ถ้า Database คุณเก็บ)
     if (studentReq.lat && studentReq.lon && tutorPost.lat && tutorPost.lon) {
         const distance = geolib.getDistance(
             { latitude: studentReq.lat, longitude: studentReq.lon },
             { latitude: tutorPost.lat, longitude: tutorPost.lon }
         );
-        // ถ้าห่างกันไม่เกิน 15 กม. ให้คะแนนเต็ม
-        if (distance <= 15000) { 
-            score += WEIGHTS.LOCATION;
-        } else if (distance <= 30000) {
-            score += (WEIGHTS.LOCATION / 2); // ห่างไม่เกิน 30 กม. ให้ครึ่งเดียว
-        }
+        if (distance <= 15000) score += WEIGHTS.LOCATION;
+        else if (distance <= 30000) score += (WEIGHTS.LOCATION / 2);
     } 
-    // กรณีที่ 2: ไม่มีพิกัด ใช้เช็คชื่อสถานที่เอา (String Match)
-    else if (tutorPost.location && studentReq.location) {
-        if (tutorPost.location.includes(studentReq.location) || studentReq.location.includes(tutorPost.location)) {
+    // กรณีใช้ชื่อสถานที่
+    else if (tutorLocation && reqLocation) {
+        if (tutorLocation.includes(reqLocation) || reqLocation.includes(tutorLocation)) {
             score += WEIGHTS.LOCATION;
         }
     }
@@ -60,62 +60,73 @@ const calculateRelevanceScore = (studentReq, tutorPost) => {
 
 exports.getRecommendations = async (req, res) => {
     try {
-        const userId = req.query.user_id;
+        // ✅ 1. ดึง DB จาก req ที่ฝากไว้ใน server.js
+        const pool = req.db; 
+        if (!pool) {
+            console.error("❌ Database pool not found in req.db");
+            return res.status(500).json({ error: 'Database connection failed' });
+        }
 
-        // ถ้าไม่มี user_id (Guest) ให้ส่งโพสต์ล่าสุดไปแทน
+        const userId = req.query.user_id;
+        console.log(`🔍 Recommend for User ID: ${userId}`);
+
+        // Guest User
         if (!userId || userId === '0') {
             const [rows] = await pool.query('SELECT * FROM tutor_posts ORDER BY created_at DESC LIMIT 6');
             return res.json(rows);
         }
 
-        // STEP 1: หา "ความต้องการ" ของนักเรียน (Student Needs)
-        // ดึงจากโพสต์ล่าสุดที่นักเรียนคนนี้เคยโพสต์หาครู (เพราะสะท้อนความต้องการปัจจุบันที่สุด)
+        // ✅ 2. แก้ชื่อคอลัมน์จาก owner_id เป็น student_id
+        // และดึง grade_level ให้ถูกต้อง
         const [studentRequests] = await pool.query(
-            `SELECT subject, grade_level, budget, location, lat, lon 
+            `SELECT subject, grade_level, budget, location 
              FROM student_posts 
-             WHERE owner_id = ? 
+             WHERE student_id = ? 
              ORDER BY created_at DESC LIMIT 1`, 
             [userId]
         );
 
-        // ถ้าไม่เคยโพสต์หาครูเลย ให้ไปดึงจาก Profile แทน (ถ้ามี field สนใจ) หรือส่งค่า Default
         let requirement = studentRequests[0];
+        
+        // ถ้าไม่เคยโพสต์ ให้ดึงล่าสุดมาโชว์แทน (Fallback)
         if (!requirement) {
-            // Fallback: ดึงโพสต์ติวเตอร์ล่าสุดไปเลย
+            console.log("⚠️ No student requirement found, returning recent posts.");
             const [fallback] = await pool.query('SELECT * FROM tutor_posts ORDER BY created_at DESC LIMIT 6');
             return res.json(fallback);
         }
 
-        // STEP 2: ดึงโพสต์ติวเตอร์ทั้งหมดมาเปรียบเทียบ
-        // (ในอนาคตถ้าข้อมูลเยอะ อาจจะดึงแค่ Active หรือเฉพาะวิชาที่ใกล้เคียงก่อนเพื่อ Performance)
+        console.log("✅ Student Requirement:", requirement);
+
+        // ✅ 3. แก้ Query ดึงข้อมูล Tutor (JOIN ให้ถูกต้อง)
+        // ตารางคุณชื่อ tutor_posts และ register
         const [tutorPosts] = await pool.query(`
             SELECT 
                 tp.*, 
-                u.name as first_name, u.lastname as last_name, 
-                COALESCE(tp.profile_image, u.profile_picture_url) as profile_image
+                r.name, r.lastname, 
+                tpro.profile_picture_url
             FROM tutor_posts tp
-            JOIN register u ON tp.tutor_id = u.user_id
+            LEFT JOIN register r ON tp.tutor_id = r.user_id
+            LEFT JOIN tutor_profiles tpro ON tp.tutor_id = tpro.user_id
         `);
 
-        // STEP 3: วนลูปคำนวณคะแนน
+        // 4. คำนวณคะแนน
         const scoredTutors = tutorPosts.map(post => {
             const score = calculateRelevanceScore(requirement, post);
             return { ...post, relevance_score: score };
         });
 
-        // STEP 4: เรียงลำดับจากคะแนนมาก -> น้อย
+        // 5. เรียงลำดับ
         scoredTutors.sort((a, b) => b.relevance_score - a.relevance_score);
-
-        // STEP 5: ส่งคืน Top 6-10 อันดับแรก
         const topRecommendations = scoredTutors.slice(0, 6);
 
         res.json({
-            based_on: requirement.subject, // บอก Frontend ว่าแนะนำจากวิชาอะไร
+            based_on: requirement.subject,
             items: topRecommendations
         });
 
     } catch (err) {
-        console.error("Recommendation Error:", err);
-        res.status(500).json({ error: 'Server error in recommendation' });
+        // ✅ 6. Log Error ตัวจริงออกมาดู
+        console.error("❌ Recommendation Error Detail:", err);
+        res.status(500).json({ error: 'Server error in recommendation', details: err.message });
     }
 };
