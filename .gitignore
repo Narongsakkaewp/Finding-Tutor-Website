@@ -23,3 +23,5 @@ build/
 # OS files
 .DS_Store
 Thumbs.db
+tutorweb-sever/service-account.json.json
+tutorweb-sever/.env

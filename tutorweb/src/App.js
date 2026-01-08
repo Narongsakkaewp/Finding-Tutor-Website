@@ -12,15 +12,17 @@ import TutorProfile from './components/TutorProfile';
 import MyPostDetails from './components/MyPostDetails';
 import TutorLayout from './components/TutorLayout';
 import StudentCalendar from './components/StudentCalendar';
+import Settings from './components/Settings';
+import ReportIssueModal from './components/ReportIssueModal';
 
 // ✅ 1. Import ไอคอนสวยๆ จาก lucide-react เพื่อใช้แทน Bootstrap Icons
-import { 
-  LayoutDashboard, 
-  Bell, 
-  FileText, 
-  Heart, 
-  User, 
-  LogOut 
+import {
+  LayoutDashboard,
+  Bell,
+  FileText,
+  Heart,
+  User,
+  LogOut
 } from "lucide-react";
 
 function App() {
@@ -28,7 +30,11 @@ function App() {
     () => localStorage.getItem('isAuthenticated') === 'true'
   );
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState('home');
+
+  const [currentPage, setCurrentPage] = useState(() => {
+    return localStorage.getItem('currentPage') || 'home';
+  });
+
   const [newNotificationCount, setNewNotificationCount] = useState(0);
 
   const [user, setUser] = useState(() => {
@@ -41,10 +47,42 @@ function App() {
     return raw ? String(raw) : null;
   });
 
-  const [selectedPostId, setSelectedPostId] = useState(null);
-  const [selectedPostType, setSelectedPostType] = useState(null);
+  const [selectedPostId, setSelectedPostId] = useState(() => {
+    const saved = localStorage.getItem('selectedPostId');
+    return saved ? Number(saved) : null;
+  });
+
+  const [selectedPostType, setSelectedPostType] = useState(() => {
+    return localStorage.getItem('selectedPostType') || null;
+  });
+
+  const [backPage, setBackPage] = useState(() => {
+    return localStorage.getItem('backPage') || 'mypost';
+  });
+
   const [postsCache, setPostsCache] = useState([]);
-  const [backPage, setBackPage] = useState('mypost');
+
+  const [showReportModal, setShowReportModal] = useState(false); // ✅ State ควบคุม Modal
+
+  useEffect(() => {
+    localStorage.setItem('currentPage', currentPage);
+
+    if (selectedPostId) {
+      localStorage.setItem('selectedPostId', selectedPostId);
+    } else {
+      localStorage.removeItem('selectedPostId');
+    }
+
+    if (selectedPostType) {
+      localStorage.setItem('selectedPostType', selectedPostType);
+    } else {
+      localStorage.removeItem('selectedPostType');
+    }
+
+    if (backPage) {
+      localStorage.setItem('backPage', backPage);
+    }
+  }, [currentPage, selectedPostId, selectedPostType, backPage]);
 
   useEffect(() => {
     localStorage.setItem('isAuthenticated', isAuthenticated ? 'true' : 'false');
@@ -73,6 +111,10 @@ function App() {
     setCurrentPage('home');
   };
 
+  const goToSettings = () => {
+    setCurrentPage("settings");
+  };
+
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentPage('home');
@@ -81,10 +123,17 @@ function App() {
     setSelectedPostId(null);
     setPostsCache([]);
     setBackPage('mypost');
+
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('userType');
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+
+    // ล้างค่าหน้าที่จำไว้
+    localStorage.removeItem('currentPage');
+    localStorage.removeItem('selectedPostId');
+    localStorage.removeItem('selectedPostType');
+    localStorage.removeItem('backPage');
   };
 
   const openPostDetails = (postId, from = 'mypost', type = null) => {
@@ -146,6 +195,7 @@ function App() {
         }
       case 'tutor_layout': return <TutorLayout />;
       case 'student_calendar': return <StudentCalendar />;
+      case 'settings': return <Settings />;
       default: return <Home />;
     }
   };
@@ -160,15 +210,14 @@ function App() {
             setCurrentPage(id);
             setSidebarOpen(false); // ปิด Sidebar บนมือถือเมื่อกดเลือก
           }}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
-            isActive 
-              ? 'bg-indigo-50 text-indigo-600 font-semibold shadow-sm' // Active State
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'   // Normal State
-          }`}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${isActive
+            ? 'bg-indigo-50 text-indigo-600 font-semibold shadow-sm' // Active State
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'   // Normal State
+            }`}
         >
           <Icon size={22} className={`transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
           <span className="flex-1 text-left text-sm">{label}</span>
-          
+
           {badge > 0 && (
             <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm px-1.5">
               {badge > 99 ? '99+' : badge}
@@ -191,11 +240,19 @@ function App() {
             setCurrentPage={setCurrentPage}
             onLogout={handleLogout}
             onEditProfile={handleEditProfile}
+            onSettings={goToSettings}
             userType={userType}
+            onReport={() => setShowReportModal(true)}
           />
-          
+
+          <ReportIssueModal
+            isOpen={showReportModal}
+            onClose={() => setShowReportModal(false)}
+            user={user}
+          />
+
           <div className="flex flex-1 relative">
-            
+
             {/* Mobile Overlay (ฉากหลังดำจางๆ เวลาเปิด Sidebar บนมือถือ) */}
             {sidebarOpen && (
               <div
@@ -206,12 +263,11 @@ function App() {
 
             {/* ✅ Sidebar Design ใหม่ */}
             <aside
-              className={`fixed md:sticky top-0 md:top-16 left-0 h-screen md:h-[calc(100vh-4rem)] w-72 bg-white border-r border-gray-100 shadow-2xl md:shadow-none z-50 transform transition-transform duration-300 ease-in-out ${
-                sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-              }`}
+              className={`fixed md:sticky top-0 md:top-16 left-0 h-screen md:h-[calc(100vh-4rem)] w-72 bg-white border-r border-gray-100 shadow-2xl md:shadow-none z-50 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+                }`}
             >
               <div className="flex flex-col h-full overflow-y-auto custom-scrollbar px-4 py-6">
-                
+
                 {/* กลุ่มเมนูหลัก */}
                 <div className="mb-6">
                   <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">เมนูหลัก</p>
@@ -229,23 +285,23 @@ function App() {
                   <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">ส่วนตัว</p>
                   <ul className="space-y-1">
                     <SidebarItem id="profile" label="โปรไฟล์ของฉัน" icon={User} />
-                    
+
                     {userType === 'student' && (
                       <SidebarItem id="favorite" label="รายการที่สนใจ" icon={Heart} />
                     )}
                   </ul>
                 </div>
-                
+
                 {/* ปุ่ม Logout (แสดงเฉพาะบนมือถือ) */}
-                 <div className="mt-auto md:hidden pt-6 border-t border-gray-100">
-                    <button 
-                        onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-rose-600 hover:bg-rose-50 transition-colors font-medium text-sm"
-                    >
-                        <LogOut size={20} />
-                        ออกจากระบบ
-                    </button>
-                 </div>
+                <div className="mt-auto md:hidden pt-6 border-t border-gray-100">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-rose-600 hover:bg-rose-50 transition-colors font-medium text-sm"
+                  >
+                    <LogOut size={20} />
+                    ออกจากระบบ
+                  </button>
+                </div>
 
               </div>
             </aside>

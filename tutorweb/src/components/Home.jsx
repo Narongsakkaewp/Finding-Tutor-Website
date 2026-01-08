@@ -3,6 +3,8 @@ import {
   Heart, MapPin, Calendar, Search, Star, BookOpen, Users, ChevronRight,
   MessageSquarePlus, CalendarCheck, Sparkles, GraduationCap, Clock
 } from "lucide-react";
+import RecommendedTutors from "../components/RecommendedTutors";
+import SmartSearch from "../components/SmartSearch";
 
 /** ---------------- Config ---------------- */
 const API_BASE = "http://localhost:5000";
@@ -417,6 +419,24 @@ function HomeStudent() {
   const [loadErr, setLoadErr] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const user = JSON.parse(localStorage.getItem('user'));
+  const userId = user?.user_id;
+  const handleSearch = async (keyword) => {
+    // 1. อัปเดต State เพื่อให้หน้าจอแสดงผลลัพธ์การค้นหา (เหมือนเดิม)
+    console.log("Searching for:", keyword);
+    setQuery(keyword);
+
+    // ✅ 2. เพิ่มส่วนนี้: ส่งคำค้นหาไปที่ API เพื่อให้ Backend บันทึกลง History
+    if (keyword.trim()) {
+      try {
+        // ยิงไปที่ API Search (ไม่ต้องรอผลลัพธ์ก็ได้ ยิงเพื่อให้มัน Log ลง DB เฉยๆ)
+        await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(keyword)}&user_id=${userId || 0}`);
+      } catch (err) {
+        console.error("Failed to log search history:", err);
+      }
+    }
+  };
+
   useEffect(() => {
     let ignore = false;
     (async () => {
@@ -463,37 +483,16 @@ function HomeStudent() {
                 </h1>
 
                 <p className="text-indigo-100 text-lg md:text-xl font-light max-w-lg leading-relaxed">
-                  แหล่งรวมติวเตอร์คุณภาพกว่า 1,000 คน ครบทุกวิชา ทั้งออนไลน์และตัวต่อตัว เริ่มต้นเรียนรู้ได้ทันที
+                  แหล่งรวมติวเตอร์คุณภาพ มีครบทุกวิชา ทั้งออนไลน์และตัวต่อตัว เริ่มต้นเรียนรู้ได้ทันที
                 </p>
 
                 {/* Search Box */}
-                <div className="mt-8 p-2 bg-white rounded-2xl shadow-lg flex flex-col md:flex-row gap-2 max-w-xl">
-                  <div className="flex-1 relative">
-                    <Search className="absolute left-4 top-3.5 text-gray-400" size={20} />
-                    <input
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      // ✅ เพิ่ม: กด Enter แล้วค้นหาเลย
-                      onKeyDown={(e) => e.key === 'Enter' && setQuery(query)}
-                      placeholder="ค้นหาติวเตอร์จากวิชาที่คุณต้องการ..."
-                      className="w-full pl-12 pr-4 py-3 rounded-xl bg-transparent outline-none text-gray-800 placeholder-gray-400"
-                    />
-                  </div>
-                  <button
-                    onClick={() => setQuery(query)} // หรือฟังก์ชัน handleSearch() ถ้าคุณมี
-                    className="bg-gray-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-black transition-colors shadow-md"
-                  >
-                    ค้นหา
-                  </button>
-                </div>
-
+                <SmartSearch
+                  userId={userId}
+                  onSearch={handleSearch}
+                />
                 <div className="pt-4 flex items-center gap-4 text-indigo-100 text-sm font-medium">
-                  <div className="flex -space-x-2">
-                    <img className="w-8 h-8 rounded-full border-2 border-indigo-600" src="https://i.pravatar.cc/100?img=1" alt="" />
-                    <img className="w-8 h-8 rounded-full border-2 border-indigo-600" src="https://i.pravatar.cc/100?img=2" alt="" />
-                    <img className="w-8 h-8 rounded-full border-2 border-indigo-600" src="https://i.pravatar.cc/100?img=3" alt="" />
-                  </div>
-                  <p>มีนักเรียนใช้งานแล้วกว่า 10,000+ คน</p>
+
                 </div>
               </div>
 
@@ -550,6 +549,10 @@ function HomeStudent() {
               </div>
             )}
           </div>
+        </section>
+
+        <section className="mt-20">
+          <RecommendedTutors userId={userId} />
         </section>
 
         {/* Popular Subjects */}

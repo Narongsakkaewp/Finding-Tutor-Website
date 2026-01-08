@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import logo from "../assets/logo/FindingTutor_Logo.png";
-import { Menu, ChevronDown, Edit, LogOut, Settings } from "lucide-react"; // ใช้ไอคอนจาก lucide-react เพื่อความสวยงาม
+import { Menu, ChevronDown, Edit, LogOut, Settings, MessageSquareWarning } from "lucide-react"; // ใช้ไอคอนจาก lucide-react เพื่อความสวยงาม
 
 const Navbar = ({
   userType,
   onLogout,
   onEditProfile,
+  onSettings,
+  onReport,
   setSidebarOpen,
   sidebarOpen,
 }) => {
@@ -73,7 +75,7 @@ const Navbar = ({
     <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm transition-all duration-300">
       <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          
+
           {/* Left Side: Hamburger & Logo */}
           <div className="flex items-center gap-4">
             <button
@@ -90,14 +92,13 @@ const Navbar = ({
 
           {/* Right Side: User Profile & Dropdown */}
           <div className="flex items-center gap-3 sm:gap-6">
-            
+
             {/* User Role Badge (Hidden on mobile for space) */}
             {userType && (
-              <span className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${
-                userType === 'student' 
-                  ? 'bg-blue-50 text-blue-700 border-blue-100' 
-                  : 'bg-purple-50 text-purple-700 border-purple-100'
-              }`}>
+              <span className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${userType === 'student'
+                ? 'bg-blue-50 text-blue-700 border-blue-100'
+                : 'bg-purple-50 text-purple-700 border-purple-100'
+                }`}>
                 {userType === "student" ? "🎓 นักเรียน" : "👨‍🏫 ติวเตอร์"}
               </span>
             )}
@@ -112,29 +113,29 @@ const Navbar = ({
               >
                 {/* Avatar */}
                 <div className="relative">
-                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 ring-2 ring-white shadow-sm flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 ring-2 ring-white shadow-sm flex items-center justify-center">
                     {avatar ? (
-                        <img src={avatar} alt="User" className="w-full h-full object-cover" />
+                      <img src={avatar} alt="User" className="w-full h-full object-cover" />
                     ) : (
-                        <span className="text-sm font-bold text-gray-500">
+                      <span className="text-sm font-bold text-gray-500">
                         {displayName?.[0]?.toUpperCase() || "U"}
-                        </span>
+                      </span>
                     )}
-                    </div>
-                    {/* Online status indicator (Optional) */}
-                    <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full"></div>
+                  </div>
+                  {/* Online status indicator (Optional) */}
+                  <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full"></div>
                 </div>
 
                 {/* Name & Arrow */}
                 <div className="hidden md:flex items-center gap-2">
-                    <div className="flex flex-col items-start">
-                        <span className="text-md font-semibold text-gray-700 max-w-[120px] truncate leading-tight">
-                            {displayName}
-                        </span>
-                        {/* Mobile view role fallback */}
-                        {/* <span className="text-[10px] text-gray-400 leading-tight capitalize">{userType}</span> */}
-                    </div>
-                    <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
+                  <div className="flex flex-col items-start">
+                    <span className="text-md font-semibold text-gray-700 max-w-[120px] truncate leading-tight">
+                      {displayName}
+                    </span>
+                    {/* Mobile view role fallback */}
+                    {/* <span className="text-[10px] text-gray-400 leading-tight capitalize">{userType}</span> */}
+                  </div>
+                  <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
                 </div>
               </button>
 
@@ -147,28 +148,43 @@ const Navbar = ({
                   {/* Mobile Role Badge (Shown inside dropdown on mobile) */}
                   <div className="px-4 py-2 border-b border-gray-50 md:hidden">
                     <p className="text-xs text-gray-500 font-medium mb-1">เข้าสู่ระบบ</p>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        userType === 'student' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
-                    }`}>
-                        {userType === "student" ? "นักเรียน" : "ติวเตอร์"}
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${userType === 'student' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
+                      }`}>
+                      {userType === "student" ? "นักเรียน" : "ติวเตอร์"}
                     </span>
                   </div>
 
                   <div className="py-1">
                     <button
-                        onClick={() => {
+                      onClick={() => {
                         onEditProfile();
                         setDropdownOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 flex items-center gap-3 transition-colors"
-                        role="menuitem"
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 flex items-center gap-3 transition-colors"
+                      role="menuitem"
                     >
-                        <Edit size={16} />
-                        แก้ไขโปรไฟล์
+                      <Edit size={16} />
+                      แก้ไขโปรไฟล์
                     </button>
-                    {/* ตัวอย่างเมนูเพิ่มเติม (ถ้ามี) */}
-                    <button className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 flex items-center gap-3 transition-colors">
-                        <Settings size={16} /> ตั้งค่า
+                    <button
+                      onClick={() => {
+                        if (onSettings) onSettings();
+                        setDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 flex items-center gap-3 transition-colors"
+                    >
+                      <Settings size={16} /> ตั้งค่า
+                    </button>
+                    
+                    {/* ✅ 2. แก้ปุ่มรายงานปัญหา ให้เรียก onReport */}
+                    <button
+                      onClick={() => {
+                        if (onReport) onReport(); // เรียกฟังก์ชัน onReport
+                        setDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-orange-600 flex items-center gap-3 transition-colors"
+                    >
+                      <MessageSquareWarning size={16} /> รายงานปัญหา
                     </button>
                   </div>
 
@@ -176,15 +192,15 @@ const Navbar = ({
 
                   <div className="py-1">
                     <button
-                        onClick={() => {
+                      onClick={() => {
                         onLogout();
                         setDropdownOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition-colors"
-                        role="menuitem"
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition-colors"
+                      role="menuitem"
                     >
-                        <LogOut size={16} />
-                        ออกจากระบบ
+                      <LogOut size={16} />
+                      ออกจากระบบ
                     </button>
                   </div>
                 </div>

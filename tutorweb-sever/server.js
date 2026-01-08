@@ -1,4 +1,10 @@
 // tutorweb-server/server.js
+const { GoogleSpreadsheet } = require('google-spreadsheet');
+const { JWT } = require('google-auth-library');
+const creds = require('./service-account.json');
+
+const SPREADSHEET_ID = '1djs9ACE03WeImxVwuz6VfhnJ0ev1R473VQKVLYt5ynM';
+
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
@@ -7,20 +13,33 @@ require('dotenv').config();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-// -----------------------
+
+// ----- recommendation sets -----
 const pool = require('./db');
 const recommendationRoutes = require('./src/routes/recommendationRoutes');
-// -----------------------
+const searchRoutes = require('./src/routes/searchRoutes');
 
+// ----- Email Deps -----
+const nodemailer = require('nodemailer');
+
+// ตั้งค่า Email Sender
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 's6603052413159@email.kmutnb.ac.th',
+    pass: 'mbtb ixlb oulm zlea'
+  }
+});
+
+// -----------------------
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 app.use((req, res, next) => {
-    req.db = pool;
-    next();
+  req.db = pool;
+  next();
 });
-
 
 // Keyword ชื่อวิชาที่ใช้สำหรับการค้นหา "ติวเตอร์"
 const KEYWORD_MAP = {
@@ -124,8 +143,42 @@ async function getJoiners(postId) {
   }));
 }
 
+// ฟังก์ชันสำหรับบันทึกข้อมูล
+async function saveToGoogleSheet(data) {
+  try {
+    // 1. ตั้งค่าการยืนยันตัวตน
+    const serviceAccountAuth = new JWT({
+      email: creds.client_email,
+      key: creds.private_key,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+
+    // 2. โหลดเอกสาร
+    const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
+    await doc.loadInfo();
+
+    // 3. เลือกแผ่นงานแรก (Sheet1)
+    const sheet = doc.sheetsByIndex[0];
+
+    // 4. เพิ่มแถวใหม่
+    await sheet.addRow({
+      Timestamp: new Date().toLocaleString('th-TH'),
+      User: data.user_contact,
+      Category: data.category,
+      Topic: data.topic,
+      Detail: data.detail
+    });
+
+    console.log("✅ บันทึกลง Google Sheet เรียบร้อยแล้ว!");
+  } catch (err) {
+    console.error("❌ Google Sheet Error:", err.message);
+    // ไม่ throw error เพื่อให้หน้าเว็บทำงานต่อได้แม้ Sheet มีปัญหา
+  }
+}
+
 // ---------- APIs ----------
 app.use('/api/recommendations', recommendationRoutes);
+app.use('/api/search', searchRoutes);
 
 // ประเภทผู้ใช้
 app.get('/api/user/:userId', async (req, res) => {
@@ -1192,10 +1245,10 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
 app.delete('/api/student_posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
-    
+
     // ลบข้อมูลที่เกี่ยวข้องในตาราง joins ก่อน (ถ้าไม่ได้ตั้ง cascade ไว้ใน database)
     await pool.query('DELETE FROM student_post_joins WHERE student_post_id = ?', [postId]);
-    
+
     // ลบโพสต์จริง
     const [result] = await pool.query('DELETE FROM student_posts WHERE student_post_id = ?', [postId]);
 
@@ -1217,7 +1270,7 @@ app.delete('/api/student_posts/:id', async (req, res) => {
 app.delete('/api/tutor-posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
-    
+
     // ลบข้อมูลที่เกี่ยวข้อง (เช่น favorites, join requests) ถ้ามี
     // await pool.query('DELETE FROM favorites WHERE post_id = ? AND post_type = "tutor"', [postId]); 
     // await pool.query('DELETE FROM tutor_post_joins WHERE tutor_post_id = ?', [postId]);
@@ -2199,6 +2252,232 @@ app.get('/api/tutors/:tutorId/reviews', async (req, res) => {
   }
 });
 
+const getEmailTemplate = (otpCode) => {
+  const LOGO_URL = "https://img2.pic.in.th/FindingTutor_Logo.png";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        .email-container { max-width: 500px; margin: 40px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .header { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); padding: 30px; text-align: center; }
+        .header img { height: 50px; width: auto; margin-bottom: 15px; border-radius: 8px; background-color: white; padding: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); } 
+        .content { padding: 40px 30px; text-align: center; color: #374151; }
+        .otp-box { background-color: #f9fafb; border: 2px dashed #c7d2fe; border-radius: 12px; padding: 15px; margin: 25px 0; display: inline-block; min-width: 200px; }
+        .otp-text { font-size: 32px; font-weight: 800; color: #4f46e5; letter-spacing: 6px; font-family: monospace; margin: 0; }
+        .footer { background-color: #f9fafb; padding: 20px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb; }
+      </style>
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="header">
+          <img src="${LOGO_URL}" alt="Logo" />
+          <h1 style="color: white; margin: 0; font-size: 24px; font-weight: bold;">Finding Tutor Web</h1>
+        </div>
+        <div class="content">
+          <h2 style="margin-top: 0; color: #1f2937;">ยืนยันตัวตนของคุณ</h2>
+          <p style="color: #6b7280;">ใช้รหัส OTP ด้านล่างเพื่อดำเนินการสมัครสมาชิกให้เสร็จสมบูรณ์</p>
+          <div class="otp-box">
+            <p class="otp-text">${otpCode}</p>
+          </div>
+          <p style="color: #ef4444; font-size: 13px; margin-top: 15px;">⚠️ รหัสนี้จะหมดอายุภายใน 5 นาที</p>
+        </div>
+        <div class="footer">
+          <p>&copy; 2026 Finding Tutor Web Platform</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+// API ส่ง OTP
+app.post('/api/auth/request-otp', async (req, res) => {
+  console.log("📨 Received OTP Request:", req.body.email);
+  const { email, type } = req.body;
+
+  try {
+    if (type === 'register') {
+      const [existing] = await pool.query('SELECT 1 FROM register WHERE email = ?', [email]);
+      if (existing.length > 0) {
+        return res.status(400).json({ success: false, message: 'อีเมลนี้ถูกใช้งานแล้ว' });
+      }
+    }
+
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    // 1. บันทึก DB
+    await pool.query('INSERT INTO otp_codes (email, code, expires_at) VALUES (?, ?, ?)', [email, otpCode, expiresAt]);
+    console.log("✅ OTP Saved to DB");
+
+    // 2. เตรียมส่งเมล (ใช้รูปจาก URL เพื่อความเบา แต่ยังสวย)
+    const mailOptions = {
+      from: '"Finding TutorWeb" <findingtoturwebteam@gmail.com>',
+      to: email,
+      subject: '🔐 รหัสยืนยันตัวตน (OTP) - Tutor Web',
+      html: getEmailTemplate(otpCode), // ใช้ฟังก์ชัน HTML ตัวล่าสุดของคุณ
+      // attachments: [] <-- ไม่ต้องใส่ attachments แล้ว
+    };
+
+    // 3. ✅ ใส่ await กลับมา (เพื่อให้หน่วงรอจนกว่า Gmail จะบอกว่า "ส่งแล้วนะ")
+    // ตรงนี้จะใช้เวลาประมาณ 1-2 วินาที ซึ่งเป็นความหน่วงที่กำลังดีครับ
+    console.log("⏳ กำลังเชื่อมต่อ Gmail...");
+    await transporter.sendMail(mailOptions);
+    console.log("🚀 ส่งเมลสำเร็จ!");
+
+    // 4. แจ้งหน้าเว็บ
+    res.json({ success: true, message: 'ส่งรหัส OTP เรียบร้อยแล้ว' });
+
+  } catch (err) {
+    console.error("❌ OTP Error:", err);
+    res.status(500).json({ success: false, message: 'ไม่สามารถส่งอีเมลได้: ' + err.message });
+  }
+});
+
+app.post('/api/register', async (req, res) => {
+  const { name, lastname, email, password, type, otp } = req.body; // รับ otp มาด้วย
+
+  // 1. ตรวจสอบ OTP
+  const [otpRows] = await pool.query(
+    'SELECT * FROM otp_codes WHERE email = ? AND code = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+    [email, otp]
+  );
+
+  if (otpRows.length === 0) {
+    return res.status(400).json({ success: false, message: 'รหัส OTP ไม่ถูกต้องหรือหมดอายุ' });
+  }
+
+  // 2. ถ้า OTP ถูกต้อง -> ลบ OTP เก่าทิ้ง (Optional แต่ควรทำ)
+  await pool.query('DELETE FROM otp_codes WHERE email = ?', [email]);
+
+  // 3. ทำการสมัครสมาชิก (Logic เดิมของคุณ) ...
+  // ... (INSERT INTO register ...)
+
+  // (Copy โค้ดเดิมส่วน Insert มาใส่ตรงนี้)
+});
+
+// 1. API แก้ไขข้อมูลส่วนตัว (User Info)
+app.put('/api/user/:id', async (req, res) => {
+  try {
+    const { name, lastname, email } = req.body;
+    const userId = req.params.id;
+
+    // เช็คว่าอีเมลซ้ำกับคนอื่นไหม (ถ้ามีการเปลี่ยนอีเมล)
+    const [existing] = await pool.query('SELECT user_id FROM register WHERE email = ? AND user_id != ?', [email, userId]);
+    if (existing.length > 0) {
+      return res.status(400).json({ success: false, message: 'อีเมลนี้มีผู้ใช้งานแล้ว' });
+    }
+
+    await pool.query(
+      'UPDATE register SET name = ?, lastname = ?, email = ? WHERE user_id = ?',
+      [name, lastname, email, userId]
+    );
+
+    res.json({ success: true, message: 'Updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Database error' });
+  }
+});
+
+// 2. API เปลี่ยนรหัสผ่าน (Change Password)
+app.post('/api/user/change-password', async (req, res) => {
+  try {
+    const { user_id, oldPassword, newPassword } = req.body;
+
+    // 1. ตรวจสอบรหัสผ่านเดิม
+    const [rows] = await pool.query('SELECT password FROM register WHERE user_id = ?', [user_id]);
+    if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+
+    if (rows[0].password !== oldPassword) {
+      return res.status(400).json({ success: false, message: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' });
+    }
+
+    // 2. อัปเดตรหัสผ่านใหม่
+    await pool.query('UPDATE register SET password = ? WHERE user_id = ?', [newPassword, user_id]);
+
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Database error' });
+  }
+});
+
+// 3. API ลบบัญชี (Delete Account - Clean Delete)
+app.delete('/api/user/:id', async (req, res) => {
+  const userId = req.params.id;
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    console.log(`🗑️ Deleting user: ${userId}...`);
+
+    // --- 1. ไล่ลบข้อมูลในตารางลูกก่อน (Child Tables) ---
+    // (ถ้าไม่ลบพวกนี้ก่อน Database จะ Error เพราะติด Foreign Key)
+
+    // 1.1 ลบข้อมูลส่วนตัว
+    await conn.query('DELETE FROM student_profiles WHERE user_id = ?', [userId]);
+    await conn.query('DELETE FROM tutor_profiles WHERE user_id = ?', [userId]);
+
+    // 1.2 ลบประวัติและการใช้งานต่างๆ
+    await conn.query('DELETE FROM search_history WHERE user_id = ?', [userId]);
+    await conn.query('DELETE FROM calendar_events WHERE user_id = ?', [userId]);
+    await conn.query('DELETE FROM notifications WHERE user_id = ? OR actor_id = ?', [userId, userId]);
+
+    // 1.3 ลบข้อมูลการเข้าร่วมกลุ่ม (Joins)
+    await conn.query('DELETE FROM student_post_joins WHERE user_id = ?', [userId]);
+    await conn.query('DELETE FROM tutor_post_joins WHERE user_id = ?', [userId]);
+
+    // 1.4 ลบโพสต์ที่เจ้าตัวเป็นคนสร้าง
+    await conn.query('DELETE FROM student_posts WHERE student_id = ?', [userId]);
+    await conn.query('DELETE FROM tutor_posts WHERE tutor_id = ?', [userId]);
+
+    // 1.5 ลบ Favorites และ Reviews (ถ้ามีตารางพวกนี้)
+    try {
+      await conn.query('DELETE FROM posts_favorites WHERE user_id = ?', [userId]);
+      await conn.query('DELETE FROM reviews WHERE student_id = ? OR tutor_id = ?', [userId, userId]);
+    } catch (e) {
+      // เผื่อยังไม่ได้สร้างตารางพวกนี้ จะได้ไม่ Error
+      console.warn("Skipping table cleanup (might not exist yet).");
+    }
+
+    // --- 2. ลบ User ตัวจริง (Parent Table) ---
+    const [result] = await conn.query('DELETE FROM register WHERE user_id = ?', [userId]);
+
+    if (result.affectedRows === 0) {
+      throw new Error('User not found or already deleted');
+    }
+
+    await conn.commit();
+    console.log(`✅ User ${userId} deleted successfully.`);
+    res.json({ success: true, message: 'Account deleted' });
+
+  } catch (err) {
+    await conn.rollback();
+    // สำคัญ: ให้ดู Error ที่ Terminal สีแดงๆ มันจะบอกว่าติดที่ตารางไหน
+    console.error("❌ Delete Error:", err.sqlMessage || err.message);
+
+    res.status(500).json({
+      success: false,
+      message: 'ลบบัญชีไม่สำเร็จ: ' + (err.sqlMessage || 'Database constraint error')
+    });
+  } finally {
+    conn.release();
+  }
+});
+
+app.post('/api/report-issue', async (req, res) => {
+  const { category, topic, detail, user_contact } = req.body;
+
+  // เรียกใช้ฟังก์ชันบันทึกลง Sheet (แบบไม่ต้องรอ)
+  saveToGoogleSheet({ category, topic, detail, user_contact });
+
+  res.json({ success: true, message: 'ได้รับเรื่องร้องเรียนแล้ว' });
+});
 
 // ---------- Health ----------
 app.get('/health', (req, res) => res.json({ ok: true, time: new Date() }));
