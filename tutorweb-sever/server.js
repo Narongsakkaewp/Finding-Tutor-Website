@@ -157,8 +157,8 @@ async function saveToGoogleSheet(data) {
     const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
     await doc.loadInfo();
 
-    // 3. เลือกแผ่นงานแรก (Sheet1)
-    const sheet = doc.sheetsByIndex[0];
+    // 3. เลือกแผ่นงานแรก (Sheet2)
+    const sheet = doc.sheetsByIndex[1];
 
     // 4. เพิ่มแถวใหม่
     await sheet.addRow({
@@ -2467,6 +2467,48 @@ app.delete('/api/user/:id', async (req, res) => {
     });
   } finally {
     conn.release();
+  }
+});
+
+// API สำหรับลบบัญชี (พร้อมเก็บ Feedback)
+app.post('/api/delete-account', async (req, res) => {
+  const { userId, userName, userType, reason, detail } = req.body;
+
+  try {
+    // --- 1. ส่วนบันทึกลง Google Sheet (แผ่นที่ 1) ---
+    try {
+        const serviceAccountAuth = new JWT({
+            email: creds.client_email,
+            key: creds.private_key,
+            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+        });
+
+        const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
+        await doc.loadInfo();
+        const sheet = doc.sheetsByIndex[0]; 
+
+        await sheet.addRow({
+            Timestamp: new Date().toLocaleString('th-TH'),
+            UserID: userId,
+            Name: userName || 'Unknown',
+            Role: userType || 'Unknown',
+            Reason: reason,
+            Detail: detail
+        });
+        console.log("✅ Saved delete reason to Google Sheet");
+    } catch (sheetErr) {
+        console.error("⚠️ Sheet Error (ข้ามการบันทึก):", sheetErr.message);
+    }
+
+    // --- 2. ส่วนลบข้อมูลจริงใน Database ---
+    await pool.query('DELETE FROM register WHERE user_id = ?', [userId]);
+
+    console.log(`🗑️ Deleted User: ${userId} (${userName})`);
+    res.json({ success: true, message: 'Account deleted' });
+
+  } catch (err) {
+    console.error("Delete Error:", err);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 

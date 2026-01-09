@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, Mail, Lock, Trash2, Save, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import DeleteAccountModal from './DeleteAccountModal'; // ✅ Import Modal ที่เราสร้าง
 
 // Mockup API URL (เปลี่ยนตามจริง)
 const API_BASE = "http://localhost:5000";
@@ -86,7 +87,7 @@ export default function Settings() {
         setLoading(true);
         try {
             const res = await fetch(`${API_BASE}/api/user/change-password`, {
-                method: "POST", // หรือ PUT
+                method: "POST", // หรือ PUT ตาม API ของคุณ
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     user_id: user.user_id,
@@ -106,34 +107,10 @@ export default function Settings() {
             setLoading(false);
         }
     };
-
-    // 3. ลบบัญชีผู้ใช้
-    const handleDeleteAccount = async () => {
-        setLoading(true);
-        try {
-            const res = await fetch(`${API_BASE}/api/user/${user.user_id}`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    // reason: deleteReason,       // (ยังไม่ได้ทำ)
-                    // comment: deleteComment,     // (ยังไม่ได้ทำ)
-                    user_type: user.type || localStorage.getItem('userType')
-                })
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data.message || "ลบบัญชีไม่สำเร็จ");
-            }
-
-            localStorage.clear();
-            window.location.href = "/";
-
-        } catch (err) {
-            alert(err.message);
-            setLoading(false);
-        }
+    // 3. ฟังก์ชันเด้งออกจากระบบ
+    const handleLogout = () => {
+        localStorage.clear();
+        window.location.href = "/";
     };
 
     if (!user) return <div className="p-10 text-center">กรุณาเข้าสู่ระบบ</div>;
@@ -225,7 +202,9 @@ export default function Settings() {
                                 onChange={(e) => setPassData({ ...passData, newPassword: e.target.value })}
                                 className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-100 outline-none"
                             />
-                            <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-9 text-gray-400"></button>
+                            <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-9 text-gray-400">
+                                {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">ยืนยันรหัสผ่านใหม่</label>
@@ -263,30 +242,14 @@ export default function Settings() {
 
             </div>
 
-            {/* Modal ยืนยันการลบ */}
-            {showDeleteModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in duration-200">
-                        <div className="flex flex-col items-center text-center">
-                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                                <AlertTriangle className="text-red-600" size={24} />
-                            </div>
-                            <h3 className="text-xl font-bold text-gray-900 mb-2">ยืนยันการลบบัญชี?</h3>
-                            <p className="text-gray-500 text-sm mb-6">
-                                การกระทำนี้ไม่สามารถย้อนกลับได้ คุณแน่ใจหรือไม่ที่จะลบบัญชีนี้?
-                            </p>
-                            <div className="flex gap-3 w-full">
-                                <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50">
-                                    ยกเลิก
-                                </button>
-                                <button onClick={handleDeleteAccount} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700">
-                                    ลบบัญชี
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* เรียก Component DeleteAccountModal */}
+            <DeleteAccountModal
+                isOpen={showDeleteModal}
+                onClose={() => setShowDeleteModal(false)}
+                user={user}                // ✅ ส่ง object user ทั้งก้อน
+                userType={user.role || localStorage.getItem('userType')} // ✅ ส่งประเภท
+                onLogout={handleLogout}
+            />
         </div>
     );
 }

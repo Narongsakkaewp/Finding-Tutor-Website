@@ -407,7 +407,8 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               <button onClick={onEditProfile} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
                 <Edit size={16} /> แก้ไขโปรไฟล์
               </button>
-              <button onClick={() => { setReviewTargetId(17); setShowReviewModal(true); }} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
+              <button onClick={() => { setReviewTargetId(25); // เอา Tutor_post_ID มาใส่ เพื่อทำการทดสอบ
+                setShowReviewModal(true); }} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
                 <Star size={16} /> เขียนรีวิว(Demo)
               </button>
               <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
