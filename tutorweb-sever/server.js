@@ -15,9 +15,10 @@ const path = require('path');
 const fs = require('fs');
 
 // ----- recommendation sets -----
-const pool = require('./db');
+const pool = require('./db'); // นำเข้าไฟล์การตั้งค่า DB
 const recommendationRoutes = require('./src/routes/recommendationRoutes');
 const searchRoutes = require('./src/routes/searchRoutes');
+const favoriteRoutes = require('./src/routes/favoriteRoutes');
 
 // ----- Email Deps -----
 const nodemailer = require('nodemailer');
@@ -179,6 +180,7 @@ async function saveToGoogleSheet(data) {
 // ---------- APIs ----------
 app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/favorites', favoriteRoutes);
 
 // ประเภทผู้ใช้
 app.get('/api/user/:userId', async (req, res) => {
@@ -1357,94 +1359,41 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
 // >>> อนุมัติ/ปฏิเสธคำขอ ของโพสต์นักเรียน (REWRITE)
 app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
   const postId = Number(req.params.id);
-  const targetUserId = Number(req.params.userId);  // ผู้ถูกอนุมัติ/ถูกปฏิเสธ
-  const action = String(req.body?.action || '').toLowerCase(); // 'approve' | 'reject'
+  const targetUserId = Number(req.params.userId);
+  const action = String(req.body?.action || '').toLowerCase();
 
-  if (!Number.isFinite(postId) || !Number.isFinite(targetUserId)) {
-    return res.status(400).json({ message: 'invalid ids' });
-  }
-  if (!['approve', 'reject'].includes(action)) {
-    return res.status(400).json({ message: 'Invalid action' });
-  }
+  if (!Number.isFinite(postId) || !Number.isFinite(targetUserId)) return res.status(400).json({ message: 'invalid ids' });
+  if (!['approve', 'reject'].includes(action)) return res.status(400).json({ message: 'Invalid action' });
 
   try {
     const conn = await pool.getConnection();
     try {
-      // ดึง owner เพื่อนำไปใส่ actor_id ใน notifications
-      const [[sp]] = await conn.query(
-        `SELECT student_id AS owner_id FROM student_posts WHERE student_post_id = ?`,
-        [postId]
-      );
-      if (!sp) {
-        conn.release();
-        return res.status(404).json({ message: 'post not found' });
-      }
+      const [[sp]] = await conn.query(`SELECT student_id AS owner_id FROM student_posts WHERE student_post_id = ?`, [postId]);
+      if (!sp) { conn.release(); return res.status(404).json({ message: 'post not found' }); }
 
       const newStatus = action === 'approve' ? 'approved' : 'rejected';
-
-      // อัปเดตสถานะ + เวลา
       const [r] = await conn.query(
-        `UPDATE student_post_joins
-           SET status = ?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at)
-         WHERE student_post_id = ? AND user_id = ?`,
+        `UPDATE student_post_joins SET status = ?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at) WHERE student_post_id = ? AND user_id = ?`,
         [newStatus, newStatus, postId, targetUserId]
       );
 
-      if (!r.affectedRows) {
-        conn.release();
-        return res.status(404).json({ message: 'request not found' });
-      }
+      if (!r.affectedRows) { conn.release(); return res.status(404).json({ message: 'request not found' }); }
 
-      // จัดการปฏิทิน + แจ้งเตือนผู้ถูกอนุมัติ/ปฏิเสธ
       if (newStatus === 'approved') {
-        // สร้าง event ให้ owner และผู้ถูกอนุมัติ
+        // 🔥 เรียกฟังก์ชันสร้างปฏิทิน
         await createCalendarEventsForStudentApproval(postId, targetUserId);
-
-        // ส่งแจ้งเตือนไปหาผู้ถูกอนุมัติ (actor = owner)
-        await conn.query(
-          `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
-           VALUES (?, ?, ?, ?, ?)`,
-          [targetUserId, sp.owner_id, 'join_approved',
-            `คำขอของคุณสำหรับโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId]
-        );
+        await conn.query(`INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)`, [targetUserId, sp.owner_id, 'join_approved', `คำขอของคุณสำหรับโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId]);
       } else {
-        // REJECT: ลบ event ของผู้ถูกปฏิเสธ (ถ้ามี)
         await deleteCalendarEventForUser(targetUserId, postId);
-
-        // แจ้งเตือนผู้ถูกปฏิเสธ (actor = owner)
-        await conn.query(
-          `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
-           VALUES (?, ?, ?, ?, ?)`,
-          [targetUserId, sp.owner_id, 'join_rejected',
-            `คำขอของคุณสำหรับโพสต์ #${postId} ถูกปฏิเสธ`, postId]
-        );
+        await conn.query(`INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)`, [targetUserId, sp.owner_id, 'join_rejected', `คำขอของคุณสำหรับโพสต์ #${postId} ถูกปฏิเสธ`, postId]);
       }
-
       conn.release();
 
-      // คืนค่า join_count ปัจจุบันและรายชื่อผู้เข้าร่วมที่อนุมัติแล้ว
-      try {
-        const [[cnt]] = await pool.query(
-          'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status = "approved"',
-          [postId]
-        );
-        const [joiners] = await pool.query(
-          'SELECT user_id, name, lastname FROM student_post_joins WHERE student_post_id = ? AND status = "approved" ORDER BY joined_at ASC',
-          [postId]
-        );
-        return res.json({ success: true, status: newStatus, join_count: Number(cnt.c || 0), joiners });
-      } catch (e) {
-        console.error('Error fetching joiners/count after student request update:', e);
-        return res.json({ success: true, status: newStatus });
-      }
-    } catch (e) {
-      conn.release();
-      throw e;
-    }
-  } catch (err) {
-    console.error('PUT /api/student_posts/:id/requests/:userId error', err);
-    return res.status(500).json({ message: 'Server error' });
-  }
+      const [[cnt]] = await pool.query('SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status = "approved"', [postId]);
+      const [joiners] = await pool.query('SELECT user_id, name, lastname FROM student_post_joins WHERE student_post_id = ? AND status = "approved" ORDER BY joined_at ASC', [postId]);
+      return res.json({ success: true, status: newStatus, join_count: Number(cnt.c || 0), joiners });
+    } catch (e) { conn.release(); throw e; }
+  } catch (err) { return res.status(500).json({ message: 'Server error' }); }
 });
 
 function localDateStr(d = new Date()) {
@@ -1501,8 +1450,7 @@ app.get('/api/calendar/:userId', async (req, res) => {
     });
     const calItems = Array.from(uniqueCalMap.values());
 
-    // 2) ดึงโพสต์หาติวเตอร์ (student_posts)
-    // ✅ แก้ไข: ไม่มีการกรองทิ้ง (ลบ .filter ออก) แสดงหมดเลย
+    // 2) ดึงโพสต์หาติวเตอร์ (student_posts) - ที่ตนเองสร้าง (Owner)
     const [rowsStudentPosts] = await pool.query(
       `SELECT student_post_id, student_id, subject, preferred_days, preferred_time, location, created_at
        FROM student_posts
@@ -1517,18 +1465,17 @@ app.get('/api/calendar/:userId', async (req, res) => {
         event_id: `sp-${p.student_post_id}`,
         user_id: p.student_id,
         post_id: p.student_post_id,
-        title: `โพสต์หาครู: ${p.subject || 'เรียนพิเศษ'}`, // เปลี่ยนชื่อให้ชัดเจน
+        title: `โพสต์ของคุณ: ${p.subject || 'เรียนพิเศษ'}`,
         subject: p.subject || null,
         event_date,
         event_time,
         location: p.location || null,
         created_at: p.created_at,
-        source: 'student_post'
+        source: 'student_post_owner',
       };
     });
 
-    // 3) ดึงโพสต์สอนพิเศษ (tutor_posts)
-    // ✅ แก้ไข: ไม่มีการกรองทิ้ง (ลบ .filter ออก) แสดงหมดเลย
+    // 3) ดึงโพสต์สอนพิเศษ (tutor_posts) - ที่ตนเองสร้าง (Owner)
     const [rowsTutorPosts] = await pool.query(
       `SELECT tutor_post_id, tutor_id, subject, teaching_days, teaching_time, location, created_at
        FROM tutor_posts
@@ -1543,18 +1490,86 @@ app.get('/api/calendar/:userId', async (req, res) => {
         event_id: `tp-${p.tutor_post_id}`,
         user_id: p.tutor_id,
         post_id: p.tutor_post_id,
-        title: `โพสต์รับสอน: ${p.subject || 'วิชาทั่วไป'}`, // เปลี่ยนชื่อให้ชัดเจน
+        title: `โพสต์ของคุณ (สอน): ${p.subject || 'วิชาทั่วไป'}`,
         subject: p.subject || null,
         event_date,
         event_time,
         location: p.location || null,
         created_at: p.created_at,
-        source: 'tutor_post'
+        source: 'tutor_post_owner',
+      };
+    });
+
+    // 4) [NEW] ดึงโพสต์ที่ "ขอเข้าร่วมสำเร็จ" (Joined Student Posts)
+    const [rowsJoinedStudent] = await pool.query(
+      `SELECT sp.student_post_id, sp.student_id, sp.subject, sp.preferred_days, sp.preferred_time, sp.location, sp.created_at,
+              r.name, r.lastname
+       FROM student_post_joins j
+       JOIN student_posts sp ON j.student_post_id = sp.student_post_id
+       LEFT JOIN register r ON r.user_id = sp.student_id
+       WHERE j.user_id = ? AND j.status = 'approved'`,
+      [userId]
+    );
+
+    const joinedStudentEvents = rowsJoinedStudent.map(p => {
+      const event_date = parseDateFromPreferredDays(p.preferred_days);
+      const event_time = toSqlTimeMaybe(p.preferred_time);
+      // Construct title to indicate who we are learning with
+      const ownerName = `${p.name || ''} ${p.lastname || ''}`.trim();
+      return {
+        event_id: `join-sp-${p.student_post_id}`,
+        user_id: userId, // me
+        post_id: p.student_post_id,
+        title: `นัดติว (เข้าร่วม): ${p.subject || 'เรียนพิเศษ'}`,
+        subject: p.subject || null,
+        event_date,
+        event_time,
+        location: p.location || null,
+        created_at: p.created_at,
+        source: 'student_post_joined',
+      };
+    });
+
+    // 5) [NEW] ดึงโพสต์ที่ "ขอเรียนสำเร็จ" (Joined Tutor Posts)
+    const [rowsJoinedTutor] = await pool.query(
+      `SELECT tp.tutor_post_id, tp.tutor_id, tp.subject, tp.teaching_days, tp.teaching_time, tp.location, tp.created_at,
+              r.name, r.lastname
+       FROM tutor_post_joins j
+       JOIN tutor_posts tp ON j.tutor_post_id = tp.tutor_post_id
+       LEFT JOIN register r ON r.user_id = tp.tutor_id
+       WHERE j.user_id = ? AND j.status = 'approved'`,
+      [userId]
+    );
+
+    const joinedTutorEvents = rowsJoinedTutor.map(p => {
+      const event_date = parseDateFromPreferredDays(p.teaching_days);
+      const event_time = toSqlTimeMaybe(p.teaching_time);
+      const ownerName = `${p.name || ''} ${p.lastname || ''}`.trim();
+      return {
+        event_id: `join-tp-${p.tutor_post_id}`,
+        user_id: userId,
+        post_id: p.tutor_post_id,
+        title: `เรียนกับติวเตอร์: ${p.subject || 'วิชาทั่วไป'}`,
+        subject: p.subject || null,
+        event_date,
+        event_time,
+        location: p.location || null,
+        created_at: p.created_at,
+        source: 'tutor_post_joined',
+        color: '#ea580c' // Orange
       };
     });
 
     // รวมทั้งหมด
-    const allEvents = [...calItems, ...studentPostsAsEvents, ...tutorPostsAsEvents];
+    // Note: Deduplicate might be needed if calendar_events already has it, but showing both is safer than missing it.
+    // UI will render them.
+    const allEvents = [
+      ...calItems,
+      ...studentPostsAsEvents,
+      ...tutorPostsAsEvents,
+      ...joinedStudentEvents,
+      ...joinedTutorEvents
+    ];
 
     // กรองเฉพาะที่มีวันที่ถูกต้อง และอยู่ในช่วงเวลา
     const items = allEvents
@@ -1609,72 +1624,31 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
   try {
     const postId = Number(req.params.id);
     const userId = Number(req.params.userId);
-    // รับ action จากทั้ง body และ query
     const action = String((req.body?.action || req.query?.action || '')).toLowerCase();
 
-    if (!Number.isFinite(postId) || !Number.isFinite(userId))
-      return res.status(400).json({ message: 'invalid ids' });
-    if (!['approve', 'reject'].includes(action))
-      return res.status(400).json({ message: 'invalid action' });
+    if (!Number.isFinite(postId) || !Number.isFinite(userId)) return res.status(400).json({ message: 'invalid ids' });
+    if (!['approve', 'reject'].includes(action)) return res.status(400).json({ message: 'invalid action' });
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
-
-    console.error('PUT /api/tutor_posts/:id/requests/:userId params:', { postId, userId, action, newStatus });
-
     const [r] = await pool.query(
-      `UPDATE tutor_post_joins
-       SET status=?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at)
-       WHERE tutor_post_id=? AND user_id=?`,
+      `UPDATE tutor_post_joins SET status=?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at) WHERE tutor_post_id=? AND user_id=?`,
       [newStatus, newStatus, postId, userId]
     );
 
-    console.debug('UPDATE tutor_post_joins result:', r);
-
-    if (!r.affectedRows) {
-      // เพิ่ม log ข้อมูลเชิงสืบค้นเพิ่มเติม
-      console.warn(`No rows updated for postId=${postId} userId=${userId}. Verifying existence...`);
-      try {
-        const [check] = await pool.query(
-          'SELECT tutor_post_id, user_id, status FROM tutor_post_joins WHERE tutor_post_id = ? AND user_id = ?',
-          [postId, userId]
-        );
-        console.debug('Existence check result:', check);
-      } catch (ex) {
-        console.error('Existence check error:', ex);
-      }
-
-      return res.status(404).json({ message: 'request not found' });
-    }
+    if (!r.affectedRows) return res.status(404).json({ message: 'request not found' });
 
     if (newStatus === 'approved') {
-      // ... code สร้าง calendar ...
-      await pool.query(
-        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?,?,?,?,?)',
-        [userId, null, 'join_approved', `คำขอของคุณสำหรับโพสต์ติวเตอร์ #${postId} ได้รับการอนุมัติแล้ว`, postId]
-      );
-    }
-    else {
+      // 🔥 เรียกฟังก์ชันสร้างปฏิทิน
+      await createCalendarEventsForTutorApproval(postId, userId);
+      await pool.query('INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?,?,?,?,?)', [userId, null, 'join_approved', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ได้รับการอนุมัติแล้ว`, postId]);
+    } else {
       await deleteCalendarEventForUser(userId, postId);
     }
 
-    // คืนค่า join_count ปัจจุบันและรายชื่อผู้เข้าร่วมที่อนุมัติแล้ว
-    try {
-      const [[cnt]] = await pool.query(
-        `SELECT COUNT(*) AS c FROM tutor_post_joins WHERE tutor_post_id = ? AND status = 'approved'`,
-        [postId]
-      );
-      const [joiners] = await pool.query(
-        `SELECT user_id, name, lastname FROM tutor_post_joins WHERE tutor_post_id = ? AND status = 'approved' ORDER BY joined_at ASC`,
-        [postId]
-      );
-      return res.json({ success: true, status: newStatus, join_count: Number(cnt.c || 0), joiners });
-    } catch (e) {
-      console.error('Error fetching joiners/count after update:', e);
-      return res.json({ success: true, status: newStatus });
-    }
-  } catch (e) {
-    return sendDbError(res, e);
-  }
+    const [[cnt]] = await pool.query(`SELECT COUNT(*) AS c FROM tutor_post_joins WHERE tutor_post_id = ? AND status = 'approved'`, [postId]);
+    const [joiners] = await pool.query(`SELECT user_id, name, lastname FROM tutor_post_joins WHERE tutor_post_id = ? AND status = 'approved' ORDER BY joined_at ASC`, [postId]);
+    return res.json({ success: true, status: newStatus, join_count: Number(cnt.c || 0), joiners });
+  } catch (e) { return sendDbError(res, e); }
 });
 
 // ---------- Notifications (ฉบับอัปเกรด: ดึงรูป + ชื่อวิชา) ----------
@@ -1897,138 +1871,55 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
   res.status(200).json({ imageUrl });
 });
 
-// ---------- Favorites ----------
-app.post('/api/favorites/toggle', async (req, res) => {
-  try {
-    const { user_id, post_id, post_type } = req.body || {};
-    if (!user_id || !post_id || !['student', 'tutor'].includes(post_type)) {
-      return res.status(400).json({ success: false, message: 'invalid payload' });
-    }
-
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
-
-      const [have] = await conn.query(
-        'SELECT fav_id FROM posts_favorites WHERE user_id=? AND post_type=? AND post_id=?',
-        [user_id, post_type, post_id]
-      );
-
-      let action = 'added';
-      if (have.length) {
-        await conn.query(
-          'DELETE FROM posts_favorites WHERE user_id=? AND post_type=? AND post_id=?',
-          [user_id, post_type, post_id]
-        );
-        action = 'removed';
-      } else {
-        await conn.query(
-          'INSERT INTO posts_favorites (user_id, post_type, post_id) VALUES (?,?,?)',
-          [user_id, post_type, post_id]
-        );
-      }
-
-      const [cntRows] = await conn.query(
-        'SELECT COUNT(*) AS c FROM posts_favorites WHERE post_type=? AND post_id=?',
-        [post_type, post_id]
-      );
-      const fav_count = Number(cntRows?.[0]?.c || 0);
-
-      if (post_type === 'student') {
-        await conn.query('UPDATE student_posts SET fav_count=? WHERE student_post_id=?', [fav_count, post_id]);
-      } else {
-        await conn.query('UPDATE tutor_posts SET fav_count=? WHERE tutor_post_id=?', [fav_count, post_id]);
-      }
-
-      await conn.commit();
-      return res.json({ success: true, action, fav_count });
-    } catch (e) {
-      await conn.rollback();
-      console.error('[favorites/toggle] txn error:', e);
-      return res.status(500).json({ success: false, message: e.message || 'db error' });
-    } finally {
-      conn.release();
-    }
-  } catch (e) {
-    console.error('[favorites/toggle] error:', e);
-    return res.status(500).json({ success: false, message: 'server error' });
-  }
-});
-
-app.get('/api/favorites/user/:user_id', async (req, res) => {
-  try {
-    const { user_id } = req.params;
-
-    const [rows] = await pool.query(`
-      SELECT 
-        f.post_type, 
-        f.post_id, 
-        f.created_at,
-        CASE 
-          WHEN f.post_type='student' THEN sp.subject
-          ELSE tp.subject 
-        END AS subject,
-        CASE 
-          WHEN f.post_type='student' THEN sp.description
-          ELSE tp.description 
-        END AS description,
-        CASE 
-          WHEN f.post_type='student' THEN r.name
-          ELSE t.name 
-        END AS author
-      FROM posts_favorites f
-      LEFT JOIN student_posts sp ON f.post_type='student' AND f.post_id = sp.student_post_id
-      LEFT JOIN tutor_posts tp   ON f.post_type='tutor' AND f.post_id = tp.tutor_post_id
-      LEFT JOIN register r ON sp.student_id = r.user_id
-      LEFT JOIN register t ON tp.tutor_id = t.user_id
-      WHERE f.user_id = ?
-      ORDER BY f.created_at DESC
-    `, [user_id]);
-
-    res.json({ success: true, items: rows });
-  } catch (err) {
-    console.error('GET /api/favorites/user error:', err);
-    res.status(500).json({ success: false, message: 'Database error' });
-  }
-});
-
 // ================== Calendar Helpers ==================
 function parseDateFromPreferredDays(s) {
   if (!s) return null;
+
+  // 🔥 1. เช็คก่อนเลยว่าเป็น Date Object หรือไม่ (แก้ปัญหา Database ส่ง Object มา)
+  if (s instanceof Date) {
+    // แปลง Date Object ให้เป็น String 'YYYY-MM-DD'
+    return s.toISOString().slice(0, 10);
+  }
+
+  // ถ้าเป็น String ให้ทำเหมือนเดิม
   s = String(s).trim();
 
+  // แบบ YYYY-MM-DD
   let m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (m) {
-    const [, y, mo, d] = m;
-    return `${y.padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  }
+  if (m) return `${m[1].padStart(4, '0')}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
 
+  // แบบ DD/MM/YYYY
   m = s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
   if (m) {
-    const d = String(m[1]).padStart(2, '0');
-    const mo = String(m[2]).padStart(2, '0');
     let y = parseInt(m[3], 10);
     if (y > 2400) y -= 543;
-    return `${y}-${mo}-${d}`;
+    return `${y}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;
   }
 
-  const months = {
-    'มกราคม': 1, 'กุมภาพันธ์': 2, 'มีนาคม': 3, 'เมษายน': 4, 'พฤษภาคม': 5, 'มิถุนายน': 6,
-    'กรกฎาคม': 7, 'สิงหาคม': 8, 'กันยายน': 9, 'ตุลาคม': 10, 'พฤศจิกายน': 11, 'ธันวาคม': 12,
-    'ม.ค.': 1, 'ก.พ.': 2, 'มี.ค.': 3, 'เม.ย.': 4, 'พ.ค.': 5, 'มิ.ย.': 6, 'ก.ค.': 7, 'ส.ค.': 8, 'ก.ย.': 9, 'ต.ค.': 10, 'พ.ย.': 11, 'ธ.ค.': 12
-  };
-  m = s.match(/(\d{1,2})\s+([^\s]+)\s+(\d{4})/);
+  // แบบภาษาไทย (เผื่อหลุดมาเป็น String)
+  m = s.match(/(\d{1,2})\s+([^\s]+)\.?\s+(\d{4})/); // เพิ่มรองรับจุดทศนิยม
   if (m) {
+    const months = {
+      'ม.ค.': '01', 'ก.พ.': '02', 'มี.ค.': '03', 'เม.ย.': '04', 'พ.ค.': '05', 'มิ.ย.': '06',
+      'ก.ค.': '07', 'ส.ค.': '08', 'ก.ย.': '09', 'ต.ค.': '10', 'พ.ย.': '11', 'ธ.ค.': '12',
+      'มกราคม': '01', 'กุมภาพันธ์': '02', 'มีนาคม': '03', 'เมษายน': '04', 'พฤษภาคม': '05', 'มิถุนายน': '06',
+      'กรกฎาคม': '07', 'สิงหาคม': '08', 'กันยายน': '09', 'ตุลาคม': '10', 'พฤศจิกายน': '11', 'ธันวาคม': '12'
+    };
     const d = String(parseInt(m[1], 10)).padStart(2, '0');
-    const monTxt = m[2];
-    const mo = months[monTxt];
+    let monTxt = m[2];
+    // ลองหาใน map (ตัดจุดออกถ้ามี)
+    let mo = months[monTxt] || months[monTxt + '.'] || months[monTxt.replace('.', '')];
+
     let y = parseInt(m[3], 10);
     if (y > 2400) y -= 543;
-    if (mo) return `${y}-${String(mo).padStart(2, '0')}-${d}`;
+
+    if (mo) return `${y}-${mo}-${d}`;
   }
+
   return null;
 }
 
+// 2. ฟังก์ชันแปลงเวลา
 function toSqlTimeMaybe(v) {
   if (!v) return null;
   if (/^\d{2}:\d{2}$/.test(v)) return `${v}:00`;
@@ -2036,11 +1927,14 @@ function toSqlTimeMaybe(v) {
   return null;
 }
 
-// ------ upsert / delete ------
+// 3. ฟังก์ชัน Upsert (บันทึก/แก้ไข)
 async function upsertCalendarEvent({ user_id, post_id, title, subject, event_date, event_time, location }) {
+  // Debug: ให้ดูใน Terminal ว่าพยายามบันทึกอะไร
+  console.log(`Creating Event for User ${user_id}: Date=${event_date}, Time=${event_time}`);
+
   await pool.query(
-    `INSERT INTO calendar_events (user_id, post_id, title, subject, event_date, event_time, location)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO calendar_events (user_id, post_id, title, subject, event_date, event_time, location, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
      ON DUPLICATE KEY UPDATE
        title=VALUES(title),
        subject=VALUES(subject),
@@ -2050,63 +1944,145 @@ async function upsertCalendarEvent({ user_id, post_id, title, subject, event_dat
     [user_id, post_id, title, subject, event_date, event_time, location]
   );
 }
+
 async function deleteCalendarEventForUser(userId, postId) {
   await pool.query('DELETE FROM calendar_events WHERE user_id=? AND post_id=?', [userId, postId]);
 }
 
-// ------ สร้าง event ตอนอนุมัติ (Student post) ------
+// ✅ 4. สร้างปฏิทินให้ "นักเรียน" (เมื่ออนุมัติ)
 async function createCalendarEventsForStudentApproval(postId, joinerId) {
-  const [[sp]] = await pool.query(
-    `SELECT sp.*, r.name, r.lastname
-     FROM student_posts sp
-     LEFT JOIN register r ON r.user_id = sp.student_id
-     WHERE sp.student_post_id = ?`,
-    [postId]
-  );
-  if (!sp) return;
+  try {
+    console.log(`📅 createCalendarEventsForStudentApproval: PostId=${postId}, JoinerId=${joinerId}`);
 
-  const subjectText = sp.subject || 'เรียนพิเศษ';
-  const titleText = `ติว: ${subjectText}`;
-  const location = sp.location || null;
-  const event_date = parseDateFromPreferredDays(sp.preferred_days) || new Date().toISOString().slice(0, 10);
-  const event_time = toSqlTimeMaybe(sp.preferred_time);
+    const [[sp]] = await pool.query(
+      `SELECT sp.*, r.name, r.lastname FROM student_posts sp 
+       LEFT JOIN register r ON r.user_id = sp.student_id WHERE sp.student_post_id = ?`,
+      [postId]
+    );
+    if (!sp) return console.log("❌ Post not found for calendar");
 
-  // owner + participant
-  await upsertCalendarEvent({
-    user_id: sp.student_id, post_id: postId,
-    title: titleText, subject: subjectText, event_date, event_time, location
-  });
-  await upsertCalendarEvent({
-    user_id: Number(joinerId), post_id: postId,
-    title: titleText, subject: subjectText, event_date, event_time, location
-  });
+    const subjectText = sp.subject || 'เรียนพิเศษ';
+    const titleText = `นัดติว: ${subjectText}`;
+    const location = sp.location || 'ไม่ระบุสถานที่';
+
+    // แปลงวันที่
+    let event_date = parseDateFromPreferredDays(sp.preferred_days);
+    if (!event_date) {
+      console.log("⚠️ Date parse failed, using tomorrow as default");
+      const d = new Date(); d.setDate(d.getDate() + 1);
+      event_date = d.toISOString().slice(0, 10);
+    }
+    const event_time = toSqlTimeMaybe(sp.preferred_time) || '09:00:00';
+
+    // สร้างให้เจ้าของโพสต์ (Owner)
+    try {
+      if (sp.student_id) {
+        await upsertCalendarEvent({
+          user_id: sp.student_id,
+          post_id: postId,
+          title: titleText,
+          subject: subjectText,
+          event_date,
+          event_time,
+          location
+        });
+        console.log(`✅ Calendar event created for Owner (User ${sp.student_id})`);
+      } else {
+        console.warn("⚠️ Owner ID missing, skipping owner event.");
+      }
+    } catch (err) {
+      console.error(`❌ Failed to create calendar for Owner (User ${sp.student_id}):`, err.message);
+    }
+
+    // สร้างให้คนขอเข้าร่วม (Joiner)
+    try {
+      if (joinerId) {
+        await upsertCalendarEvent({
+          user_id: Number(joinerId),
+          post_id: postId,
+          title: titleText,
+          subject: subjectText,
+          event_date,
+          event_time,
+          location
+        });
+        console.log(`✅ Calendar event created for Joiner (User ${joinerId})`);
+      } else {
+        console.warn("⚠️ Joiner ID missing, skipping joiner event.");
+      }
+    } catch (err) {
+      console.error(`❌ Failed to create calendar for Joiner (User ${joinerId}):`, err.message);
+    }
+
+  } catch (e) {
+    console.error("Error in createCalendarEventsForStudentApproval root:", e);
+  }
 }
 
-// ------ สร้าง event ตอนอนุมัติ (Tutor post) ------
+// ✅ 5. สร้างปฏิทินให้ "ติวเตอร์" (เมื่ออนุมัติ)
 async function createCalendarEventsForTutorApproval(postId, joinerId) {
-  const [[tp]] = await pool.query(
-    `SELECT tp.*, r.name, r.lastname
-     FROM tutor_posts tp
-     LEFT JOIN register r ON r.user_id = tp.tutor_id
-     WHERE tp.tutor_post_id = ?`,
-    [postId]
-  );
-  if (!tp) return;
+  try {
+    console.log(`📅 createCalendarEventsForTutorApproval: PostId=${postId}, JoinerId=${joinerId}`);
 
-  const subjectText = tp.subject || 'ติว';
-  const titleText = `สอน: ${subjectText}`;
-  const location = tp.location || null;
-  const event_date = parseDateFromPreferredDays(tp.teaching_days) || new Date().toISOString().slice(0, 10);
-  const event_time = toSqlTimeMaybe(tp.teaching_time);
+    const [[tp]] = await pool.query(
+      `SELECT tp.*, r.name, r.lastname FROM tutor_posts tp 
+       LEFT JOIN register r ON r.user_id = tp.tutor_id WHERE tp.tutor_post_id = ?`,
+      [postId]
+    );
+    if (!tp) return console.log("❌ Tutor Post not found for calendar");
 
-  await upsertCalendarEvent({
-    user_id: tp.tutor_id, post_id: postId,
-    title: titleText, subject: subjectText, event_date, event_time, location
-  });
-  await upsertCalendarEvent({
-    user_id: Number(joinerId), post_id: postId,
-    title: titleText, subject: subjectText, event_date, event_time, location
-  });
+    const subjectText = tp.subject || 'เรียนพิเศษ';
+    const titleText = `เรียนกับติวเตอร์: ${tp.name} (${subjectText})`;
+    const location = tp.location || 'ไม่ระบุสถานที่';
+
+    // แปลงวันที่
+    let event_date = parseDateFromPreferredDays(tp.teaching_days);
+    if (!event_date) {
+      console.log("⚠️ Date parse failed, using tomorrow as default");
+      const d = new Date(); d.setDate(d.getDate() + 1);
+      event_date = d.toISOString().slice(0, 10);
+    }
+    const event_time = toSqlTimeMaybe(tp.teaching_time) || '09:00:00';
+
+    // สร้างให้ติวเตอร์ (Owner)
+    try {
+      if (tp.tutor_id) {
+        await upsertCalendarEvent({
+          user_id: tp.tutor_id,
+          post_id: postId,
+          title: `สอน: ${subjectText}`,
+          subject: subjectText,
+          event_date,
+          event_time,
+          location
+        });
+        console.log(`✅ Calendar event created for Tutor (User ${tp.tutor_id})`);
+      }
+    } catch (err) {
+      console.error(`❌ Failed to create calendar for Tutor (User ${tp.tutor_id}):`, err.message);
+    }
+
+    // สร้างให้คนขอเข้าร่วม (Joiner/Student)
+    try {
+      if (joinerId) {
+        await upsertCalendarEvent({
+          user_id: Number(joinerId),
+          post_id: postId,
+          title: titleText,
+          subject: subjectText,
+          event_date,
+          event_time,
+          location
+        });
+        console.log(`✅ Calendar event created for Student/Joiner (User ${joinerId})`);
+      }
+    } catch (err) {
+      console.error(`❌ Failed to create calendar for Student/Joiner (User ${joinerId}):`, err.message);
+    }
+
+  } catch (e) {
+    console.error("Error in createCalendarEventsForTutorApproval root:", e);
+  }
 }
 
 // --- API สำหรับดึงข้อมูลโพสต์ติวเตอร์เพื่อแสดงในหน้ารีวิว ---
@@ -2477,27 +2453,27 @@ app.post('/api/delete-account', async (req, res) => {
   try {
     // --- 1. ส่วนบันทึกลง Google Sheet (แผ่นที่ 1) ---
     try {
-        const serviceAccountAuth = new JWT({
-            email: creds.client_email,
-            key: creds.private_key,
-            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-        });
+      const serviceAccountAuth = new JWT({
+        email: creds.client_email,
+        key: creds.private_key,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
 
-        const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
-        await doc.loadInfo();
-        const sheet = doc.sheetsByIndex[0]; 
+      const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
+      await doc.loadInfo();
+      const sheet = doc.sheetsByIndex[0];
 
-        await sheet.addRow({
-            Timestamp: new Date().toLocaleString('th-TH'),
-            UserID: userId,
-            Name: userName || 'Unknown',
-            Role: userType || 'Unknown',
-            Reason: reason,
-            Detail: detail
-        });
-        console.log("✅ Saved delete reason to Google Sheet");
+      await sheet.addRow({
+        Timestamp: new Date().toLocaleString('th-TH'),
+        UserID: userId,
+        Name: userName || 'Unknown',
+        Role: userType || 'Unknown',
+        Reason: reason,
+        Detail: detail
+      });
+      console.log("✅ Saved delete reason to Google Sheet");
     } catch (sheetErr) {
-        console.error("⚠️ Sheet Error (ข้ามการบันทึก):", sheetErr.message);
+      console.error("⚠️ Sheet Error (ข้ามการบันทึก):", sheetErr.message);
     }
 
     // --- 2. ส่วนลบข้อมูลจริงใน Database ---

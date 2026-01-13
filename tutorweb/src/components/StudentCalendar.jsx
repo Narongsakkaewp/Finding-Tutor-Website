@@ -16,11 +16,11 @@ const toKeyLocal = (d) => {
 const fmtTime = (t) =>
   t
     ? new Intl.DateTimeFormat("th-TH", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-        timeZone: "Asia/Bangkok",
-      }).format(new Date(`1970-01-01T${t}`))
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Asia/Bangkok",
+    }).format(new Date(`1970-01-01T${t}`))
     : "";
 
 /* -------------------- Component -------------------- */
@@ -122,15 +122,27 @@ function StudentCalendar({ userId: userIdProp }) {
             {dayEvents.map((ev) => (
               <div
                 key={ev.event_id}
-                className="border p-3 rounded-lg bg-red-50 shadow-sm"
+                className="p-4 rounded-lg bg-white shadow border border-gray-100 flex flex-col gap-1"
+                style={{ borderLeft: `5px solid ${ev.color || '#ef4444'}` }}
               >
-                <p className="text-red-600 font-semibold">
-                  {fmtTime(ev.event_time)}
+                {/* 1. หัวข้อ (Title) - ใช้สีตามที่ส่งมาจาก Backend */}
+                <h3
+                  className="font-bold text-lg"
+                  style={{ color: ev.color || '#ef4444' }}
+                >
+                  {ev.title || ev.subject || "การติว"}
+                </h3>
+
+                {/* 2. เวลา (Time) */}
+                <p className="text-gray-600 font-medium flex items-center gap-2">
+                  ⏰ {fmtTime(ev.event_time)}
+                  {ev.subject && <span className="text-gray-400">| {ev.subject}</span>}
                 </p>
-                <p className="font-medium">{ev.title || ev.subject || "การติว"}</p>
-                {ev.location ? (
-                  <p className="text-sm text-gray-600">📍 {ev.location}</p>
-                ) : null}
+
+                {/* 3. สถานที่ (Location) */}
+                {ev.location && (
+                  <p className="text-sm text-gray-500">📍 {ev.location}</p>
+                )}
               </div>
             ))}
           </div>

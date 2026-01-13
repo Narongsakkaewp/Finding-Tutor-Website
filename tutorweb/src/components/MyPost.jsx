@@ -424,13 +424,73 @@ function MyPost({ setPostsCache }) {
 
   const toggleFavorite = async (post) => {
     if (!meId) return alert("กรุณาเข้าสู่ระบบ");
+
     const postType = post.post_type || (feedType === "student" ? "student" : "tutor");
+
+    // 1. ✨ Optimistic Update: เปลี่ยนสีหัวใจทันที! (ไม่ต้องรอ Server)
+    // เราจะแอบเปลี่ยนค่าใน state ก่อนเลย ผู้ใช้จะได้รู้สึกว่าแอปเร็ว
+    setPosts(currentPosts => currentPosts.map(p => {
+      if (p.id === post.id) {
+        const isFav = !p.favorited; // สลับค่าจริง/เท็จ
+        return {
+          ...p,
+          favorited: isFav,
+          fav_count: isFav ? p.fav_count + 1 : p.fav_count - 1
+        };
+      }
+      return p;
+    }));
+
     setFavLoading(s => ({ ...s, [post.id]: true }));
+
     try {
-      const res = await fetch(`${API_BASE}/api/favorites/toggle`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: meId, post_id: post.id, post_type: postType }) });
+      // 2. ส่งข้อมูลไปบอก Server ทีหลัง (Background Process)
+      const res = await fetch(`${API_BASE}/api/favorites/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: meId,
+          post_id: post.id,
+          post_type: postType
+        })
+      });
+
       const data = await res.json();
-      if (res.ok) setPosts(arr => arr.map(p => p.id === post.id ? { ...p, favorited: data.action === "added", fav_count: data.fav_count ?? p.fav_count } : p));
-    } catch { alert("Fav Error"); } finally { setFavLoading(s => ({ ...s, [post.id]: false })); }
+
+      // 3. ถ้า Server ตอบกลับมาว่าสำเร็จ เราจะอัปเดตตัวเลข fav_count ให้ตรงกับ Server (เพื่อความชัวร์)
+      if (res.ok && data.success) {
+        setPosts(arr => arr.map(p => {
+          if (p.id === post.id) {
+            return {
+              ...p,
+              // ใช้ค่า fav_count จาก Server เพื่อความแม่นยำที่สุด
+              fav_count: data.fav_count
+            };
+          }
+          return p;
+        }));
+      } else {
+        throw new Error("Server returned unsuccessful");
+      }
+
+    } catch (err) {
+      console.error("Fav Error:", err);
+      // 4. ❌ ถ้า Server พัง หรือเน็ตหลุด ให้ "เปลี่ยนสีกลับคืน" (Revert)
+      setPosts(currentPosts => currentPosts.map(p => {
+        if (p.id === post.id) {
+          const isFav = !p.favorited; // กลับค่าเดิม
+          return {
+            ...p,
+            favorited: isFav,
+            fav_count: isFav ? p.fav_count + 1 : p.fav_count - 1
+          };
+        }
+        return p;
+      }));
+      alert("เกิดข้อผิดพลาด ไม่สามารถกดถูกใจได้");
+    } finally {
+      setFavLoading(s => ({ ...s, [post.id]: false }));
+    }
   };
 
   const currentUserName = user?.name || user?.first_name || "User";
