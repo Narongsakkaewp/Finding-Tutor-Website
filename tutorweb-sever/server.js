@@ -2434,7 +2434,6 @@ app.delete('/api/user/:id', async (req, res) => {
 
   } catch (err) {
     await conn.rollback();
-    // สำคัญ: ให้ดู Error ที่ Terminal สีแดงๆ มันจะบอกว่าติดที่ตารางไหน
     console.error("❌ Delete Error:", err.sqlMessage || err.message);
 
     res.status(500).json({
@@ -2495,6 +2494,125 @@ app.post('/api/report-issue', async (req, res) => {
   saveToGoogleSheet({ category, topic, detail, user_contact });
 
   res.json({ success: true, message: 'ได้รับเรื่องร้องเรียนแล้ว' });
+});
+
+app.post('/api/student_posts/:id/join', async (req, res) => {
+  try {
+    const postId = Number(req.params.id);
+    const me = Number(req.body.user_id);
+
+    if (!Number.isFinite(postId) || !Number.isFinite(me)) {
+      return res.status(400).json({ success: false, message: 'Invalid ID' });
+    }
+
+    // 1. ดึงข้อมูลโพสต์
+    const [[post]] = await pool.query(
+      'SELECT student_id, group_size, subject FROM student_posts WHERE student_post_id = ?',
+      [postId]
+    );
+    if (!post) return res.status(404).json({ success: false, message: 'ไม่พบโพสต์นี้' });
+
+    if (post.student_id === me) {
+      return res.status(400).json({ success: false, message: 'คุณเป็นเจ้าของโพสต์นี้' });
+    }
+
+    // 2. ตรวจสอบว่าคนกดเป็นติวเตอร์ไหม
+    const [[user]] = await pool.query('SELECT type FROM register WHERE user_id = ?', [me]);
+    if (!user) return res.status(404).json({ success: false, message: 'ไม่พบ User นี้' });
+
+    const isTutor = (user.type || '').toLowerCase() === 'tutor' || (user.type || '').toLowerCase() === 'teacher';
+
+    // 3. ถ้าเป็นนักเรียน -> เช็คคนเต็ม (ติวเตอร์ไม่ต้องเช็ค)
+    const [[cnt]] = await pool.query(
+      'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status="approved"',
+      [postId]
+    );
+    if (!isTutor && (cnt.c >= post.group_size)) {
+      return res.status(409).json({ success: false, message: 'กลุ่มนี้เต็มแล้ว' });
+    }
+
+    // 4. บันทึกลง Database (ใช้ Insert .. On Duplicate Key Update เพื่อความชัวร์)
+    await pool.query(
+      `INSERT INTO student_post_joins (student_post_id, user_id, status, requested_at, name, lastname)
+       SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
+       FROM register r WHERE r.user_id = ?
+       ON DUPLICATE KEY UPDATE
+         status = IF(VALUES(status)='pending' AND status <> 'approved', 'pending', status),
+         requested_at = VALUES(requested_at)
+      `,
+      [postId, me, me]
+    );
+
+    // 5. แจ้งเตือนเจ้าของโพสต์ (แยกข้อความตามประเภทคนกด)
+    const notiMessage = isTutor
+      ? `มีติวเตอร์ยื่นข้อเสนอสอน สำหรับโพสต์ "${post.subject || 'เรียนพิเศษ'}"`
+      : `มีคำขอเข้าร่วมโพสต์ "${post.subject || 'เรียนพิเศษ'}"`;
+
+    await pool.query(
+      'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
+      [post.student_id, me, 'join_request', notiMessage, postId]
+    );
+
+    // 6. ส่งค่ากลับ
+    return res.json({
+      success: true,
+      joined: false,
+      pending_me: true,
+      join_count: Number(cnt.c || 0)
+    });
+
+  } catch (err) {
+    console.error("❌ JOIN ERROR:", err);
+    return res.status(500).json({ success: false, message: 'Server Error: ' + err.message });
+  }
+});
+
+// ✅ API: ยกเลิกคำขอ / เลิกเข้าร่วม (สำหรับ student_posts)
+app.delete('/api/student_posts/:id/join', async (req, res) => {
+  try {
+    const postId = Number(req.params.id);
+    const me = Number(req.query.user_id || req.body?.user_id); // รับค่าให้ครบ
+
+    if (!Number.isFinite(postId) || !Number.isFinite(me)) {
+      return res.status(400).json({ success: false, message: 'Invalid IDs' });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      // 1. ลบออกจากตาราง Joins
+      const [result] = await conn.query(
+        'DELETE FROM student_post_joins WHERE student_post_id = ? AND user_id = ?',
+        [postId, me]
+      );
+
+      // 2. ลบออกจากปฏิทินด้วย (ถ้ามี)
+      await conn.query(
+        'DELETE FROM calendar_events WHERE post_id = ? AND user_id = ?',
+        [postId, me]
+      );
+
+      // 3. ส่งข้อมูลจำนวนคนล่าสุดกลับไป
+      const [[cnt]] = await conn.query(
+        'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status="approved"',
+        [postId]
+      );
+
+      conn.release();
+      return res.json({
+        success: true,
+        message: 'Unjoined successfully',
+        join_count: Number(cnt?.c || 0)
+      });
+
+    } catch (dbErr) {
+      conn.release();
+      throw dbErr;
+    }
+
+  } catch (err) {
+    console.error("❌ UNJOIN ERROR:", err);
+    return res.status(500).json({ success: false, message: 'Server error during unjoin' });
+  }
 });
 
 // ---------- Health ----------

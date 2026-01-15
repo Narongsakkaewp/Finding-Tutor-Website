@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { 
-  Heart, Users, BookOpen, Search, Filter, Trash2, 
-  Sparkles, MapPin, DollarSign, User 
+import {
+  Heart, Users, BookOpen, Search, Filter, Trash2,
+  Sparkles, MapPin, DollarSign, User
 } from "lucide-react";
 
 // ✅ 1. ตรวจสอบ URL ให้ถูกต้อง
-const API_BASE = "http://localhost:5000"; 
+const API_BASE = "http://localhost:5000";
 
 // --------------------------- Utilities ---------------------------
 const formatPrice = (n) => new Intl.NumberFormat("th-TH").format(n);
@@ -74,7 +74,7 @@ function useFavorites() {
 
 function useRecommendations(userId) {
   const [recs, setRecs] = useState([]);
-  const [subjects, setSubjects] = useState([]); 
+  const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -85,7 +85,7 @@ function useRecommendations(userId) {
       try {
         const res = await fetch(`${API_BASE}/api/favorites/feed-recommend/${userId}`);
         const json = await res.json();
-        
+
         if (json.success) {
           setRecs(json.posts || []);
           setSubjects(json.recommended_subjects || []);
@@ -109,11 +109,10 @@ function TabButton({ active, children, onClick, icon: Icon }) {
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-200 ${
-        active
+      className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-200 ${active
           ? "bg-blue-600 text-white shadow-md shadow-blue-200"
           : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
-      }`}
+        }`}
     >
       {Icon && <Icon size={18} />}
       {children}
@@ -127,9 +126,8 @@ function PostCardSimple({ item, onUnfav }) {
     <div className="group relative flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition-all duration-200 h-full">
       <div>
         <div className="flex items-start justify-between gap-3 mb-3">
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${
-            isTutor ? "bg-purple-50 text-purple-700" : "bg-orange-50 text-orange-700"
-          }`}>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${isTutor ? "bg-green-200 text-green-700" : "bg-rose-200 text-rose-700"
+            }`}>
             {isTutor ? <Users size={12} /> : <BookOpen size={12} />}
             {isTutor ? "ติวเตอร์" : "นักเรียน"}
           </span>
@@ -142,14 +140,14 @@ function PostCardSimple({ item, onUnfav }) {
       </div>
       <div className="flex items-center justify-between border-t pt-4 mt-auto">
         <div className="flex items-center gap-2 text-sm text-gray-500">
-           <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">
-             <User size={14} />
-           </div>
-           <span className="truncate max-w-[120px]">{item.authorName}</span>
+          <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">
+            <User size={14} />
+          </div>
+          <span className="truncate max-w-[120px]">{item.authorName}</span>
         </div>
         {/* ปุ่มลบ (ถังขยะ) */}
-        <button 
-          onClick={() => onUnfav(item)} 
+        <button
+          onClick={() => onUnfav(item)}
           className="text-red-500 hover:bg-red-50 p-2 rounded-full transition cursor-pointer"
           title="ลบออกจากรายการโปรด"
         >
@@ -164,27 +162,27 @@ function PostCardSimple({ item, onUnfav }) {
 function RecommendCard({ post, reasonSubjects }) {
   const isMatch = reasonSubjects.includes(post.subject);
   // เช็คประเภทโพสต์ (Backend ส่งมาเป็น 'student' หรือ 'tutor')
-  const isTutor = post.post_type === 'tutor'; 
+  const isTutor = post.post_type === 'tutor';
 
   return (
     <div className={`flex flex-col min-w-[280px] md:min-w-[300px] rounded-2xl border bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-300 ${isMatch ? 'border-yellow-400 ring-1 ring-yellow-100' : 'border-gray-100'}`}>
-      
+
       {/* Badge ประเภท และ แนะนำ */}
       <div className="flex justify-between items-start mb-3">
         {isMatch ? (
           <span className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-md font-medium">
-            <Sparkles size={12} /> ตรงใจคุณ
+            <Sparkles size={12} />
           </span>
         ) : <div></div>}
-        
-        <span className={`text-[10px] px-2 py-0.5 rounded ml-auto ${isTutor ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>
-            {isTutor ? 'ติวเตอร์' : 'นักเรียน'}
+
+        <span className={`text-[10px] px-2 py-0.5 rounded ml-auto ${isTutor ? 'bg-green-200 text-green-700' : 'bg-rose-200 text-rose-700'}`}>
+          {isTutor ? 'ติวเตอร์' : 'นักเรียน'}
         </span>
       </div>
 
       <div className="flex items-center gap-3 mb-4">
-        <img 
-          src={post.profile_picture_url || "/default-avatar.png"} 
+        <img
+          src={post.profile_picture_url || "/default-avatar.png"}
           alt={post.name}
           className="w-12 h-12 rounded-full object-cover border border-gray-200"
         />
@@ -201,7 +199,7 @@ function RecommendCard({ post, reasonSubjects }) {
           <MapPin size={12} /> {post.location || "ออนไลน์"}
         </div>
         <div className="flex items-center gap-1 font-semibold text-blue-600">
-          <DollarSign size={12} /> 
+          <DollarSign size={12} />
           {/* ✅ แสดงราคา หรือ งบประมาณ ตามประเภทโพสต์ */}
           {isTutor ? `${formatPrice(post.price || 0)}/ชม.` : `งบ ${formatPrice(post.budget || 0)}`}
         </div>
@@ -214,7 +212,7 @@ function RecommendCard({ post, reasonSubjects }) {
 export default function Favorite() {
   const { me, data, setData, loading, error } = useFavorites();
   const { recs, subjects } = useRecommendations(me?.user_id);
-  
+
   const [tab, setTab] = useState("tutor");
   const [q, setQ] = useState("");
 
@@ -222,7 +220,7 @@ export default function Favorite() {
     const source = tab === "student" ? data.student : data.tutor;
     if (!q) return source;
     const lowerQ = q.toLowerCase();
-    return source.filter(item => 
+    return source.filter(item =>
       item.title.toLowerCase().includes(lowerQ) ||
       item.authorName.toLowerCase().includes(lowerQ)
     );
@@ -239,7 +237,7 @@ export default function Favorite() {
     try {
       // 2.2 ยิง API ไปลบที่ Backend (สำคัญมาก: ชื่อตัวแปรต้องตรง)
       console.log("Removing favorite:", item);
-      
+
       const res = await fetch(`${API_BASE}/api/favorites/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -251,10 +249,10 @@ export default function Favorite() {
       });
 
       const result = await res.json();
-      if(!result.success) {
-         console.error("Failed to remove favorite:", result);
-         // (Optional) ถ้าลบไม่สำเร็จ อาจจะโหลดข้อมูลใหม่มาแสดง
-         // window.location.reload(); 
+      if (!result.success) {
+        console.error("Failed to remove favorite:", result);
+        // (Optional) ถ้าลบไม่สำเร็จ อาจจะโหลดข้อมูลใหม่มาแสดง
+        // window.location.reload(); 
       }
 
     } catch (e) {
@@ -268,21 +266,24 @@ export default function Favorite() {
 
   return (
     <div className="min-h-screen bg-gray-50/30 pb-20">
-      
+
       {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10 px-4 py-4 shadow-sm">
+      <div className="sticky top-0 z-10 px-4 py-4">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Heart className="text-red-500 fill-red-500" /> รายการที่สนใจ
-            </h1>
+          <div className="flex items-center gap-4">
+            <div className="bg-red-600 p-2.5 rounded-xl text-white shadow-lg shadow-red-500/30">
+              <Heart size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">รายการที่สนใจ</h1>
+            </div>
           </div>
-          
+
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="ค้นหา..." 
+            <input
+              type="text"
+              placeholder="ค้นหา..."
               className="w-full pl-10 pr-4 py-2 rounded-xl border bg-gray-100 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all outline-none"
               value={q}
               onChange={e => setQ(e.target.value)}
@@ -332,11 +333,11 @@ export default function Favorite() {
 
             <div className="flex overflow-x-auto gap-4 pb-6 scrollbar-hide snap-x">
               {recs.map((post) => (
-                <RecommendCard 
+                <RecommendCard
                   // ใช้ key ที่ไม่ซ้ำกันแน่นอน
-                  key={`${post.post_type}-${post.tutor_post_id || post.student_post_id}`} 
-                  post={post} 
-                  reasonSubjects={subjects} 
+                  key={`${post.post_type}-${post.tutor_post_id || post.student_post_id}`}
+                  post={post}
+                  reasonSubjects={subjects}
                 />
               ))}
             </div>

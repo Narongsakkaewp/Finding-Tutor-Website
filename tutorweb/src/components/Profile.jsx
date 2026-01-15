@@ -1,6 +1,6 @@
 // src/pages/Profile.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import Review from "../components/Review"; 
+import Review from "../components/Review";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
 import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive } from "lucide-react";
@@ -139,33 +139,33 @@ function HiddenPostsModal({ open, onClose, posts, hiddenIds, onRestore, onRestor
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
           {hiddenPosts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-                <Archive size={48} className="mb-3 opacity-20" />
-                <p>ไม่มีโพสต์ที่ซ่อนไว้</p>
+              <Archive size={48} className="mb-3 opacity-20" />
+              <p>ไม่มีโพสต์ที่ซ่อนไว้</p>
             </div>
           ) : (
             <div className="space-y-4">
               {hiddenPosts.map(p => (
                 <div key={p._id ?? p.id} className="bg-white p-4 rounded-xl border shadow-sm flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                           <span className="font-bold text-gray-800 truncate">{p.subject || "(ไม่มีหัวข้อ)"}</span>
-                           <span className="text-xs text-gray-400">• {new Date(p.createdAt).toLocaleDateString("th-TH")}</span>
-                        </div>
-                        <p className="text-sm text-gray-600 line-clamp-1">{p.content}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-bold text-gray-800 truncate">{p.subject || "(ไม่มีหัวข้อ)"}</span>
+                      <span className="text-xs text-gray-400">• {new Date(p.createdAt).toLocaleDateString("th-TH")}</span>
                     </div>
-                    <button onClick={() => onRestore(p._id ?? p.id)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 text-sm font-medium hover:bg-blue-100 transition whitespace-nowrap">
-                        <Eye size={16} /> เลิกซ่อน
-                    </button>
+                    <p className="text-sm text-gray-600 line-clamp-1">{p.content}</p>
+                  </div>
+                  <button onClick={() => onRestore(p._id ?? p.id)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 text-sm font-medium hover:bg-blue-100 transition whitespace-nowrap">
+                    <Eye size={16} /> เลิกซ่อน
+                  </button>
                 </div>
               ))}
             </div>
           )}
         </div>
         {hiddenPosts.length > 0 && (
-            <div className="p-4 border-t bg-white flex justify-end">
-                <button onClick={onRestoreAll} className="text-sm text-gray-600 hover:text-blue-600 font-medium px-4 py-2 hover:bg-gray-50 rounded-lg transition">เลิกซ่อนทั้งหมด</button>
-                <button onClick={onClose} className="ml-2 bg-gray-800 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-gray-900 transition">ปิดหน้าต่าง</button>
-            </div>
+          <div className="p-4 border-t bg-white flex justify-end">
+            <button onClick={onRestoreAll} className="text-sm text-gray-600 hover:text-blue-600 font-medium px-4 py-2 hover:bg-gray-50 rounded-lg transition">เลิกซ่อนทั้งหมด</button>
+            <button onClick={onClose} className="ml-2 bg-gray-800 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-gray-900 transition">ปิดหน้าต่าง</button>
+          </div>
         )}
       </div>
     </div>
@@ -178,7 +178,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [events, setEvents] = useState([]); 
+  const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dailyEvents, setDailyEvents] = useState([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -186,7 +186,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
 
   const [openMenuFor, setOpenMenuFor] = useState(null);
   const [showHiddenModal, setShowHiddenModal] = useState(false);
-  
+
   const [hiddenPostIds, setHiddenPostIds] = useState(() => {
     try {
       const saved = localStorage.getItem("hiddenStudentPosts");
@@ -265,7 +265,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           const evData = await evRes.json();
           if (!cancelled) setEvents(evData.items || []);
         }
-      } catch (e) { console.error(e); } 
+      } catch (e) { console.error(e); }
       finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
@@ -274,10 +274,10 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   useEffect(() => {
     const selectedDateStr = toLocalYMD(selectedDate);
     const matches = events.filter((ev) => {
-        if(!ev.event_date) return false;
-        const eventDateObj = new Date(ev.event_date); 
-        const evDateStr = toLocalYMD(eventDateObj); 
-        return evDateStr === selectedDateStr;
+      if (!ev.event_date) return false;
+      const eventDateObj = new Date(ev.event_date);
+      const evDateStr = toLocalYMD(eventDateObj);
+      return evDateStr === selectedDateStr;
     });
     setDailyEvents(matches);
   }, [selectedDate, events]);
@@ -287,18 +287,18 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
 
   const handleHidePost = (id) => {
     setHiddenPostIds((prev) => {
-        const newSet = new Set(prev).add(id);
-        localStorage.setItem("hiddenStudentPosts", JSON.stringify([...newSet]));
-        return newSet;
+      const newSet = new Set(prev).add(id);
+      localStorage.setItem("hiddenStudentPosts", JSON.stringify([...newSet]));
+      return newSet;
     });
   };
 
   const handleRestorePost = (id) => {
     setHiddenPostIds((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(id);
-        localStorage.setItem("hiddenStudentPosts", JSON.stringify([...newSet]));
-        return newSet;
+      const newSet = new Set(prev);
+      newSet.delete(id);
+      localStorage.setItem("hiddenStudentPosts", JSON.stringify([...newSet]));
+      return newSet;
     });
   };
 
@@ -323,10 +323,10 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) throw new Error("Failed to delete");
-    } catch (e) { 
+    } catch (e) {
       console.error(e);
-      setPosts(before); 
-      alert("เกิดข้อผิดพลาดในการลบโพสต์"); 
+      setPosts(before);
+      alert("เกิดข้อผิดพลาดในการลบโพสต์");
     }
   };
 
@@ -338,13 +338,13 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
     { user_id: 102, profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=A', name: 'อลิสา', lastname: 'ใจดี', can_teach_subjects: 'GAT ภาษาอังกฤษ, TOEIC' },
     { user_id: 103, profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=N', name: 'นนทรี', lastname: 'บีทีเอส', can_teach_subjects: 'ฟิสิกส์ (PAT3), ตะลุยโจทย์' }
   ];
-  
+
   const hiddenCount = posts.filter(p => hiddenPostIds.has(p._id ?? p.id)).length;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
-        
+
         {/* Header Profile */}
         <div className="bg-white rounded-3xl shadow-sm border p-6">
           <div className="flex flex-col md:flex-row md:items-center gap-6">
@@ -388,7 +388,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                 </div>
                 {/* Contact Info */}
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                   <a href={profile.city ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.city)}` : "#"} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 border rounded-lg p-2 bg-gray-50 transition-colors ${profile.city ? "hover:bg-gray-100 cursor-pointer" : "cursor-default"}`} onClick={(e) => !profile.city && e.preventDefault()}>
+                  <a href={profile.city ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.city)}` : "#"} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 border rounded-lg p-2 bg-gray-50 transition-colors ${profile.city ? "hover:bg-gray-100 cursor-pointer" : "cursor-default"}`} onClick={(e) => !profile.city && e.preventDefault()}>
                     <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><MapPin size={16} className="text-gray-600" /></div>
                     <span className="text-gray-700 truncate">{profile.city || "ยังไม่ระบุที่อยู่"}</span>
                   </a>
@@ -396,9 +396,9 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                     <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><Phone size={16} className="text-gray-600" /></div>
                     <a href={`tel:${profile.phone}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">{profile.phone || "ยังไม่ระบุเบอร์"}</a>
                   </div>
-                   <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50 hover:bg-gray-100">
+                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50 hover:bg-gray-100">
                     <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><Mail size={16} className="text-gray-600" /></div>
-                    <span className="text-gray-700 truncate">{profile.email || "ยังไม่ระบุอีเมล"}</span>
+                    <a href={`mailto:${profile.email}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">{profile.email || "ยังไม่ระบุอีเมล"}</a>
                   </div>
                 </div>
               </div>
@@ -407,8 +407,10 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               <button onClick={onEditProfile} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
                 <Edit size={16} /> แก้ไขโปรไฟล์
               </button>
-              <button onClick={() => { setReviewTargetId(25); // เอา Tutor_post_ID มาใส่ เพื่อทำการทดสอบ
-                setShowReviewModal(true); }} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
+              <button onClick={() => {
+                setReviewTargetId(25); // เอา Tutor_post_ID มาใส่ เพื่อทำการทดสอบ
+                setShowReviewModal(true);
+              }} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
                 <Star size={16} /> เขียนรีวิว(Demo)
               </button>
               <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
@@ -421,50 +423,50 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
         {/* Content */}
         <div className="mt-6 grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            
+
             {/* ✅ Calendar Section (กู้คืน Layout เดิม: ซ้ายปฏิทิน ขวารายการ) */}
             <Card title="ตารางเวลาของฉัน">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                 {/* 1. ส่วนปฏิทิน */}
-                 <div className="flex justify-center">
-                    <ReactCalendar
-                        className="border rounded-xl p-4 bg-white shadow-sm w-full max-w-sm"
-                        locale="en-US"
-                        value={selectedDate}
-                        onClickDay={(value) => setSelectedDate(value)}
-                        tileClassName={({ date, view }) => {
-                            if (view === "month" && events.some(ev => ev.event_date && toLocalYMD(new Date(ev.event_date)) === toLocalYMD(date))) {
-                                return "bg-blue-200 text-blue-800 font-semibold rounded-lg";
-                            }
-                            return null;
-                        }}
-                    />
-                 </div>
+                {/* 1. ส่วนปฏิทิน */}
+                <div className="flex justify-center">
+                  <ReactCalendar
+                    className="border rounded-xl p-4 bg-white shadow-sm w-full max-w-sm"
+                    locale="en-US"
+                    value={selectedDate}
+                    onClickDay={(value) => setSelectedDate(value)}
+                    tileClassName={({ date, view }) => {
+                      if (view === "month" && events.some(ev => ev.event_date && toLocalYMD(new Date(ev.event_date)) === toLocalYMD(date))) {
+                        return "bg-blue-200 text-blue-800 font-semibold rounded-lg";
+                      }
+                      return null;
+                    }}
+                  />
+                </div>
 
-                 {/* 2. ส่วนรายการกิจกรรม (Daily Events) */}
-                 <div className="bg-gray-50 rounded-xl p-4 border h-full">
-                    <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-                        <AppWindow size={18} /> 
-                        การติววันที่ {selectedDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                    </h4>
-                    {!dailyEvents.length ? (
-                        <div className="text-center py-8 text-gray-400 text-sm">
-                            ไม่มีการติวในวันนี้
-                        </div>
-                    ) : (
-                        <ul className="space-y-2">
-                          {dailyEvents.map((ev) => (
-                            <li key={ev.event_id} className="border rounded-lg p-3 bg-white shadow-sm hover:shadow-md transition">
-                              <div className="font-semibold text-gray-800">{ev.title}</div>
-                              <div className="text-sm text-gray-600 mt-1">
-                                📘 {ev.subject} — ⏰ {ev.event_time?.slice(0, 5)}<br />
-                                📍 {ev.location || "ไม่ระบุสถานที่"}
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                    )}
-                 </div>
+                {/* 2. ส่วนรายการกิจกรรม (Daily Events) */}
+                <div className="bg-gray-50 rounded-xl p-4 border h-full">
+                  <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+                    <AppWindow size={18} />
+                    การติววันที่ {selectedDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                  </h4>
+                  {!dailyEvents.length ? (
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      ไม่มีการติวในวันนี้
+                    </div>
+                  ) : (
+                    <ul className="space-y-2">
+                      {dailyEvents.map((ev) => (
+                        <li key={ev.event_id} className="border rounded-lg p-3 bg-white shadow-sm hover:shadow-md transition">
+                          <div className="font-semibold text-gray-800">{ev.title}</div>
+                          <div className="text-sm text-gray-600 mt-1">
+                            📘 {ev.subject} — ⏰ {ev.event_time?.slice(0, 5)}<br />
+                            📍 {ev.location || "ไม่ระบุสถานที่"}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </Card>
 
@@ -472,8 +474,8 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               {/* ปุ่มเปิดดูรายการที่ซ่อน */}
               {hiddenCount > 0 && (
                 <div className="mb-3 flex justify-end">
-                  <button 
-                    onClick={() => setShowHiddenModal(true)} 
+                  <button
+                    onClick={() => setShowHiddenModal(true)}
                     className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 transition"
                   >
                     <Archive size={14} /> รายการที่ซ่อนไว้ ({hiddenCount})
@@ -491,7 +493,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                           <MoreVertical size={18} />
                         </button>
                         <PostActionMenu open={openMenuFor === id} onClose={() => setOpenMenuFor(null)} onHide={() => handleHidePost(id)} onDelete={() => handleAskDelete(id)} />
-                        
+
                         <div className="flex items-center gap-3">
                           <img src={profile.avatarUrl || "/default-avatar.png"} alt="avatar" className="w-9 h-9 rounded-full object-cover" />
                           <div>
@@ -542,15 +544,15 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           </div>
         </div>
       </div>
-      
+
       {/* Modals */}
       {isAvatarModalOpen && <AvatarModal src={profile.avatarUrl} alt={profile.fullName} onClose={() => setIsAvatarModalOpen(false)} />}
       <ConfirmDialog open={confirm.open} title="ยืนยันการลบโพสต์" desc="เมื่อยืนยันแล้วจะไม่สามารถกู้คืนโพสต์นี้ได้" onConfirm={doDeletePost} onCancel={cancelDelete} />
       {showReviewModal && <Review postId={reviewTargetId} studentId={currentUser?.user_id} onClose={() => setShowReviewModal(false)} />}
-      
+
       {/* Hidden Posts Modal */}
-      <HiddenPostsModal 
-        open={showHiddenModal} 
+      <HiddenPostsModal
+        open={showHiddenModal}
         onClose={() => setShowHiddenModal(false)}
         posts={posts}
         hiddenIds={hiddenPostIds}

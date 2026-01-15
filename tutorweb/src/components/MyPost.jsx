@@ -114,7 +114,6 @@ const today = new Date().toISOString().split("T")[0];
 // --- Helper: ลิงก์สถานที่ไป Google Maps ---
 const LocationLink = ({ value }) => {
   if (!value) return <span>-</span>;
-  // สร้าง URL ค้นหาของ Google Maps
   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
   return (
     <a
@@ -133,24 +132,17 @@ const LocationLink = ({ value }) => {
 const ContactLink = ({ value }) => {
   if (!value) return <span>-</span>;
   const text = value.trim();
-
-  // 1. เช็คว่าเป็น Email หรือไม่ (@ และ .)
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (emailRegex.test(text)) {
     return <a href={`mailto:${text}`} className="text-indigo-600 hover:underline">{text}</a>;
   }
-
-  // 2. เช็คว่าเป็นเบอร์โทร (ตัวเลขล้วน หรือมีขีด/เว้นวรรค และยาว 9-10 หลัก)
-  const cleanNumber = text.replace(/[- \(\)]/g, ''); // ลบขีดและวรรคออกเพื่อเช็ค
+  const cleanNumber = text.replace(/[- \(\)]/g, ''); 
   if (/^0\d{8,9}$/.test(cleanNumber)) {
     return <a href={`tel:${cleanNumber}`} className="text-emerald-600 hover:underline">{text}</a>;
   }
-
-  // 3. เช็คว่าเป็น Line ID (ดักคำว่า line:, id:, line id:)
-  // หรือถ้าไม่ใช่ Email/Phone ให้สมมติว่าเป็น Line ID ได้ไหม? (อันนี้แล้วแต่เลือก แต่ดัก prefix ชัวร์สุด)
   const lineMatch = text.match(/^(?:line|id|line\s*id)\s*[:\.]?\s*(.+)/i);
   if (lineMatch) {
-    const lineId = lineMatch[1]; // ดึง ID ออกมา
+    const lineId = lineMatch[1]; 
     return (
       <a
         href={`https://line.me/ti/p/~${lineId}`}
@@ -163,8 +155,6 @@ const ContactLink = ({ value }) => {
       </a>
     );
   }
-
-  // 4. กรณีอื่นๆ (แสดงเป็นข้อความปกติ)
   return <span>{text}</span>;
 };
 
@@ -373,14 +363,19 @@ function MyPost({ setPostsCache }) {
 
   const handleJoin = async (post) => {
     if (feedType !== "student") return;
-    if (isTutor) return alert("บัญชีติวเตอร์ไม่สามารถกดเข้าร่วมโพสต์ของนักเรียนได้");
-
     if (!meId) return alert("กรุณาเข้าสู่ระบบ");
+    
+    if (isTutor) {
+       if(!window.confirm("ยืนยันที่จะเสนอสอนให้นักเรียนคนนี้?")) return;
+    }
+
     setJoinLoading(s => ({ ...s, [post.id]: true }));
     try {
       const res = await fetch(`${API_BASE}/api/student_posts/${post.id}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: meId }) });
       const data = await res.json();
       if (!res.ok) return alert(data?.message);
+      
+      // อัปเดต state: ถ้ากด Join สำเร็จ สถานะจะเป็น pending_me (รออนุมัติ / ส่งข้อเสนอแล้ว)
       const updater = (arr) => arr.map(p => p.id === post.id ? { ...p, pending_me: true, joined: false, join_count: data.join_count } : p);
       setPosts(updater);
     } finally { setJoinLoading(s => ({ ...s, [post.id]: false })); }
@@ -393,6 +388,8 @@ function MyPost({ setPostsCache }) {
       const res = await fetch(`${API_BASE}/api/student_posts/${post.id}/join?user_id=${meId}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) return alert(data?.message);
+      
+      // อัปเดต state: ถ้ากดเลิก สถานะ pending_me และ joined จะเป็น false
       const updater = (arr) => arr.map(p => p.id === post.id ? { ...p, joined: false, pending_me: false, join_count: data.join_count } : p);
       setPosts(updater);
     } finally { setJoinLoading(s => ({ ...s, [post.id]: false })); }
@@ -427,11 +424,9 @@ function MyPost({ setPostsCache }) {
 
     const postType = post.post_type || (feedType === "student" ? "student" : "tutor");
 
-    // 1. ✨ Optimistic Update: เปลี่ยนสีหัวใจทันที! (ไม่ต้องรอ Server)
-    // เราจะแอบเปลี่ยนค่าใน state ก่อนเลย ผู้ใช้จะได้รู้สึกว่าแอปเร็ว
     setPosts(currentPosts => currentPosts.map(p => {
       if (p.id === post.id) {
-        const isFav = !p.favorited; // สลับค่าจริง/เท็จ
+        const isFav = !p.favorited;
         return {
           ...p,
           favorited: isFav,
@@ -444,7 +439,6 @@ function MyPost({ setPostsCache }) {
     setFavLoading(s => ({ ...s, [post.id]: true }));
 
     try {
-      // 2. ส่งข้อมูลไปบอก Server ทีหลัง (Background Process)
       const res = await fetch(`${API_BASE}/api/favorites/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -457,13 +451,11 @@ function MyPost({ setPostsCache }) {
 
       const data = await res.json();
 
-      // 3. ถ้า Server ตอบกลับมาว่าสำเร็จ เราจะอัปเดตตัวเลข fav_count ให้ตรงกับ Server (เพื่อความชัวร์)
       if (res.ok && data.success) {
         setPosts(arr => arr.map(p => {
           if (p.id === post.id) {
             return {
               ...p,
-              // ใช้ค่า fav_count จาก Server เพื่อความแม่นยำที่สุด
               fav_count: data.fav_count
             };
           }
@@ -475,10 +467,9 @@ function MyPost({ setPostsCache }) {
 
     } catch (err) {
       console.error("Fav Error:", err);
-      // 4. ❌ ถ้า Server พัง หรือเน็ตหลุด ให้ "เปลี่ยนสีกลับคืน" (Revert)
       setPosts(currentPosts => currentPosts.map(p => {
         if (p.id === post.id) {
-          const isFav = !p.favorited; // กลับค่าเดิม
+          const isFav = !p.favorited;
           return {
             ...p,
             favorited: isFav,
@@ -565,7 +556,7 @@ function MyPost({ setPostsCache }) {
                   className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-gray-600 cursor-pointer hover:bg-gray-200"
                   onClick={() => setExpanded(true)}
                 >
-                  {`สวัสดี, ${currentUserName} — ${feedType === 'student' ? 'สร้างโพสต์หานักเรียน...' : 'สร้างโพสต์รับสอน...'}`}
+                  {`สวัสดี, ${currentUserName} — ${feedType === 'student' ? 'สร้างโพสต์...' : 'สร้างโพสต์รับสอน...'}`}
                 </div>
               </div>
 
@@ -584,7 +575,7 @@ function MyPost({ setPostsCache }) {
 
                   {/* รายละเอียด */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียดเพิ่มเติม</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">เนื้อหาที่ต้องการเรียน</label>
                     <textarea name="description" rows="3" value={formData.description} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
                   </div>
 
@@ -729,6 +720,37 @@ function MyPost({ setPostsCache }) {
               const favBusy = !!favLoading[post.id];
               const isFull = post.post_type === "student" ? Number(post.join_count) >= Number(post.group_size || 0) : false;
 
+              //เงื่อนไขที่ถ้าเลยวันที่โพสต์แล้ว จะไม่สามารถกด Join ได้
+              let isExpired = false;
+              try {
+                // ดึงวันที่และเวลาตามประเภทโพสต์
+                let dateStr = "";
+                let timeStr = "";
+
+                if (post.post_type === "student") {
+                  dateStr = post.preferred_days; // รูปแบบ YYYY-MM-DD
+                  timeStr = post.preferred_time; // รูปแบบ HH:mm
+                } else {
+                  dateStr = post.meta?.teaching_days;
+                  timeStr = post.meta?.teaching_time;
+                }
+
+                if (dateStr) {
+                  const targetDateTimeStr = timeStr
+                    ? `${dateStr}T${timeStr}`
+                    : `${dateStr}T23:59:59`;
+
+                  const targetDate = new Date(targetDateTimeStr);
+                  const now = new Date();
+
+                  if (now > targetDate) {
+                    isExpired = true;
+                  }
+                }
+              } catch (e) {
+                console.error("Date check error", e);
+              }
+
               return (
                 <div key={post.id} className="bg-white border p-4 rounded-2xl shadow-sm">
                   <div
@@ -831,19 +853,60 @@ function MyPost({ setPostsCache }) {
                         <span className="text-sm">{Number(post.fav_count || 0)}</span>
                       </button>
 
-                      {/* Action Buttons (Join/Unjoin) */}
+                      {/* Action Buttons (Join/Unjoin) - LOGIC ที่แก้ไขให้ถูกต้อง */}
                       {post.post_type === "student" ? (
-                        isOwner ? <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">คุณเป็นเจ้าของโพสต์</span> :
-                          isTutor ? <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">สำหรับนักเรียน</span> :
-                            post.joined ? <button disabled={busy} onClick={() => handleUnjoin(post)} className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50">{busy ? "..." : "เลิกร่วม"}</button> :
-                              post.pending_me ? <button disabled={busy} onClick={() => handleUnjoin(post)} className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50">{busy ? "..." : "ยกเลิกคำขอ"}</button> :
-                                <button disabled={busy || isFull} onClick={() => handleJoin(post)} className={`px-4 py-2 rounded-xl text-white ${isFull ? "bg-gray-400" : "bg-purple-600 hover:bg-purple-700"}`}>{isFull ? "เต็มแล้ว" : busy ? "..." : "Join"}</button>
+                        // === Student Post ===
+                        isOwner ? (
+                          <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">คุณเป็นเจ้าของโพสต์</span>
+                        ) : (
+                          // ถ้าไม่ใช่เจ้าของ (เป็นคนอื่นมาดู)
+                          (post.joined || post.pending_me) ? (
+                            // 1. ถ้าเคยกดไปแล้ว (ไม่ว่า Joined หรือ Pending) ให้แสดงปุ่มยกเลิก
+                            <button
+                              disabled={busy}
+                              onClick={() => handleUnjoin(post)}
+                              className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50"
+                            >
+                              {busy ? "..." : (isTutor ? "ยกเลิกข้อเสนอ" : "ยกเลิกคำขอ")}
+                            </button>
+                          ) : (
+                            // 2. ถ้ายังไม่เคยกด
+                            <button
+                              disabled={busy || isExpired || (isFull && !isTutor)}
+                              onClick={() => handleJoin(post)}
+                              className={`px-4 py-2 rounded-xl text-white ${
+                                isExpired ? "bg-gray-400 cursor-not-allowed" :
+                                (isFull && !isTutor) ? "bg-gray-400 cursor-not-allowed" :
+                                isTutor ? "bg-indigo-600 hover:bg-indigo-700" : // สีครามสำหรับติวเตอร์
+                                "bg-purple-600 hover:bg-purple-700"
+                              }`}
+                            >
+                              {isExpired ? "หมดเวลา" :
+                               (isFull && !isTutor) ? "เต็มแล้ว" :
+                               busy ? "..." :
+                               (isTutor ? "ต้องการสอน" : "Join")}
+                            </button>
+                          )
+                        )
                       ) : (
-                        isOwner ? <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">โพสต์ของฉัน</span> :
-                          isTutor ? <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">สำหรับนักเรียน</span> :
-                            post.joined ? <button disabled={busy} onClick={() => handleUnjoinTutor(post)} className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50">{busy ? "..." : "เลิกร่วม"}</button> :
-                              post.pending_me ? <button disabled={busy} onClick={() => handleUnjoinTutor(post)} className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50">{busy ? "..." : "ยกเลิกคำขอ"}</button> :
-                                <button disabled={busy} onClick={() => handleJoinTutor(post)} className="px-4 py-2 rounded-xl text-white bg-purple-600 hover:bg-purple-700">{busy ? "..." : "Join"}</button>
+                        // === Tutor Post (คงเดิม) ===
+                        isOwner ? (
+                          <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">โพสต์ของฉัน</span>
+                        ) : isTutor ? (
+                          <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">สำหรับนักเรียน</span>
+                        ) : (post.joined || post.pending_me) ? (
+                          <button disabled={busy} onClick={() => handleUnjoinTutor(post)} className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50">
+                            {busy ? "..." : "เลิกร่วม"}
+                          </button>
+                        ) : (
+                          <button
+                            disabled={busy || isExpired}
+                            onClick={() => handleJoinTutor(post)}
+                            className={`px-4 py-2 rounded-xl text-white ${isExpired ? "bg-gray-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"}`}
+                          >
+                            {isExpired ? "หมดเวลา" : busy ? "..." : "Join"}
+                          </button>
+                        )
                       )}
                     </div>
                   </div>

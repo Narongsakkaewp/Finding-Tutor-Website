@@ -52,7 +52,6 @@
       "last 1 safari version"
     ]
   },
-
   "devDependencies": {
     "autoprefixer": "^10.4.21",
     "nodemon": "^3.1.10",
