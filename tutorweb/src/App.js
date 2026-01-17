@@ -162,7 +162,8 @@ function App() {
           <Notification
             userId={user?.user_id}
             onReadAll={() => setNewNotificationCount(0)}
-            onOpenPost={(id, type, path) => openPostDetails(id, 'notification', type)}
+            onReadOne={() => setNewNotificationCount(prev => Math.max(0, prev - 1))}
+            onOpenPost={(id, type, path) => openPostDetails(id, 'notification', type)} // Pass type if needed
           />
         );
       case 'student_info': return <StudentInfo user={user} setCurrentPage={setCurrentPage} />;

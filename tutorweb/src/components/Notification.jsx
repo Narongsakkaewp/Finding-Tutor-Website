@@ -1,10 +1,10 @@
 // src/components/Notification.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { 
-  Bell, Check, Clock, ChevronRight, User, BookOpen 
+import {
+  Bell, Check, Clock, ChevronRight, User, BookOpen
 } from "lucide-react";
 
-function Notification({ userId, onOpenPost, onReadAll }) {
+function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
   const [notifications, setNotifications] = useState([]);
   const [showMoreOlder, setShowMoreOlder] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -45,13 +45,10 @@ function Notification({ userId, onOpenPost, onReadAll }) {
   // Logic จัดกลุ่ม
   const groups = useMemo(() => {
     const sorted = [...notifications].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    
-    let latest = [];
-    let others = sorted;
-    if (sorted.length > 0 && !sorted[0].is_read) {
-      latest = [sorted[0]];
-      others = sorted.slice(1);
-    }
+
+    // [FIX] Group by Unread status
+    const latest = sorted.filter(x => !x.is_read);
+    const others = sorted.filter(x => x.is_read); // Process only read items for other sections
 
     const today = [];
     const yesterday = [];
@@ -73,22 +70,87 @@ function Notification({ userId, onOpenPost, onReadAll }) {
 
   // --- ส่วนจัดการการแสดงผล ---
 
+  const [offerModal, setOfferModal] = useState(null); // { tutor, post_id, actor_id, notification_id ... }
+  const [offerLoading, setOfferLoading] = useState(false);
+
+  const fetchTutorData = async (actorId) => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/tutor-profile/${actorId}`);
+      if (!res.ok) throw new Error("Failed to load tutor");
+      return await res.json();
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  };
+
   const handleOpen = async (item) => {
     if (!item) return;
-    setNotifications((prev) => prev.map((x) => (x.notification_id === item.notification_id ? { ...x, is_read: 1 } : x)));
 
-    try {
-      await fetch(`http://localhost:5000/api/notifications/read/${item.notification_id}`, { method: "PUT" });
-    } catch (e) { console.error(e); }
+    // Mark as read immediately in UI
+    if (!item.is_read) {
+      setNotifications((prev) => prev.map((x) => (x.notification_id === item.notification_id ? { ...x, is_read: 1 } : x)));
+      if (onReadOne) onReadOne(); // [FIX] Call parent to update badge
+      try {
+        fetch(`http://localhost:5000/api/notifications/read/${item.notification_id}`, { method: "PUT" });
+      } catch (e) { console.error(e); }
+    }
+
+    if (item.type === 'offer') {
+      // ตรวจสอบว่าเคยตอบรับไปแล้วหรือยัง (เช็คจาก API status)
+      // แต่เบื้องต้นเปิด Modal ก่อน
+      setOfferLoading(true);
+      const tutor = await fetchTutorData(item.actor_id);
+      setOfferLoading(false);
+
+      if (tutor) {
+        setOfferModal({
+          notification_id: item.notification_id,
+          post_id: item.related_id,
+          actor_id: item.actor_id,
+          tutor
+        });
+      } else {
+        alert("ไม่สามารถโหลดข้อมูลติวเตอร์ได้");
+      }
+      return;
+    }
 
     let path = null;
-    if(item.type === 'join_request') path = `/feed?tab=student&open=${item.related_id}`;
-    else if(item.type === 'tutor_join_request') path = `/feed?tab=tutor&open=${item.related_id}`;
-    
-    if (typeof onOpenPost === "function") {
-      onOpenPost(item.related_id, item.type, path);
+    if (item.type === 'join_request') path = `/feed?tab=student&open=${item.related_id}`;
+    else if (item.type === 'tutor_join_request') path = `/feed?tab=tutor&open=${item.related_id}`;
+    else if (item.type === 'join_approved') path = `/feed?tab=student&open=${item.related_id}`; // หรือไปที่ calendar
+
+    if (typeof onOpenPost === "function" && path) {
+      // Extract params
+      const url = new URL(path, window.location.origin);
+      onOpenPost(url.searchParams.get("open"), item.type, path);
     } else if (path) {
       window.location.href = path;
+    }
+  };
+
+  const handleCreateRequest = async (action) => {
+    if (!offerModal) return;
+    if (!userId) return alert("Error: User ID missing");
+
+    try {
+      setOfferLoading(true);
+      const url = `http://localhost:5000/api/student_posts/${offerModal.post_id}/requests/${offerModal.actor_id}`;
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }) // 'approve' or 'reject'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed");
+
+      alert(action === 'approve' ? "ตอบรับข้อเสนอเรียบร้อย! ข้อมูลจะถูกบันทึกลงปฏิทินของคุณ" : "ปฏิเสธข้อเสนอเรียบร้อย");
+      setOfferModal(null);
+    } catch (e) {
+      alert("เกิดข้อผิดพลาด: " + e.message);
+    } finally {
+      setOfferLoading(false);
     }
   };
 
@@ -103,30 +165,31 @@ function Notification({ userId, onOpenPost, onReadAll }) {
   // ✅ Component ย่อย: Avatar ที่ไม่แตก
   const Avatar = ({ src, type }) => {
     const [imgError, setImgError] = useState(false);
-    
+
     // เลือกสี Badge ตามประเภท
     let badgeColor = "bg-blue-500";
     let BadgeIcon = User;
-    if (type.includes('approved')) { badgeColor = "bg-green-500"; BadgeIcon = Check; }
+    if (type.includes('approved') || type === 'offer_accepted') { badgeColor = "bg-green-500"; BadgeIcon = Check; }
     if (type.includes('rejected')) { badgeColor = "bg-rose-500"; BadgeIcon = Check; }
+    if (type === 'offer') { badgeColor = "bg-purple-500"; BadgeIcon = BookOpen; }
 
     return (
       <div className="relative shrink-0">
         {src && !imgError ? (
-          <img 
-            src={src} 
-            alt="avatar" 
+          <img
+            src={src}
+            alt="avatar"
             onError={() => setImgError(true)}
-            className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-md" 
+            className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-md"
           />
         ) : (
           <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center border-2 border-white shadow-sm">
             <User size={24} className="text-gray-400" />
           </div>
         )}
-        
+
         <div className={`absolute -bottom-1 -right-1 p-1.5 rounded-full text-white border-2 border-white shadow-sm ${badgeColor}`}>
-            <BadgeIcon size={12} strokeWidth={3} />
+          <BadgeIcon size={12} strokeWidth={3} />
         </div>
       </div>
     );
@@ -141,38 +204,52 @@ function Notification({ userId, onOpenPost, onReadAll }) {
     // สร้างข้อความ
     let content;
     switch (item.type) {
-        case "join_request":
-        case "tutor_join_request":
-            content = (
-                <span>
-                    <span className="font-bold text-gray-900">{actorName}</span> ส่งคำขอเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span>
-                </span>
-            );
-            break;
-        case "join_approved":
-            content = (
-                <span>
-                    คำขอเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span> ของคุณ <span className="text-green-600 font-bold">ได้รับการอนุมัติแล้ว</span>
-                </span>
-            );
-            break;
-        case "join_rejected":
-            content = (
-                <span>
-                    คำขอเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span> ของคุณ <span className="text-rose-500 font-bold">ถูกปฏิเสธ</span>
-                </span>
-            );
-            break;
-        default:
-            content = <span>{item.message || "มีการแจ้งเตือนใหม่"}</span>;
+      case "join_request":
+      case "tutor_join_request":
+        content = (
+          <span>
+            <span className="font-bold text-gray-900">{actorName}</span> ส่งคำขอเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span>
+          </span>
+        );
+        break;
+      case "offer":
+        content = (
+          <span>
+            <span className="font-bold text-gray-900">{actorName}</span> (ติวเตอร์) เสนอที่จะสอนในวิชา <span className="font-semibold text-indigo-600">"{subjectText}"</span>
+          </span>
+        );
+        break;
+      case "join_approved":
+        content = (
+          <span>
+            คำขอเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span> ของคุณ <span className="text-green-600 font-bold">ได้รับการอนุมัติแล้ว</span>
+          </span>
+        );
+        break;
+      case "join_rejected":
+        content = (
+          <span>
+            คำขอเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span> ของคุณ <span className="text-rose-500 font-bold">ถูกปฏิเสธ</span>
+          </span>
+        );
+        break;
+      case "offer_accepted":
+        content = (
+          <span>
+            <span className="font-bold text-gray-900">{actorName}</span> ยอมรับเสนอสอนวิชา <span className="font-semibold text-indigo-600">"{subjectText}"</span> ของคุณแล้ว
+          </span>
+        );
+        break;
+      default:
+        content = <span>{item.message || "มีการแจ้งเตือนใหม่"}</span>;
     }
 
     return (
-      <div 
+      <div
         onClick={() => handleOpen(item)}
         className={`group flex items-center gap-5 p-5 mb-3 rounded-2xl cursor-pointer transition-all duration-200 border
-          ${isUnread 
-            ? "bg-white border-indigo-100 shadow-lg shadow-indigo-100/40 hover:border-indigo-300 transform hover:-translate-y-0.5" 
+          ${isUnread
+            ? "bg-white border-indigo-100 shadow-lg shadow-indigo-100/40 hover:border-indigo-300 transform hover:-translate-y-0.5"
             : "bg-white border-transparent hover:bg-gray-50 hover:border-gray-200 hover:shadow-sm"
           }
         `}
@@ -182,27 +259,27 @@ function Notification({ userId, onOpenPost, onReadAll }) {
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-           <div className="text-base text-gray-700 leading-snug">
-             {content}
-           </div>
-           <div className="flex items-center gap-2 mt-1.5">
-             <Clock size={13} className="text-gray-400" />
-             <span className="text-sm text-gray-400 font-medium">
-                {new Date(item.created_at).toLocaleString('th-TH', { 
-                    day: 'numeric', month: 'short', hour: '2-digit', minute:'2-digit' 
-                })}
-             </span>
-             {isUnread && (
-                <span className="ml-2 inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-600 tracking-wide uppercase">
-                    New
-                </span>
-             )}
-           </div>
+          <div className="text-base text-gray-700 leading-snug">
+            {content}
+          </div>
+          <div className="flex items-center gap-2 mt-1.5">
+            <Clock size={13} className="text-gray-400" />
+            <span className="text-sm text-gray-400 font-medium">
+              {new Date(item.created_at).toLocaleString('th-TH', {
+                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+              })}
+            </span>
+            {isUnread && (
+              <span className="ml-2 inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-600 tracking-wide uppercase">
+                New
+              </span>
+            )}
+          </div>
         </div>
-        
+
         {/* Arrow Icon */}
         <div className="text-gray-300 group-hover:text-indigo-500 transition-colors">
-             <ChevronRight size={24} />
+          <ChevronRight size={24} />
         </div>
       </div>
     );
@@ -213,12 +290,81 @@ function Notification({ userId, onOpenPost, onReadAll }) {
     return (
       <div className="mb-10 animate-in fade-in slide-in-from-bottom-3 duration-500">
         <h3 className={`text-sm font-bold uppercase tracking-wider mb-4 px-2 flex items-center gap-2 ${highlight ? 'text-indigo-600' : 'text-gray-400'}`}>
-            {highlight && <Bell size={16} className="fill-current" />} {title}
+          {highlight && <Bell size={16} className="fill-current" />} {title}
         </h3>
         <div className="space-y-3">
-            {items.map((item) => (
-               <NotificationItem key={item.notification_id} item={item} />
-            ))}
+          {items.map((item) => (
+            <NotificationItem key={item.notification_id} item={item} />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // --- Modal สำหรับ Offer ---
+  const OfferModal = () => {
+    if (!offerModal) return null;
+    const { tutor } = offerModal;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setOfferModal(null)} />
+        <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+
+          {/* Header */}
+          <div className="relative h-32 bg-gradient-to-r from-blue-600 to-indigo-600">
+            <button onClick={() => setOfferModal(null)} className="absolute top-3 right-3 p-1 rounded-full bg-black/20 text-white hover:bg-black/30 transition-colors">
+              <ChevronRight size={20} className="rotate-90" /> {/* Close Icon substitute if X not imported */}
+            </button>
+            <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
+              <img
+                src={tutor.profile_picture_url || "/default-avatar.png"}
+                alt="tutor"
+                className="w-24 h-24 rounded-full border-4 border-white object-cover shadow-md"
+              />
+            </div>
+          </div>
+
+          <div className="pt-14 pb-6 px-6 text-center">
+            <h3 className="text-xl font-bold text-gray-900">{tutor.nickname ? `ติวเตอร์ ${tutor.nickname}` : `${tutor.name} ${tutor.lastname}`}</h3>
+            <p className="text-gray-500 text-sm mt-1">{tutor.can_teach_subjects || "ไม่ระบุวิชา"}</p>
+
+            <div className="mt-4 space-y-3 text-left bg-gray-50 p-4 rounded-xl text-sm text-gray-700">
+              <div className="flex gap-2">
+                <span className="font-bold shrink-0 w-20">แนะนำตัว:</span>
+                <span>{tutor.about_me || "-"}</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold shrink-0 w-20">เรทราคา:</span>
+                <span>{tutor.hourly_rate ? `${tutor.hourly_rate} บ./ชม.` : "-"}</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold shrink-0 w-20">ติดต่อ:</span>
+                <span>{tutor.phone || tutor.email || "-"}</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold shrink-0 w-20">สถานที่:</span>
+                <span>{tutor.address || "-"}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                disabled={offerLoading}
+                onClick={() => handleCreateRequest('reject')}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 transition-colors"
+              >
+                ปฏิเสธ
+              </button>
+              <button
+                disabled={offerLoading}
+                onClick={() => handleCreateRequest('approve')}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all hover:shadow-indigo-300"
+              >
+                {offerLoading ? "กำลังบันทึก..." : "ตกลง"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -227,28 +373,29 @@ function Notification({ userId, onOpenPost, onReadAll }) {
   return (
     // ✅ ปรับเป็น max-w-6xl (กว้างสะใจ) และพื้นหลังสีเทาอ่อน
     <div className="w-full min-h-screen bg-gray-50/50 pb-20">
-      
+      <OfferModal />
+
       {/* Header Bar */}
       <div className="sticky top-0 z-20 px-4 md:px-8 py-4 mb-8">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-4">
-                <div className="bg-indigo-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-500/30">
-                    <Bell size={24} />
-                </div>
-                <div>
-                    <h1 className="text-xl font-bold text-gray-900 tracking-tight">การแจ้งเตือน</h1>
-                </div>
+          <div className="flex items-center gap-4">
+            <div className="bg-indigo-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-500/30">
+              <Bell size={24} />
             </div>
-            
-            {notifications.some((x) => !x.is_read) && (
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">การแจ้งเตือน</h1>
+            </div>
+          </div>
+
+          {notifications.some((x) => !x.is_read) && (
             <button
-                onClick={handleReadAll}
-                className="hidden md:flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-indigo-600 transition-colors px-4 py-2 rounded-xl hover:bg-indigo-50"
+              onClick={handleReadAll}
+              className="hidden md:flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-indigo-600 transition-colors px-4 py-2 rounded-xl hover:bg-indigo-50"
             >
-                <Check size={18} />
-                อ่านทั้งหมด
+              <Check size={18} />
+              อ่านทั้งหมด
             </button>
-            )}
+          )}
         </div>
       </div>
 
@@ -265,8 +412,8 @@ function Notification({ userId, onOpenPost, onReadAll }) {
               <Bell size={48} className="text-gray-300" />
             </div>
             <div className="text-center">
-                <h3 className="text-xl font-bold text-gray-700 mb-1">ยังไม่มีการแจ้งเตือน</h3>
-                <p className="text-gray-400">เมื่อมีคนสนใจโพสต์ของคุณ จะปรากฏขึ้นที่นี่</p>
+              <h3 className="text-xl font-bold text-gray-700 mb-1">ยังไม่มีการแจ้งเตือน</h3>
+              <p className="text-gray-400">เมื่อมีคนสนใจโพสต์ของคุณ จะปรากฏขึ้นที่นี่</p>
             </div>
           </div>
         ) : (
@@ -274,14 +421,14 @@ function Notification({ userId, onOpenPost, onReadAll }) {
             <Section title="มาใหม่ 🔥" items={groups.latest} highlight={true} />
             <Section title="วันนี้" items={groups.today} />
             <Section title="เมื่อวานนี้" items={groups.yesterday} />
-            
+
             {groups.older.length > 0 && (
               <div>
-                <Section 
-                  title="เก่ากว่านี้" 
-                  items={showMoreOlder ? groups.older : groups.older.slice(0, 3)} 
+                <Section
+                  title="เก่ากว่านี้"
+                  items={showMoreOlder ? groups.older : groups.older.slice(0, 3)}
                 />
-                
+
                 {groups.older.length > 3 && (
                   <button
                     className="w-full py-4 text-sm font-bold text-gray-500 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 hover:text-gray-800 transition-all shadow-sm hover:shadow-md"
