@@ -3,7 +3,7 @@ import { User, Mail, Lock, Eye, EyeOff, UserPlus, GraduationCap, Presentation, A
 
 function Register({ onRegisterSuccess, onSwitchToLogin }) {
   const [step, setStep] = useState(1);
-  const [timeLeft, setTimeLeft] = useState(300); 
+  const [timeLeft, setTimeLeft] = useState(300);
   const [formData, setFormData] = useState({
     name: '',
     lastname: '',
@@ -13,7 +13,7 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
     type: 'student',
   });
 
-  const [otp, setOtp] = useState(''); 
+  const [otp, setOtp] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,7 +37,7 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`; 
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
   // --- Step 1: ขอ OTP ---
@@ -102,7 +102,8 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
       }
 
       if (onRegisterSuccess) {
-        onRegisterSuccess(data);
+        // ✅ ส่ง Flag ว่าเป็นการสมัครใหม่ (isNewRegistration: true)
+        onRegisterSuccess({ ...data, isNewRegistration: true });
       } else {
         alert("สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ");
         if (onSwitchToLogin) onSwitchToLogin();
@@ -146,7 +147,7 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
         {/* --- STEP 1: กรอกข้อมูล --- */}
         {step === 1 && (
           <form onSubmit={handleRequestOtp} className="space-y-4">
-             {/* ... (ส่วน Form Step 1 ของคุณถูกต้องแล้ว ใช้โค้ดเดิมได้เลย) ... */}
+            {/* ... (ส่วน Form Step 1 ของคุณถูกต้องแล้ว ใช้โค้ดเดิมได้เลย) ... */}
             <div className="grid grid-cols-2 gap-2 p-1 bg-gray-50 rounded-xl border border-gray-100">
               <button type="button" onClick={() => handleTypeChange('student')} className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 ${formData.type === 'student' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}><GraduationCap size={16} /> นักเรียน</button>
               <button type="button" onClick={() => handleTypeChange('tutor')} className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 ${formData.type === 'tutor' ? 'bg-white text-purple-600 shadow-sm ring-1 ring-black/5' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}><Presentation size={16} /> ติวเตอร์</button>
@@ -178,13 +179,13 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
                 required
                 autoFocus
               />
-              
+
               {/* ✅ แสดงเวลาถอยหลังจริงๆ แทนข้อความตายตัว */}
               <p className={`text-xs mt-2 font-medium transition-colors ${timeLeft <= 0 ? 'text-red-500' : 'text-gray-400'}`}>
                 {timeLeft > 0 ? (
-                   <>รหัสจะหมดอายุใน <span className="text-indigo-600 font-bold">{formatTime(timeLeft)}</span> นาที</>
+                  <>รหัสจะหมดอายุใน <span className="text-indigo-600 font-bold">{formatTime(timeLeft)}</span> นาที</>
                 ) : (
-                   "รหัสหมดอายุแล้ว กรุณาขอรหัสใหม่"
+                  "รหัสหมดอายุแล้ว กรุณาขอรหัสใหม่"
                 )}
               </p>
             </div>

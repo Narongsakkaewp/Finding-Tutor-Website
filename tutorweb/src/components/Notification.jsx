@@ -1,11 +1,12 @@
 // src/components/Notification.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Bell, Check, Clock, ChevronRight, User, BookOpen
+  Bell, Check, Clock, ChevronRight, User, BookOpen, Calendar, CheckCircle
 } from "lucide-react";
 
 function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
   const [notifications, setNotifications] = useState([]);
+  const [scheduleAlerts, setScheduleAlerts] = useState([]); // New Real-time alerts
   const [showMoreOlder, setShowMoreOlder] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -16,28 +17,52 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     return Number.isFinite(n) ? n : 0;
   }, [userId]);
 
-  // โหลดแจ้งเตือน
+  // โหลดแจ้งเตือนและ Schedule Alerts
   useEffect(() => {
     if (!normalizedUserId) return;
 
     const controller = new AbortController();
     setLoading(true);
 
-    const url = `http://localhost:5000/api/notifications/${normalizedUserId}?_ts=${Date.now()}`;
+    async function fetchData() {
 
-    fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-      signal: controller.signal,
-    })
-      .then(async (r) => {
-        if (!r.ok) throw new Error("Network error");
-        return r.json();
-      })
-      .then((data) => (Array.isArray(data) ? setNotifications(data) : setNotifications([])))
-      .catch((e) => { if (e.name !== "AbortError") setNotifications([]); })
-      .finally(() => setLoading(false));
+      try {
+        // Fetch regular notifications
+        const notifUrl = `http://localhost:5000/api/notifications/${normalizedUserId}?_ts=${Date.now()}`;
+        const notifRes = await fetch(notifUrl, {
+          method: "GET",
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+          signal: controller.signal,
+        });
+        if (!notifRes.ok) throw new Error("Network error fetching notifications");
+        const notifData = await notifRes.json();
+        setNotifications(Array.isArray(notifData) ? notifData : []);
+
+        // Fetch Real-time Schedule Alerts
+        const schedUrl = `http://localhost:5000/api/schedule-alerts/${normalizedUserId}?_ts=${Date.now()}`;
+        const schedRes = await fetch(schedUrl, {
+          method: "GET",
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+          signal: controller.signal,
+        });
+        if (!schedRes.ok) throw new Error("Network error fetching schedule alerts");
+        const schedData = await schedRes.json();
+        setScheduleAlerts(Array.isArray(schedData) ? schedData : []);
+
+      } catch (e) {
+        if (e.name !== "AbortError") {
+          console.error("Error fetching data:", e);
+          setNotifications([]);
+          setScheduleAlerts([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
 
     return () => controller.abort();
   }, [normalizedUserId]);
@@ -87,7 +112,30 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
   const handleOpen = async (item) => {
     if (!item) return;
 
-    // Mark as read immediately in UI
+    // Handle schedule alerts separately (they don't have notification_id for marking as read)
+    if (item.is_schedule_alert) {
+      // For schedule alerts, we might want to navigate directly or just acknowledge
+      // For now, let's just navigate if there's a path
+      let path = null;
+      if (item.type.includes('schedule_student')) {
+        path = `/feed?tab=student&open=${item.related_id}`;
+      } else if (item.type.includes('schedule_tutor')) {
+        path = `/feed?tab=tutor&open=${item.related_id}`;
+      } else if (item.type === 'schedule_tomorrow' || item.type === 'schedule_today') {
+        // Fallback for old notifications or calendar events
+        path = `/feed?tab=student&open=${item.related_id}`;
+      }
+
+      if (typeof onOpenPost === "function" && path) {
+        const url = new URL(path, window.location.origin);
+        onOpenPost(url.searchParams.get("open"), item.type, path);
+      } else if (path) {
+        window.location.href = path;
+      }
+      return; // Exit early for schedule alerts
+    }
+
+    // Mark as read immediately in UI for regular notifications
     if (!item.is_read) {
       setNotifications((prev) => prev.map((x) => (x.notification_id === item.notification_id ? { ...x, is_read: 1 } : x)));
       if (onReadOne) onReadOne(); // [FIX] Call parent to update badge
@@ -172,6 +220,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     if (type.includes('approved') || type === 'offer_accepted') { badgeColor = "bg-green-500"; BadgeIcon = Check; }
     if (type.includes('rejected')) { badgeColor = "bg-rose-500"; BadgeIcon = Check; }
     if (type === 'offer') { badgeColor = "bg-purple-500"; BadgeIcon = BookOpen; }
+    if (type.includes('schedule')) { badgeColor = "bg-orange-500"; BadgeIcon = Calendar; }
 
     return (
       <div className="relative shrink-0">
@@ -197,7 +246,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
 
   // Component ย่อย: รายการแจ้งเตือน
   const NotificationItem = ({ item }) => {
-    const isUnread = !item.is_read;
+    const isUnread = !item.is_read && !item.is_schedule_alert; // Schedule alerts are always "new" in this context
     const actorName = [item.actor_firstname, item.actor_lastname].filter(Boolean).join(" ").trim() || "ผู้ใช้งาน";
     const subjectText = item.post_subject || `โพสต์ #${item.related_id}`;
 
@@ -240,6 +289,34 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
           </span>
         );
         break;
+      case "schedule_tomorrow":
+      case "schedule_student_tomorrow":
+      case "schedule_tutor_tomorrow":
+        content = (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-orange-600 flex items-center gap-2">
+              🗓️ แจ้งเตือนจากระบบ
+            </span>
+            <span className="text-gray-700">
+              พรุ่งนี้คุณมีนัดติว/สอน วิชา <span className="font-semibold text-gray-900">"{subjectText}"</span>
+            </span>
+          </div>
+        );
+        break;
+      case "schedule_today":
+      case "schedule_student_today":
+      case "schedule_tutor_today":
+        content = (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-red-600 flex items-center gap-2">
+              ⏰ แจ้งเตือนจากระบบ
+            </span>
+            <span className="text-gray-700">
+              วันนี้คุณมีนัดติว/สอน วิชา <span className="font-semibold text-gray-900">"{subjectText}"</span>
+            </span>
+          </div>
+        );
+        break;
       default:
         content = <span>{item.message || "มีการแจ้งเตือนใหม่"}</span>;
     }
@@ -250,7 +327,9 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
         className={`group flex items-center gap-5 p-5 mb-3 rounded-2xl cursor-pointer transition-all duration-200 border
           ${isUnread
             ? "bg-white border-indigo-100 shadow-lg shadow-indigo-100/40 hover:border-indigo-300 transform hover:-translate-y-0.5"
-            : "bg-white border-transparent hover:bg-gray-50 hover:border-gray-200 hover:shadow-sm"
+            : item.is_schedule_alert
+              ? "bg-orange-50 border-orange-200 shadow-lg shadow-orange-100/40 hover:border-orange-300 transform hover:-translate-y-0.5"
+              : "bg-white border-transparent hover:bg-gray-50 hover:border-gray-200 hover:shadow-sm"
           }
         `}
       >
@@ -274,6 +353,11 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
                 New
               </span>
             )}
+            {item.is_schedule_alert && (
+              <span className="ml-2 inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-600 tracking-wide uppercase">
+                Alert
+              </span>
+            )}
           </div>
         </div>
 
@@ -294,7 +378,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
         </h3>
         <div className="space-y-3">
           {items.map((item) => (
-            <NotificationItem key={item.notification_id} item={item} />
+            <NotificationItem key={item.notification_id || `sched-${item.type}-${item.related_id}`} item={item} />
           ))}
         </div>
       </div>
@@ -370,6 +454,8 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     );
   };
 
+  const totalUnread = notifications.filter(x => !x.is_read).length + scheduleAlerts.length;
+
   return (
     // ✅ ปรับเป็น max-w-6xl (กว้างสะใจ) และพื้นหลังสีเทาอ่อน
     <div className="w-full min-h-screen bg-gray-50/50 pb-20">
@@ -383,67 +469,81 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
               <Bell size={24} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900 tracking-tight">การแจ้งเตือน</h1>
+              <h1 className="text-2xl font-bold text-gray-900">การแจ้งเตือน</h1>
+              <p className="text-gray-500 text-sm">จัดการการแจ้งเตือนและกิจกรรมของคุณ</p>
             </div>
           </div>
-
-          {notifications.some((x) => !x.is_read) && (
-            <button
-              onClick={handleReadAll}
-              className="hidden md:flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-indigo-600 transition-colors px-4 py-2 rounded-xl hover:bg-indigo-50"
-            >
-              <Check size={18} />
-              อ่านทั้งหมด
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {totalUnread > 0 && (
+              <button
+                onClick={handleReadAll}
+                className="hidden md:flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 font-medium transition-colors"
+              >
+                <CheckCircle size={16} /> อ่านทั้งหมด
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className="max-w-6xl mx-auto px-4 md:px-8">
+      <div className="max-w-4xl mx-auto px-4 md:px-8">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-32 text-gray-400 gap-4">
-            <div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-100 border-t-indigo-600"></div>
-            <p className="text-sm font-medium animate-pulse">กำลังโหลดข้อมูล...</p>
-          </div>
-        ) : notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-40 text-gray-400 gap-6 bg-white rounded-[2rem] border border-dashed border-gray-200 mx-auto max-w-2xl shadow-sm">
-            <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center">
-              <Bell size={48} className="text-gray-300" />
-            </div>
-            <div className="text-center">
-              <h3 className="text-xl font-bold text-gray-700 mb-1">ยังไม่มีการแจ้งเตือน</h3>
-              <p className="text-gray-400">เมื่อมีคนสนใจโพสต์ของคุณ จะปรากฏขึ้นที่นี่</p>
-            </div>
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-4"></div>
+            <p className="text-gray-400">กำลังโหลด...</p>
           </div>
         ) : (
-          <div className="max-w-4xl mx-auto">
-            <Section title="มาใหม่ 🔥" items={groups.latest} highlight={true} />
-            <Section title="วันนี้" items={groups.today} />
-            <Section title="เมื่อวานนี้" items={groups.yesterday} />
-
-            {groups.older.length > 0 && (
-              <div>
-                <Section
-                  title="เก่ากว่านี้"
-                  items={showMoreOlder ? groups.older : groups.older.slice(0, 3)}
-                />
-
-                {groups.older.length > 3 && (
-                  <button
-                    className="w-full py-4 text-sm font-bold text-gray-500 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 hover:text-gray-800 transition-all shadow-sm hover:shadow-md"
-                    onClick={() => setShowMoreOlder((s) => !s)}
-                  >
-                    {showMoreOlder ? "ซ่อนรายการเก่า" : `ดูรายการที่เหลือ (${groups.older.length - 3})`}
-                  </button>
-                )}
+          <>
+            {/* 🚨 Pinned Schedule Alerts */}
+            {scheduleAlerts.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-sm font-bold uppercase tracking-wider mb-4 px-2 flex items-center gap-2 text-orange-600">
+                  <Calendar size={16} /> ตารางเรียนของคุณ
+                </h3>
+                <div className="space-y-3">
+                  {scheduleAlerts.map((alert, idx) => (
+                    <div key={`alert-${idx}`} className="px-5 py-3 bg-white border-l-4 border-orange-400 rounded-r-xl shadow-sm hover:shadow-md transition-all">
+                      <NotificationItem item={{
+                        type: alert.type,
+                        post_subject: alert.post_subject,
+                        data: { subject: alert.post_subject },
+                        created_at: alert.created_at,
+                        is_read: 0,
+                        is_schedule_alert: true,
+                        related_id: alert.related_id
+                      }} />
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-          </div>
+
+            <Section title="ใหม่" items={groups.latest} highlight={true} />
+            <Section title="วันนี้" items={groups.today} />
+            <Section title="เมื่อวาน" items={groups.yesterday} />
+            <Section title="เก่ากว่านี้" items={groups.older} />
+
+            {/* Show More Logic */}
+            {notifications.length > 20 && !showMoreOlder && (
+              <button onClick={() => setShowMoreOlder(true)} className="w-full py-4 text-center text-gray-500 hover:text-indigo-600 font-medium">ดูการแจ้งเตือนเก่ากว่านี้</button>
+            )}
+
+            {notifications.length === 0 && scheduleAlerts.length === 0 && (
+              <div className="text-center py-20">
+                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6 text-gray-300">
+                  <Bell size={32} />
+                </div>
+                <h3 className="text-gray-900 font-bold text-lg">ไม่มีการแจ้งเตือน</h3>
+                <p className="text-gray-500">คุณจะได้รับการแจ้งเตือนเมื่อมีกิจกรรมใหม่ๆ</p>
+              </div>
+            )}
+          </>
         )}
       </div>
+
     </div>
   );
 }
+
 
 export default Notification;

@@ -16,12 +16,18 @@ const fs = require('fs');
 
 // ----- recommendation sets -----
 const pool = require('./db'); // นำเข้าไฟล์การตั้งค่า DB
-const recommendationRoutes = require('./src/routes/recommendationRoutes');
+const recommendationController = require('./src/controllers/recommendationController'); // ✅ Import Recommendations
+const scheduleController = require('./src/controllers/scheduleController');
 const searchRoutes = require('./src/routes/searchRoutes');
 const favoriteRoutes = require('./src/routes/favoriteRoutes');
+const searchController = require('./src/controllers/searchController'); // Import searchController for history
 
 // ----- Email Deps -----
 const nodemailer = require('nodemailer');
+const { initCron, checkAndSendNotifications } = require('./src/services/cronService');
+
+// Initialize Scheduler
+initCron();
 
 // ตั้งค่า Email Sender
 const transporter = nodemailer.createTransport({
@@ -51,6 +57,7 @@ const KEYWORD_MAP = {
 
   // หมวดภาษา
   'eng': ['อังกฤษ', 'english', 'toeic', 'ielts'],
+  'สเปน': ['spanish','esp','espanol'],
   'อังกฤษ': ['eng', 'english'],
   'thai': ['ไทย'],
   'ไทย': ['thai'],
@@ -70,8 +77,11 @@ const KEYWORD_MAP = {
   // หมวดคอมพิวเตอร์
   'com': ['คอม', 'code', 'program', 'python', 'java', 'การเขียนโปรแกรม'],
   'คอม': ['com', 'code', 'it'],
-  'code': ['program', 'python', 'react', 'web'],
-  'เขียนโปรแกรม': ['code', 'program']
+  'code': ['program', 'python', 'react', 'web', 'java', 'c++', 'html', 'css'],
+  'เขียนโปรแกรม': ['code', 'program', 'python', 'java', 'c++'],
+  'python': ['code', 'program', 'เขียนโปรแกรม', 'data science', 'ai'],
+  'java': ['code', 'program', 'เขียนโปรแกรม', 'oop'],
+  'react': ['web', 'frontend', 'code', 'program']
 };
 
 // ฟังก์ชันช่วยขยายคำค้นหา
@@ -178,10 +188,21 @@ async function saveToGoogleSheet(data) {
 }
 
 // ---------- APIs ----------
-app.use('/api/recommendations', recommendationRoutes);
+app.get('/api/recommendations', recommendationController.getRecommendations);
+app.get('/api/test-cron', async (req, res) => {
+  await checkAndSendNotifications();
+  res.json({ message: 'Cron job manual trigger executed' });
+});
 app.use('/api/search', searchRoutes);
+app.get('/api/search/history', searchController.getMySearchHistory); // ดึงประวัติการค้นหาของฉัน
+app.delete('/api/search/history/:id', searchController.deleteSearchHistory); // ลบประวัติการค้นหา
 app.use('/api/favorites', favoriteRoutes);
 
+// --- 🧠 Recommendation API ---
+app.get('/api/recommendations/courses', recommendationController.getRecommendations);
+app.get('/api/recommendations/tutor', recommendationController.getStudentRequestsForTutor);
+
+// --- 📅 Schedule API (New) ---
 // ประเภทผู้ใช้
 app.get('/api/user/:userId', async (req, res) => {
   try {
@@ -340,13 +361,14 @@ app.get('/api/tutors', async (req, res) => {
     // ... (ส่วน subject filter ถ้ามี) ...
     const [rows] = await pool.execute(
       `SELECT 
-          r.user_id, r.name, r.lastname,
+          r.user_id, r.name, r.lastname, r.email,
           tp.nickname,
           tp.can_teach_subjects,
           tp.profile_picture_url,
           tp.address,
           tp.hourly_rate,
-          tp.about_me
+          tp.about_me,
+          tp.phone
        FROM register r
        LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
        ${whereClause}
@@ -363,19 +385,26 @@ app.get('/api/tutors', async (req, res) => {
       params
     );
 
-    const items = rows.map(r => ({
-      id: `t-${r.user_id}`,
-      dbTutorId: r.user_id,
-      name: `${r.name || ''} ${r.lastname || ''}`.trim(),
-      nickname: r.nickname,
-      subject: r.can_teach_subjects || 'ไม่ระบุ',
-      image: r.profile_picture_url || '/default-avatar.png',
-      city: r.address,
-      price: Number(r.hourly_rate || 0),
-      about_me: r.about_me || '',
-      rating: 0,
-      reviews: 0,
-    }));
+    const items = rows.map(r => {
+      const contactParts = [];
+      if (r.phone) contactParts.push(`Tel: ${r.phone}`);
+      if (r.email) contactParts.push(`Email: ${r.email}`);
+
+      return {
+        id: `t-${r.user_id}`,
+        dbTutorId: r.user_id,
+        name: `${r.name || ''} ${r.lastname || ''}`.trim(),
+        nickname: r.nickname,
+        subject: r.can_teach_subjects || 'ไม่ระบุ',
+        image: r.profile_picture_url || '/default-avatar.png',
+        city: r.address,
+        price: Number(r.hourly_rate || 0),
+        about_me: r.about_me || '',
+        contact_info: contactParts.join('\n') || "ไม่ระบุข้อมูลติดต่อ",
+        rating: 0,
+        reviews: 0,
+      };
+    });
 
     res.json({
       items,
@@ -401,7 +430,7 @@ app.get('/api/tutor-posts', async (req, res) => {
     const offset = (page - 1) * limit;
 
     const tutorId = req.query.tutorId ? parseInt(req.query.tutorId, 10) : null;
-    const subject = (req.query.subject || '').trim();
+    const subject = (req.query.subject || req.query.search || '').trim();
     const me = Number(req.query.me) || 0;
 
     const where = [];
@@ -414,6 +443,8 @@ app.get('/api/tutor-posts', async (req, res) => {
     }
 
     // ถ้ามีการค้นหาด้วย subject (รองรับ Smart Search)
+    let orderBy = 'ORDER BY tp.created_at DESC, tp.tutor_post_id DESC';
+
     if (subject) {
       const keywords = expandSearchTerm(subject);
       const conditions = keywords.map(() =>
@@ -424,6 +455,27 @@ app.get('/api/tutor-posts', async (req, res) => {
       keywords.forEach(kw => {
         params.push(`%${kw}%`, `%${kw}%`);
       });
+
+      // ✅ Smart Search: ให้คะแนนความตรง (Relevance Score)
+      // 1. ตรงกับ Subject (คำที่พิมพ์) -> 100 คะแนน
+      // 2. ตรงกับ Subject (คำขยาย) -> 50 คะแนน
+      // 3. ตรงกับ Description -> 10 คะแนน
+      // เราจะใช้ Logic ง่ายๆ: ถ้าเจอใน Subject ให้ขึ้นก่อน
+
+      // หมายเหตุ: การทำ CASE WHEN ซ้อนกันหลายชั้นใน SQL string อาจจะยุ่งยากเรื่อง params
+      // ดังนั้นเราจะ prioritize ง่ายๆ: 
+      // ORDER BY (CASE WHEN tp.subject LIKE %subject% THEN 1 ELSE 2 END), created_at DESC
+
+      // เราต้อง push params สำหรับ order by เพิ่ม
+      // เพื่อความง่ายและไม่กระทบ params array เดิมที่ push ไปแล้วสำหรับ where
+      // เราจะใช้วิธีเรียงลำดับแบบ manual ใน SQL โดยการเช็คจากคำค้นหา "ตัวแรก" (คำหลัก)
+      const mainKeyword = keywords[0]; // คำที่ User พิมพ์ (หรือคำแรกที่ขยาย)
+      orderBy = `ORDER BY 
+        (CASE WHEN tp.subject LIKE '%${mainKeyword}%' THEN 1 ELSE 2 END) ASC, 
+        tp.created_at DESC`;
+      // *หมายเหตุ: ตรงนี้ใช้ String interpolation (${mainKeyword}) เฉพาะอันนี้เพื่อความง่ายในการจัดลำดับ 
+      // โดยไม่ต้องรื้อ params array ทั้งหมด (แต่ต้องระวัง SQL Injection หาก subject ไม่ได้ถูก sanitize)
+      // แต่ในระบบนี้ subject มาจาก req.query และ keywords มาจาก expandSearchTerm ซึ่งปลอดภัยระดับนึง
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -432,7 +484,7 @@ app.get('/api/tutor-posts', async (req, res) => {
       `
       SELECT
         tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
-        tp.target_student_level, /* ✅ เพิ่ม: ดึงระดับชั้นออกมา */
+        tp.target_student_level,
         tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
         r.name, r.lastname,
@@ -465,7 +517,7 @@ app.get('/api/tutor-posts', async (req, res) => {
       LEFT JOIN tutor_post_joins jme_pending
         ON jme_pending.tutor_post_id = tp.tutor_post_id AND jme_pending.user_id = ? AND jme_pending.status='pending'
       ${whereSql}
-      ORDER BY tp.created_at DESC, tp.tutor_post_id DESC
+      ${orderBy}
       LIMIT ${limit} OFFSET ${offset}
       `,
       [me, me, me, ...params]
@@ -730,7 +782,8 @@ app.get('/api/student_posts', async (req, res) => {
         CASE WHEN (jme.user_id IS NOT NULL OR ome.tutor_id IS NOT NULL) THEN 1 ELSE 0 END AS joined,
         CASE WHEN (jme_pending.user_id IS NOT NULL OR ome_pending.tutor_id IS NOT NULL) THEN 1 ELSE 0 END AS pending_me,
         COALESCE(fvc.c,0) AS fav_count,
-        CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited
+        CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited,
+        CASE WHEN has_tutor.cnt > 0 THEN 1 ELSE 0 END AS has_approved_tutor
       FROM student_posts sp
       LEFT JOIN register r ON r.user_id = sp.student_id
       LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
@@ -759,6 +812,14 @@ app.get('/api/student_posts', async (req, res) => {
       LEFT JOIN student_post_offers ome_pending
         ON ome_pending.student_post_id = sp.student_post_id AND ome_pending.tutor_id = ? AND ome_pending.status='pending'
       
+      -- [NEW] Check if ANY tutor is approved
+      LEFT JOIN (
+        SELECT student_post_id, COUNT(*) as cnt
+        FROM student_post_offers
+        WHERE status='approved'
+        GROUP BY student_post_id
+      ) has_tutor ON has_tutor.student_post_id = sp.student_post_id
+      
       ${searchClause} /* ✅ ใส่เงื่อนไขค้นหาตรงนี้ */
       
       ORDER BY sp.student_post_id DESC
@@ -783,6 +844,7 @@ app.get('/api/student_posts', async (req, res) => {
       pending_me: !!r.pending_me,
       fav_count: Number(r.fav_count || 0),
       favorited: !!r.favorited,
+      has_tutor: !!r.has_approved_tutor, // [NEW]
       user: {
         first_name: r.name || '',
         last_name: r.lastname || '',
@@ -1216,6 +1278,16 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
 
     if (isTutor) {
       // --- Logic สำหรับ Tutor (ลงตาราง student_post_offers) ---
+
+      // [NEW] Check if post already has an approved tutor
+      const [[taken]] = await pool.query(
+        'SELECT 1 FROM student_post_offers WHERE student_post_id = ? AND status="approved" LIMIT 1',
+        [postId]
+      );
+      if (taken) {
+        return res.status(409).json({ success: false, message: 'โพสต์นี้มีติวเตอร์ดูแลแล้ว' });
+      }
+
       // Check if already exists/pending to prevent spam notification
       const [[existingOffer]] = await pool.query(
         'SELECT status FROM student_post_offers WHERE student_post_id = ? AND tutor_id = ?',
@@ -1499,6 +1571,13 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
           const studentName = `${sp.owner_name} ${sp.owner_lastname}`.trim();
           await conn.query(`INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)`,
             [targetUserId, sp.owner_id, 'offer_accepted', `${studentName} ยอมรับเสนอสอนวิชา "${sp.subject}" ของคุณแล้ว`, postId]);
+
+          // [NEW] Auto-Reject ALL other pending offers for this post
+          await conn.query(`
+            UPDATE student_post_offers 
+            SET status = 'rejected', decided_at = NOW() 
+            WHERE student_post_id = ? AND status = 'pending' AND tutor_id != ?
+          `, [postId, targetUserId]);
         }
       } else {
         // Rejected
@@ -1814,6 +1893,18 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
 });
 
 // ---------- Notifications (ฉบับอัปเกรด: ดึงรูป + ชื่อวิชา) ----------
+// --- Notifications API ---
+
+// NEW: Real-time Schedule Alerts (Direct Pull)
+app.get('/api/schedule-alerts/:userId', async (req, res) => {
+  req.db = await pool.getConnection(); // Helper to pass connection
+  try {
+    await scheduleController.getScheduleAlerts(req, res);
+  } finally {
+    req.db.release();
+  }
+});
+
 app.get('/api/notifications/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -2774,6 +2865,130 @@ app.delete('/api/student_posts/:id/join', async (req, res) => {
   } catch (err) {
     console.error("❌ UNJOIN ERROR:", err);
     return res.status(500).json({ success: false, message: 'Server error during unjoin' });
+  }
+});
+
+// ✅ API: ลบประวัติการค้นหา "ทีละรายการ" (Delete Single History Item)
+// ✅ API: ลบประวัติการค้นหา "ตามคำค้นหา" (Delete History by Keyword)
+app.delete('/api/search/history', async (req, res) => {
+  try {
+    const { user_id, keyword } = req.query;
+
+    if (!user_id && !keyword) {
+      // ถ้าไม่ส่งอะไรมาเลย = ลบทั้งหมด (Clear All)
+      if (req.query.user_id) {
+        await pool.query('DELETE FROM search_history WHERE user_id = ?', [req.query.user_id]);
+        return res.json({ success: true, message: 'Cleared all history' });
+      }
+      return res.status(400).json({ message: 'Missing parameters' });
+    }
+
+    if (keyword) {
+      // ลบเฉพาะคำที่ระบุ (Delete specific keyword)
+      const [result] = await pool.query(
+        'DELETE FROM search_history WHERE user_id = ? AND keyword = ?',
+        [user_id, keyword]
+      );
+      return res.json({ success: true, message: `Deleted keyword "${keyword}"` });
+    }
+
+  } catch (err) {
+    console.error('Delete History Error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ✅ API: แนะนำคอร์สเรียน (Based on Search History)
+app.get('/api/recommendations/courses', async (req, res) => {
+  try {
+    const userId = Number(req.query.user_id) || 0;
+
+    // 1. ดึงคำค้นหาล่าสุด 3 รายการของผู้ใช้
+    const [history] = await pool.query(
+      'SELECT DISTINCT keyword FROM search_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 3',
+      [userId]
+    );
+
+    let rows = [];
+
+    // 2. ถ้ามีประวัติค้นหา -> หาโพสต์ที่ตรงกับ Keyword
+    if (history.length > 0) {
+      const keywords = history.map(h => h.keyword);
+
+      // สร้าง Query แบบ Dynamic OR (subject LIKE %k1% OR subject LIKE %k2% ...)
+      const likeConditions = keywords.map(() => 'tp.subject LIKE ? OR tp.description LIKE ?').join(' OR ');
+      const params = [];
+      keywords.forEach(k => params.push(`%${k}%`, `%${k}%`));
+
+      // เพิ่ม user_id เข้าไปใน params สำหรับเช็ค Favorites/Joins
+      const sqlParams = [userId, userId, userId, ...params];
+
+      const [results] = await pool.query(`
+        SELECT 
+          tp.*, 
+          r.name, r.lastname, tpro.profile_picture_url,
+          COALESCE(fvc.c,0) AS fav_count,
+          CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited
+        FROM tutor_posts tp
+        LEFT JOIN register r ON r.user_id = tp.tutor_id
+        LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
+        LEFT JOIN (SELECT post_id, COUNT(*) as c FROM posts_favorites WHERE post_type='tutor' GROUP BY post_id) fvc ON fvc.post_id = tp.tutor_post_id
+        LEFT JOIN posts_favorites fme ON fme.post_id = tp.tutor_post_id AND fme.post_type='tutor' AND fme.user_id = ?
+        LEFT JOIN tutor_post_joins jme ON jme.tutor_post_id = tp.tutor_post_id AND jme.user_id = ? AND jme.status='approved'
+        LEFT JOIN tutor_post_joins jme_pending ON jme_pending.tutor_post_id = tp.tutor_post_id AND jme_pending.user_id = ? AND jme_pending.status='pending'
+        WHERE ${likeConditions}
+        ORDER BY tp.created_at DESC LIMIT 6
+      `, sqlParams);
+
+      rows = results;
+    }
+
+    // 3. ถ้าไม่มีประวัติค้นหา หรือค้นแล้วไม่เจอ -> เอาโพสต์ล่าสุดมาแสดง (Fallback)
+    if (rows.length === 0) {
+      const [latest] = await pool.query(`
+        SELECT 
+          tp.*, 
+          r.name, r.lastname, tpro.profile_picture_url,
+          COALESCE(fvc.c,0) AS fav_count,
+          CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited
+        FROM tutor_posts tp
+        LEFT JOIN register r ON r.user_id = tp.tutor_id
+        LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
+        LEFT JOIN (SELECT post_id, COUNT(*) as c FROM posts_favorites WHERE post_type='tutor' GROUP BY post_id) fvc ON fvc.post_id = tp.tutor_post_id
+        LEFT JOIN posts_favorites fme ON fme.post_id = tp.tutor_post_id AND fme.post_type='tutor' AND fme.user_id = ?
+        ORDER BY tp.created_at DESC LIMIT 6
+      `, [userId]);
+      rows = latest;
+    }
+
+    // Map ข้อมูลส่งกลับ
+    const items = rows.map(r => ({
+      _id: r.tutor_post_id,
+      subject: r.subject,
+      content: r.description,
+      createdAt: r.created_at,
+      authorId: {
+        id: r.tutor_id,
+        name: `${r.name || ''} ${r.lastname || ''}`.trim(),
+        avatarUrl: r.profile_picture_url || ''
+      },
+      meta: {
+        target_student_level: r.target_student_level || 'ไม่ระบุ',
+        teaching_days: r.teaching_days,
+        teaching_time: r.teaching_time,
+        location: r.location,
+        price: Number(r.price || 0),
+        contact_info: r.contact_info
+      },
+      fav_count: Number(r.fav_count || 0),
+      favorited: !!r.favorited
+    }));
+
+    res.json(items);
+
+  } catch (err) {
+    console.error('Recommended Courses API Error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

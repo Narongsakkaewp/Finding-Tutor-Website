@@ -1,16 +1,17 @@
 // src/controllers/searchController.js
 const SUBJECT_KNOWLEDGE_BASE = {
     'program': ['code', 'python', 'java', 'c++', 'html', 'css', 'react', 'node', 'sql', 'คอมพิวเตอร์'],
-    'code':    ['program', 'python', 'java', 'script', 'web', 'app', 'dev'],
-    'คอม':     ['com', 'it', 'program', 'excel', 'word', 'powerpoint'],
-    'คณิต':    ['math', 'cal', 'เลข', 'algebra', 'stat'],
-    'math':    ['คณิต', 'cal', 'เลข'],
-    'phy':     ['ฟิสิกส์', 'sci', 'กลศาสตร์'],
-    'eng':     ['อังกฤษ', 'english', 'toefl', 'ielts', 'toeic', 'conversation'],
-    'jap':     ['ญี่ปุ่น', 'japanese', 'n5', 'n4', 'n3'],
-    'sci':     ['วิทย์', 'bio', 'chem', 'phy', 'ดาราศาสตร์'],
-    'chem':    ['เคมี', 'sci'],
-    'bio':     ['ชีว', 'sci']
+    'code': ['program', 'python', 'java', 'script', 'web', 'app', 'dev'],
+    'คอม': ['com', 'it', 'program', 'excel', 'word', 'powerpoint'],
+    'คณิต': ['math', 'cal', 'เลข', 'algebra', 'stat'],
+    'math': ['คณิต', 'cal', 'เลข'],
+    'phy': ['ฟิสิกส์', 'sci', 'กลศาสตร์'],
+    'eng': ['อังกฤษ', 'english', 'toefl', 'ielts', 'toeic', 'conversation'],
+    'jap': ['ญี่ปุ่น', 'japanese', 'n5', 'n4', 'n3'],
+    'จีน': ['chinese', 'hsk'],
+    'sci': ['วิทย์', 'bio', 'chem', 'phy', 'ดาราศาสตร์'],
+    'chem': ['เคมี', 'sci'],
+    'bio': ['ชีว', 'sci']
 };
 
 // ฟังก์ชันขยายคำค้นหา
@@ -52,10 +53,10 @@ exports.smartSearch = async (req, res) => {
 
         // 2. ขยายคำค้นหา (Smart Keywords)
         const searchKeywords = expandKeywords(q);
-        
+
         // สร้างเงื่อนไข SQL OR (LIKE %kw1% OR LIKE %kw2% ...)
         const likeConditions = searchKeywords.map(() => `(subject LIKE ? OR description LIKE ?)`).join(' OR ');
-        
+
         // เตรียม Params (ต้องเบิ้ล 2 ครั้งต่อ 1 คำ เพราะเราเช็คทั้ง subject และ description)
         const sqlParams = [];
         searchKeywords.forEach(kw => {
@@ -114,15 +115,43 @@ exports.getMySearchHistory = async (req, res) => {
 
         // ดึง 5 คำล่าสุดที่ไม่ซ้ำกัน
         const [rows] = await pool.query(`
-            SELECT DISTINCT keyword 
+            SELECT keyword
             FROM search_history 
             WHERE user_id = ? 
-            ORDER BY created_at DESC 
+            GROUP BY keyword
+            ORDER BY MAX(created_at) DESC 
             LIMIT 5
         `, [user_id]);
 
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: 'Fetch history failed' });
+    }
+};
+
+// API สำหรับลบประวัติการค้นหา
+// API สำหรับลบประวัติการค้นหา (รองรับทั้งลบทีละคำ และลบทั้งหมด)
+exports.deleteSearchHistory = async (req, res) => {
+    try {
+        const pool = req.db;
+        const { user_id, keyword } = req.query;
+
+        // 1. ลบทีละคำ (Delete specific keyword for user)
+        if (user_id && keyword) {
+            await pool.query('DELETE FROM search_history WHERE user_id = ? AND keyword = ?', [user_id, keyword]);
+            return res.json({ success: true, message: `Deleted keyword: ${keyword}` });
+        }
+
+        // 2. ล้างทั้งหมด (Clear all history for user)
+        if (user_id) {
+            await pool.query('DELETE FROM search_history WHERE user_id = ?', [user_id]);
+            return res.json({ success: true, message: 'History cleared' });
+        }
+
+        res.status(400).json({ error: 'Missing parameters (user_id required)' });
+
+    } catch (err) {
+        console.error("Delete history error:", err);
+        res.status(500).json({ error: 'Delete failed' });
     }
 };

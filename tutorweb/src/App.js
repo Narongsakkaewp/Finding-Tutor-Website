@@ -108,7 +108,20 @@ function App() {
     }
     setUserType(role);
     localStorage.setItem('userType', role);
-    setCurrentPage('home');
+
+    // ✅ เช็ค Flag: ถ้าสมัครใหม่ ให้เด้งไปหน้ากรอกประวัติ (Info)
+    if (payload.isNewRegistration) {
+      if (role === 'tutor') {
+        setCurrentPage('tutor_info');
+      } else if (role === 'student') {
+        setCurrentPage('student_info');
+      } else {
+        setCurrentPage('home');
+      }
+    } else {
+      // Login ปกติ ไปหน้า Home
+      setCurrentPage('home');
+    }
   };
 
   const goToSettings = () => {

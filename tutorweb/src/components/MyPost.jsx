@@ -46,7 +46,9 @@ const normalizeStudentPost = (p = {}) => ({
   joined: !!p.joined,
   pending_me: !!p.pending_me,
   fav_count: Number(p.fav_count ?? 0),
+  fav_count: Number(p.fav_count ?? 0),
   favorited: !!p.favorited,
+  has_tutor: !!p.has_tutor, // [NEW]
   post_type: "student",
   user: p.user || {
     first_name: p.first_name || p.name || "",
@@ -136,13 +138,13 @@ const ContactLink = ({ value }) => {
   if (emailRegex.test(text)) {
     return <a href={`mailto:${text}`} className="text-indigo-600 hover:underline">{text}</a>;
   }
-  const cleanNumber = text.replace(/[- \(\)]/g, ''); 
+  const cleanNumber = text.replace(/[- \(\)]/g, '');
   if (/^0\d{8,9}$/.test(cleanNumber)) {
     return <a href={`tel:${cleanNumber}`} className="text-emerald-600 hover:underline">{text}</a>;
   }
   const lineMatch = text.match(/^(?:line|id|line\s*id)\s*[:\.]?\s*(.+)/i);
   if (lineMatch) {
-    const lineId = lineMatch[1]; 
+    const lineId = lineMatch[1];
     return (
       <a
         href={`https://line.me/ti/p/~${lineId}`}
@@ -364,9 +366,9 @@ function MyPost({ setPostsCache }) {
   const handleJoin = async (post) => {
     if (feedType !== "student") return;
     if (!meId) return alert("กรุณาเข้าสู่ระบบ");
-    
+
     if (isTutor) {
-       if(!window.confirm("ยืนยันที่จะเสนอสอนให้นักเรียนคนนี้?")) return;
+      if (!window.confirm("ยืนยันที่จะเสนอสอนให้นักเรียนคนนี้?")) return;
     }
 
     setJoinLoading(s => ({ ...s, [post.id]: true }));
@@ -374,7 +376,7 @@ function MyPost({ setPostsCache }) {
       const res = await fetch(`${API_BASE}/api/student_posts/${post.id}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: meId }) });
       const data = await res.json();
       if (!res.ok) return alert(data?.message);
-      
+
       // อัปเดต state: ถ้ากด Join สำเร็จ สถานะจะเป็น pending_me (รออนุมัติ / ส่งข้อเสนอแล้ว)
       const updater = (arr) => arr.map(p => p.id === post.id ? { ...p, pending_me: true, joined: false, join_count: data.join_count } : p);
       setPosts(updater);
@@ -388,7 +390,7 @@ function MyPost({ setPostsCache }) {
       const res = await fetch(`${API_BASE}/api/student_posts/${post.id}/join?user_id=${meId}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) return alert(data?.message);
-      
+
       // อัปเดต state: ถ้ากดเลิก สถานะ pending_me และ joined จะเป็น false
       const updater = (arr) => arr.map(p => p.id === post.id ? { ...p, joined: false, pending_me: false, join_count: data.join_count } : p);
       setPosts(updater);
@@ -619,7 +621,7 @@ function MyPost({ setPostsCache }) {
                           <input type="number" name="group_size" min="1" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">งบประมาณ (บาท)</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">งบประมาณ (ราคาต่อชั่วโมง)</label>
                           <input type="number" name="budget" min="0" value={formData.budget} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                       </div>
@@ -836,6 +838,9 @@ function MyPost({ setPostsCache }) {
                       {post.post_type === "student" ? (
                         <>
                           เข้าร่วมแล้ว : <b>{post.join_count}</b> / {post.group_size} คน
+                          {/* [NEW] Badge shown to everyone */}
+                          {post.has_tutor && <span className="ml-2 px-2 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded-full font-bold border border-indigo-200">ได้ติวเตอร์แล้ว</span>}
+
                           {post.joined && <span className="ml-2 px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 rounded-full">คุณเข้าร่วมแล้ว</span>}
                           {post.pending_me && !post.joined && <span className="ml-2 px-2 py-0.5 text-xs bg-amber-50 text-amber-700 rounded-full">รออนุมัติ</span>}
                         </>
@@ -874,17 +879,16 @@ function MyPost({ setPostsCache }) {
                             <button
                               disabled={busy || isExpired || (isFull && !isTutor)}
                               onClick={() => handleJoin(post)}
-                              className={`px-4 py-2 rounded-xl text-white ${
-                                isExpired ? "bg-gray-400 cursor-not-allowed" :
-                                (isFull && !isTutor) ? "bg-gray-400 cursor-not-allowed" :
-                                isTutor ? "bg-indigo-600 hover:bg-indigo-700" : // สีครามสำหรับติวเตอร์
-                                "bg-purple-600 hover:bg-purple-700"
-                              }`}
+                              className={`px-4 py-2 rounded-xl text-white ${isExpired ? "bg-gray-400 cursor-not-allowed" :
+                                  (isFull && !isTutor) ? "bg-gray-400 cursor-not-allowed" :
+                                    isTutor ? "bg-indigo-600 hover:bg-indigo-700" : // สีครามสำหรับติวเตอร์
+                                      "bg-purple-600 hover:bg-purple-700"
+                                }`}
                             >
                               {isExpired ? "หมดเวลา" :
-                               (isFull && !isTutor) ? "เต็มแล้ว" :
-                               busy ? "..." :
-                               (isTutor ? "ต้องการสอน" : "Join")}
+                                (isFull && !isTutor) ? "เต็มแล้ว" :
+                                  busy ? "..." :
+                                    (isTutor ? "ต้องการสอน" : "Join")}
                             </button>
                           )
                         )

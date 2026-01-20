@@ -2,22 +2,22 @@
 import React, { useEffect, useState } from "react";
 import { Star, MapPin, User } from "lucide-react";
 
-export default function RecommendedTutors({ userId }) {
+export default function RecommendedTutors({ userId, onOpen }) {
   const [recs, setRecs] = useState({ items: [], based_on: "" });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // ถ้าไม่มี userId (Guest) ให้ส่ง 0 ไป
     const id = userId || 0;
-    
+
     fetch(`http://localhost:5000/api/recommendations?user_id=${id}`)
       .then((res) => res.json())
       .then((data) => {
         // ถ้า API ส่งกลับมาเป็น Array (กรณี Guest) ให้ปรับโครงสร้างให้เหมือนกัน
         if (Array.isArray(data)) {
-            setRecs({ items: data, based_on: "" });
+          setRecs({ items: data, based_on: "" });
         } else {
-            setRecs(data);
+          setRecs(data);
         }
       })
       .catch((err) => console.error("Recs Error:", err))
@@ -35,7 +35,7 @@ export default function RecommendedTutors({ userId }) {
           ติวเตอร์แนะนำสำหรับคุณ
         </h2>
       </div>
-      
+
       {recs.based_on && (
         <p className="text-sm text-gray-600 mb-4 bg-white inline-block px-3 py-1 rounded-full border">
           💡 อ้างอิงจากความสนใจวิชา: <span className="font-bold text-indigo-600">{recs.based_on}</span>
@@ -44,15 +44,50 @@ export default function RecommendedTutors({ userId }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {recs.items.map((tutor) => (
-          <div 
-            key={tutor.tutor_post_id} 
+          <div
+            key={tutor.tutor_post_id}
             className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all border hover:border-indigo-300 cursor-pointer group"
-            onClick={() => window.location.href = `/post/${tutor.tutor_post_id}`} // หรือใช้ Link ของ React Router
+            onClick={() => {
+              // Construct standardized item object for Modal with FULL details
+              const contactParts = [];
+              if (tutor.contact_info) contactParts.push(tutor.contact_info);
+              if (tutor.phone) contactParts.push(`Tel: ${tutor.phone}`);
+              if (tutor.email) contactParts.push(`Email: ${tutor.email}`);
+
+              const item = {
+                // Post Data
+                id: tutor.id || tutor.tutor_post_id,
+                subject: tutor.subject,
+                post_desc: tutor.description, // Post description
+                price: tutor.price,
+                location: tutor.location,
+                teaching_days: tutor.teaching_days,
+                teaching_time: tutor.teaching_time,
+                target_student_level: tutor.target_student_level,
+                group_size: tutor.group_size,
+
+                // Profile Data
+                dbTutorId: tutor.tutor_id || tutor.owner_id,
+                name: `${tutor.first_name || tutor.name || ""} ${tutor.last_name || tutor.lastname || ""}`.trim(),
+                nickname: tutor.nickname,
+                image: tutor.profile_picture_url || "/default-avatar.png",
+                profile_bio: tutor.profile_bio, // Personal Bio
+                education: tutor.education,
+                teaching_experience: tutor.teaching_experience,
+                contact_info: contactParts.join('\n') || "ไม่ระบุข้อมูลติดต่อ",
+
+                // Meta
+                rating: tutor.rating || 0,
+                reviews: tutor.review_count || 0,
+                createdAt: tutor.createdAt || tutor.created_at
+              };
+              onOpen?.(item);
+            }}
           >
             <div className="flex items-start gap-3">
-              <img 
-                src={tutor.profile_picture_url || "/default-avatar.png"} 
-                alt="tutor" 
+              <img
+                src={tutor.profile_picture_url || "/default-avatar.png"}
+                alt="tutor"
                 className="w-12 h-12 rounded-full object-cover border"
               />
               <div className="flex-1 min-w-0">
@@ -69,16 +104,16 @@ export default function RecommendedTutors({ userId }) {
                 </div>
               </div>
             </div>
-            
+
             <div className="mt-3 pt-3 border-t flex justify-between items-center">
-               <span className="text-xs font-semibold px-2 py-1 bg-green-100 text-green-700 rounded-md">
-                 {tutor.price} บ./ชม.
-               </span>
-               {tutor.relevance_score > 0 && (
-                 <span className="text-xs text-indigo-500 font-medium">
-                   ความตรงใจ {tutor.relevance_score}%
-                 </span>
-               )}
+              <span className="text-xs font-semibold px-2 py-1 bg-green-100 text-green-700 rounded-md">
+                {tutor.price} บ./ชม.
+              </span>
+              {tutor.relevance_score > 0 && (
+                <span className="text-xs text-indigo-500 font-medium">
+                  ความตรงใจ {tutor.relevance_score}%
+                </span>
+              )}
             </div>
           </div>
         ))}

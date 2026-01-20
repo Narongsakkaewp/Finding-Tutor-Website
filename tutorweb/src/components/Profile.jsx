@@ -1,9 +1,8 @@
-// src/pages/Profile.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import Review from "../components/Review";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive } from "lucide-react";
+import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive, Sparkles, User } from "lucide-react";
 
 /* ---------- Helpers ---------- */
 
@@ -45,18 +44,23 @@ function Stat({ label, value }) {
   );
 }
 
-function Card({ title, children }) {
+function Card({ title, children, icon: Icon }) {
   return (
     <section className="bg-white rounded-2xl shadow-sm border p-4 md:p-5">
-      {title && <h3 className="text-lg font-bold">{title}</h3>}
-      <div className="mt-3">{children}</div>
+      {title && (
+        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
+          {Icon && <Icon className="text-indigo-500" size={20} />}
+          <h3 className="text-lg font-bold text-gray-800">{title}</h3>
+        </div>
+      )}
+      <div>{children}</div>
     </section>
   );
 }
 
 function Empty({ line = "ไม่พบข้อมูล" }) {
   return (
-    <div className="text-sm text-gray-500 bg-gray-50 border rounded-md p-3">
+    <div className="text-sm text-gray-500 bg-gray-50 border rounded-md p-3 text-center">
       {line}
     </div>
   );
@@ -184,6 +188,10 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewTargetId, setReviewTargetId] = useState(null);
 
+  // ✅ State สำหรับระบบแนะนำติวเตอร์
+  const [recommendedTutors, setRecommendedTutors] = useState([]);
+  const [recsBasedOn, setRecsBasedOn] = useState("");
+
   const [openMenuFor, setOpenMenuFor] = useState(null);
   const [showHiddenModal, setShowHiddenModal] = useState(false);
 
@@ -265,6 +273,22 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           const evData = await evRes.json();
           if (!cancelled) setEvents(evData.items || []);
         }
+
+        // ✅ 4. Fetch Recommended Tutors (Real Data)
+        const recRes = await fetch(`http://localhost:5000/api/recommendations?user_id=${me}`);
+        if (recRes.ok) {
+          const recData = await recRes.json();
+          if (!cancelled) {
+            // API อาจจะส่งกลับเป็น Array หรือ Object { items: [], based_on: "" }
+            if (Array.isArray(recData)) {
+              setRecommendedTutors(recData);
+            } else {
+              setRecommendedTutors(recData.items || []);
+              setRecsBasedOn(recData.based_on || "");
+            }
+          }
+        }
+
       } catch (e) { console.error(e); }
       finally { if (!cancelled) setLoading(false); }
     })();
@@ -332,12 +356,6 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
 
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-600">กำลังโหลดโปรไฟล์...</div>;
   if (!profile) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-600">ไม่พบข้อมูลผู้ใช้</div>;
-
-  const mockRecommendedTutors = [
-    { user_id: 101, profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=S', name: 'สมศักดิ์', lastname: 'เก่งกาจ', can_teach_subjects: 'คณิตศาสตร์ ม.ปลาย, แคลคูลัส' },
-    { user_id: 102, profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=A', name: 'อลิสา', lastname: 'ใจดี', can_teach_subjects: 'GAT ภาษาอังกฤษ, TOEIC' },
-    { user_id: 103, profile_picture_url: 'https://placehold.co/40x40/E2E8F0/4A5568?text=N', name: 'นนทรี', lastname: 'บีทีเอส', can_teach_subjects: 'ฟิสิกส์ (PAT3), ตะลุยโจทย์' }
-  ];
 
   const hiddenCount = posts.filter(p => hiddenPostIds.has(p._id ?? p.id)).length;
 
@@ -424,10 +442,9 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
         <div className="mt-6 grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
 
-            {/* ✅ Calendar Section (กู้คืน Layout เดิม: ซ้ายปฏิทิน ขวารายการ) */}
+            {/* ✅ Calendar Section */}
             <Card title="ตารางเวลาของฉัน">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                {/* 1. ส่วนปฏิทิน */}
                 <div className="flex justify-center">
                   <ReactCalendar
                     className="border rounded-xl p-4 bg-white shadow-sm w-full max-w-sm"
@@ -442,9 +459,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                     }}
                   />
                 </div>
-
-                {/* 2. ส่วนรายการกิจกรรม (Daily Events) */}
-                <div className="bg-gray-50 rounded-xl p-4 border h-full">
+                <div className="bg-gray-50 rounded-xl p-4 border">
                   <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
                     <AppWindow size={18} />
                     การติววันที่ {selectedDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
@@ -471,7 +486,6 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
             </Card>
 
             <Card title="โพสต์ของฉัน">
-              {/* ปุ่มเปิดดูรายการที่ซ่อน */}
               {hiddenCount > 0 && (
                 <div className="mb-3 flex justify-end">
                   <button
@@ -519,28 +533,47 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           </div>
 
           <div className="space-y-6">
-            <Card title="ติวเตอร์แนะนำสำหรับคุณ">
-              {!mockRecommendedTutors.length ? <Empty line="ไม่พบติวเตอร์แนะนำ" /> : (
-                <ul className="space-y-3">
-                  {mockRecommendedTutors.map((tutor) => (
-                    <li key={tutor.user_id} className="flex items-center gap-3 p-2 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                      <img src={tutor.profile_picture_url || '/default-avatar.png'} alt={tutor.name} className="w-10 h-10 rounded-full object-cover" />
-                      <div>
-                        <div className="text-sm font-semibold">{tutor.name} {tutor.lastname || ''}</div>
-                        <div className="text-xs text-gray-500 truncate" title={tutor.can_teach_subjects}>{tutor.can_teach_subjects || 'ไม่ระบุวิชา'}</div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+
+            {/* ✅ ติวเตอร์แนะนำสำหรับคุณ (แก้ให้มี Scrollbar) */}
+            <Card title="ติวเตอร์แนะนำสำหรับคุณ" icon={Sparkles}>
+              {recsBasedOn && (
+                <div className="mb-3 px-3 py-1 bg-yellow-50 text-yellow-800 text-xs rounded-full border border-yellow-100 inline-block">
+                  💡 อ้างอิงจาก: {recsBasedOn}
+                </div>
               )}
+
+              {/* 👇 เพิ่ม div ครอบตรงนี้ เพื่อจำกัดความสูงและใส่ Scrollbar 👇 */}
+              <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                {!recommendedTutors.length ? <Empty line="ยังไม่มีข้อมูลแนะนำ" /> : (
+                  <ul className="space-y-3">
+                    {recommendedTutors.map((tutor) => (
+                      <li key={tutor.tutor_post_id} className="flex items-start gap-3 p-3 border rounded-xl hover:bg-gray-50 cursor-pointer transition-all hover:shadow-sm" onClick={() => window.location.href = `/post/${tutor.tutor_post_id}`}>
+                        <img src={tutor.profile_picture_url || '/default-avatar.png'} alt={tutor.subject} className="w-10 h-10 rounded-full object-cover border flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold text-gray-800 truncate">{tutor.subject}</div>
+                          <div className="text-xs text-gray-500 flex items-center gap-1">
+                            <User size={10} /> {tutor.name} {tutor.lastname || ''}
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium whitespace-nowrap">฿{tutor.price}</span>
+                            {tutor.relevance_score && <span className="text-[10px] text-indigo-400 font-medium">Match {tutor.relevance_score}%</span>}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </Card>
-            <Card title="วิชาที่สนใจ">
+
+            {/* วิชาที่สนใจ (คงเดิม) */}
+            {/* <Card title="วิชาที่สนใจ">
               {!profile.subjects?.length ? <Empty line="ยังไม่มีวิชา" /> : (
                 <ul className="list-disc pl-5 space-y-1 text-gray-700">
                   {profile.subjects.map((s, i) => <li key={i}>{s.name}</li>)}
                 </ul>
               )}
-            </Card>
+            </Card> */}
           </div>
         </div>
       </div>
