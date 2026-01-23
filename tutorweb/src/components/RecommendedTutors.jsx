@@ -7,13 +7,11 @@ export default function RecommendedTutors({ userId, onOpen }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // ถ้าไม่มี userId (Guest) ให้ส่ง 0 ไป
     const id = userId || 0;
 
     fetch(`http://localhost:5000/api/recommendations?user_id=${id}`)
       .then((res) => res.json())
       .then((data) => {
-        // ถ้า API ส่งกลับมาเป็น Array (กรณี Guest) ให้ปรับโครงสร้างให้เหมือนกัน
         if (Array.isArray(data)) {
           setRecs({ items: data, based_on: "" });
         } else {
@@ -75,6 +73,8 @@ export default function RecommendedTutors({ userId, onOpen }) {
                 education: tutor.education,
                 teaching_experience: tutor.teaching_experience,
                 contact_info: contactParts.join('\n') || "ไม่ระบุข้อมูลติดต่อ",
+                phone: tutor.phone,
+                email: tutor.email,
 
                 // Meta
                 rating: tutor.rating || 0,

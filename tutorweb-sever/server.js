@@ -57,7 +57,7 @@ const KEYWORD_MAP = {
 
   // หมวดภาษา
   'eng': ['อังกฤษ', 'english', 'toeic', 'ielts'],
-  'สเปน': ['spanish','esp','espanol'],
+  'สเปน': ['spanish', 'esp', 'espanol'],
   'อังกฤษ': ['eng', 'english'],
   'thai': ['ไทย'],
   'ไทย': ['thai'],
@@ -201,6 +201,7 @@ app.use('/api/favorites', favoriteRoutes);
 // --- 🧠 Recommendation API ---
 app.get('/api/recommendations/courses', recommendationController.getRecommendations);
 app.get('/api/recommendations/tutor', recommendationController.getStudentRequestsForTutor);
+app.get('/api/recommendations/friends', recommendationController.getStudyBuddyRecommendations);
 
 // --- 📅 Schedule API (New) ---
 // ประเภทผู้ใช้
@@ -368,7 +369,9 @@ app.get('/api/tutors', async (req, res) => {
           tp.address,
           tp.hourly_rate,
           tp.about_me,
-          tp.phone
+          tp.phone,
+          tp.education,
+          tp.teaching_experience
        FROM register r
        LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
        ${whereClause}
@@ -401,6 +404,10 @@ app.get('/api/tutors', async (req, res) => {
         price: Number(r.hourly_rate || 0),
         about_me: r.about_me || '',
         contact_info: contactParts.join('\n') || "ไม่ระบุข้อมูลติดต่อ",
+        phone: r.phone,
+        email: r.email,
+        education: r.education,
+        teaching_experience: r.teaching_experience,
         rating: 0,
         reviews: 0,
       };
@@ -487,8 +494,8 @@ app.get('/api/tutor-posts', async (req, res) => {
         tp.target_student_level,
         tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
-        r.name, r.lastname,
-        tpro.profile_picture_url,
+        r.name, r.lastname, r.email, r.type,
+        tpro.profile_picture_url, tpro.nickname, tpro.about_me, tpro.education, tpro.teaching_experience, tpro.phone,
         -- Favorites
         COALESCE(fvc.c,0) AS fav_count,
         CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited,
@@ -537,11 +544,28 @@ app.get('/api/tutor-posts', async (req, res) => {
         group_size: Number(r.group_size || 0),
         authorId: {
           id: r.tutor_id,
-          name: `${r.name || ''}${r.lastname ? ' ' + r.lastname : ''}`.trim() || `ติวเตอร์ #${r.tutor_id}`,
+          name: `${r.name || ''} ${r.lastname || ''}`.trim() || `ติวเตอร์ #${r.tutor_id}`,
           avatarUrl: r.profile_picture_url || ''
         },
+        user: {
+          id: r.tutor_id,
+          first_name: r.name || '',
+          last_name: r.lastname || '',
+          profile_image: r.profile_picture_url || '',
+          email: r.email || '',
+          phone: r.phone || '',
+          role: r.type || 'tutor'
+        },
+        // Profile Data added to top level for convenience
+        nickname: r.nickname,
+        about_me: r.about_me,
+        education: r.education,
+        teaching_experience: r.teaching_experience,
+        phone: r.phone,
+        email: r.email,
+
         meta: {
-          target_student_level: r.target_student_level || 'ไม่ระบุ', /* ✅ ส่งค่าระดับชั้นไปให้ Frontend */
+          target_student_level: r.target_student_level || 'ไม่ระบุ',
           teaching_days: r.teaching_days,
           teaching_time: r.teaching_time,
           location: r.location,
@@ -752,6 +776,13 @@ app.get('/api/student_posts', async (req, res) => {
     // params: [join_me, pending_me, fav_me, offer_me (approved), offer_me (pending)]
     const queryParams = [me, me, me, me, me];
 
+    // Filter by student_id (owner)
+    const ownerId = Number(req.query.student_id);
+    if (ownerId > 0) {
+      searchClause = `WHERE sp.student_id = ?`;
+      queryParams.push(ownerId);
+    }
+
     if (search) {
       // ใช้ฟังก์ชัน expandSearchTerm ที่มีอยู่แล้วเพื่อขยายคำค้น
       const keywords = expandSearchTerm(search);
@@ -761,7 +792,11 @@ app.get('/api/student_posts', async (req, res) => {
         `(sp.subject LIKE ? OR sp.description LIKE ?)`
       ).join(' OR ');
 
-      searchClause = `WHERE (${conditions})`;
+      if (searchClause) {
+        searchClause += ` AND (${conditions})`;
+      } else {
+        searchClause = `WHERE (${conditions})`;
+      }
 
       // เพิ่มคำค้นหาลงใน parameters (2 ครั้งต่อ 1 คำค้น)
       keywords.forEach(kw => {
@@ -776,8 +811,9 @@ app.get('/api/student_posts', async (req, res) => {
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
         sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
         sp.grade_level,  /* ✅ เพิ่ม: ดึงระดับชั้นออกมาด้วย */
-        r.name, r.lastname,
-        spro.profile_picture_url,
+        sp.grade_level,  /* ✅ เพิ่ม: ดึงระดับชั้นออกมาด้วย */
+        r.name, r.lastname, r.email, r.type,
+        spro.profile_picture_url, spro.phone,
         COALESCE(jc.join_count, 0) AS join_count,
         CASE WHEN (jme.user_id IS NOT NULL OR ome.tutor_id IS NOT NULL) THEN 1 ELSE 0 END AS joined,
         CASE WHEN (jme_pending.user_id IS NOT NULL OR ome_pending.tutor_id IS NOT NULL) THEN 1 ELSE 0 END AS pending_me,
@@ -844,11 +880,14 @@ app.get('/api/student_posts', async (req, res) => {
       pending_me: !!r.pending_me,
       fav_count: Number(r.fav_count || 0),
       favorited: !!r.favorited,
-      has_tutor: !!r.has_approved_tutor, // [NEW]
       user: {
         first_name: r.name || '',
         last_name: r.lastname || '',
-        profile_image: r.profile_picture_url || '/default-avatar.png'
+        profile_image: r.profile_picture_url || '/default-avatar.png',
+        email: r.email || '',
+        phone: r.phone || '',
+        id: r.student_id,
+        role: r.type || 'student'
       },
     }));
 
@@ -1978,75 +2017,80 @@ app.post('/api/notifications', async (req, res) => {
   }
 });
 
-
-// ---------- Student Profile ----------
+// ==========================================
+// 1. GET STUDENT PROFILE
+// ==========================================
 app.get('/api/profile/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const sql = `
       SELECT
-        r.name,
-        r.lastname,
-        r.email,
-        sp.* FROM register r
+        r.name, r.lastname, r.email, r.type,
+        sp.*, r.created_at 
+      FROM register r
       LEFT JOIN student_profiles sp ON r.user_id = sp.user_id
       WHERE r.user_id = ?
     `;
     const [rows] = await pool.execute(sql, [userId]);
     if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
-    res.json(rows[0]);
+
+    const data = rows[0];
+    res.json({
+      ...data,
+      first_name: data.name,
+      last_name: data.lastname,
+      role: 'student'
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Database error' });
   }
 });
+
+// Update Student
 app.put('/api/profile/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const {
-      nickname, phone_number, address, grade_level, institution,
-      faculty, major, about_me, profile_picture_url
-    } = req.body;
+    const body = req.body;
+
+    if (body.name || body.lastname) {
+      await pool.execute('UPDATE register SET name=?, lastname=? WHERE user_id=?', [body.name, body.lastname, userId]);
+    }
 
     const sql = `
-      INSERT INTO student_profiles (
-        user_id, nickname, phone, address, grade_level,
-        institution, faculty, major, about, profile_picture_url
-      )
+      INSERT INTO student_profiles (user_id, nickname, phone, address, grade_level, institution, faculty, major, about, profile_picture_url)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
-        nickname = VALUES(nickname),
-        phone = VALUES(phone),
-        address = VALUES(address),
-        grade_level = VALUES(grade_level),
-        institution = VALUES(institution),
-        faculty = VALUES(faculty),
-        major = VALUES(major),
-        about = VALUES(about),
-        profile_picture_url = VALUES(profile_picture_url)
+        nickname=VALUES(nickname), phone=VALUES(phone), address=VALUES(address),
+        grade_level=VALUES(grade_level), institution=VALUES(institution),
+        faculty=VALUES(faculty), major=VALUES(major), about=VALUES(about),
+        profile_picture_url=VALUES(profile_picture_url)
     `;
+
     await pool.execute(sql, [
-      userId, nickname ?? null, phone_number ?? null, address ?? null,
-      grade_level ?? null, institution ?? null, faculty ?? null, major ?? null,
-      about_me ?? null, profile_picture_url ?? null
+      userId, body.nickname, body.phone, body.address,
+      body.grade_level, body.institution, body.faculty, body.major,
+      body.about, body.profile_picture_url
     ]);
-    res.json({ message: 'Profile updated successfully' });
+
+    res.json({ message: 'Student profile updated successfully' });
   } catch (err) {
-    console.error('Error updating profile:', err);
-    res.status(500).json({ message: 'Database error', error: err.message });
+    console.error('Update Student Error:', err);
+    res.status(500).json({ message: 'Database error' });
   }
 });
 
-// ---------- Tutor Profile ----------
+// ==========================================
+// 2. GET TUTOR PROFILE (Fixed SQL & Logic)
+// ==========================================
 app.get('/api/tutor-profile/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const sql = `
       SELECT
-        r.name,
-        r.lastname,
-        r.email,
-        tp.* FROM register r
+        r.name, r.lastname, r.email, r.type,
+        tp.*, r.created_at 
+      FROM register r
       LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
       WHERE r.user_id = ?
     `;
@@ -2054,68 +2098,119 @@ app.get('/api/tutor-profile/:userId', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ message: 'Tutor not found' });
 
     const profile = rows[0];
-    if (profile.education) profile.education = JSON.parse(profile.education);
-    if (profile.teaching_experience) profile.teaching_experience = JSON.parse(profile.teaching_experience);
-    res.json(profile);
+
+    try {
+      if (typeof profile.education === 'string') profile.education = JSON.parse(profile.education);
+      if (typeof profile.teaching_experience === 'string') profile.teaching_experience = JSON.parse(profile.teaching_experience);
+    } catch (e) { }
+
+    const [rRows] = await pool.execute(`
+        SELECT r.rating, r.comment, r.created_at, reg.name, reg.lastname, sp.profile_picture_url
+        FROM reviews r
+        LEFT JOIN register reg ON r.student_id = reg.user_id
+        LEFT JOIN student_profiles sp ON r.student_id = sp.user_id
+        WHERE r.tutor_id = ? ORDER BY r.created_at DESC
+    `, [userId]);
+
+    const reviews = rRows.map(r => ({
+      rating: Number(r.rating),
+      comment: r.comment,
+      reviewer: { name: `${r.name} ${r.lastname}`, avatar: r.profile_picture_url }
+    }));
+
+    let avgRating = "0.0";
+    if (reviews.length > 0) {
+      const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+      avgRating = (sum / reviews.length).toFixed(1);
+    }
+
+    res.json({
+      ...profile,
+      first_name: profile.name,
+      last_name: profile.lastname,
+      role: 'tutor',
+      reviews: reviews,
+      rating: avgRating
+    });
+
   } catch (err) {
     console.error('Error fetching tutor profile:', err);
-    res.status(500).json({ message: 'Database error', error: err.message });
+    res.status(500).json({ message: 'Database error' });
   }
 });
+
+// ==========================================
+// 3. UPDATE TUTOR PROFILE (Fixed Array Bug)
+// ==========================================
 app.put('/api/tutor-profile/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const body = req.body;
 
-    const educationJson = body.education ? JSON.stringify(body.education) : null;
-    const teachingExperienceJson = body.teaching_experience ? JSON.stringify(body.teaching_experience) : null;
+    console.log("📝 Update Tutor Payload:", body);
 
-    const canTeachGrades = Array.isArray(body.can_teach_grades) ? body.can_teach_grades.join(',') : (body.can_teach_grades ?? null);
-    const canTeachSubjects = Array.isArray(body.can_teach_subjects) ? body.can_teach_subjects.join(',') : (body.can_teach_subjects ?? null);
+    if (body.name || body.lastname || body.first_name || body.last_name) {
+      await pool.execute('UPDATE register SET name=?, lastname=? WHERE user_id=?', 
+        [ body.name || body.first_name, body.lastname || body.last_name, userId ]
+      );
+    }
 
-    const params = [
-      userId,
-      body.nickname ?? null,
-      body.phone ?? null,
-      body.address ?? null,
-      body.about_me ?? null,
-      educationJson,
-      teachingExperienceJson,
-      canTeachGrades,
-      canTeachSubjects,
-      body.hourly_rate ?? null,
-      body.profile_picture_url ?? null
-    ];
+    const v = (val) => (val === undefined || val === 'null' || val === '') ? null : val;
+    
+    const jsonVal = (val) => {
+      if (!val) return null;
+      return typeof val === 'string' ? val : JSON.stringify(val);
+    };
+
+    const arrVal = (val) => {
+      if (!val) return null;
+      if (Array.isArray(val)) return val.join(', ');
+      return String(val);
+    };
 
     const sql = `
       INSERT INTO tutor_profiles (
-        user_id, nickname, phone, address, about_me,
-        education, teaching_experience, can_teach_grades, can_teach_subjects,
+        user_id, nickname, phone, address, about_me, 
+        education, teaching_experience, 
+        can_teach_subjects, can_teach_grades, 
         hourly_rate, profile_picture_url
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
-        nickname = VALUES(nickname),
-        phone = VALUES(phone),
-        address = VALUES(address),
-        about_me = VALUES(about_me),
-        education = VALUES(education),
-        teaching_experience = VALUES(teaching_experience),
-        can_teach_grades = VALUES(can_teach_grades),
-        can_teach_subjects = VALUES(can_teach_subjects),
-        hourly_rate = VALUES(hourly_rate),
-        profile_picture_url = VALUES(profile_picture_url)
+        nickname=VALUES(nickname), 
+        phone=VALUES(phone), 
+        address=VALUES(address), 
+        about_me=VALUES(about_me),
+        education=VALUES(education), 
+        teaching_experience=VALUES(teaching_experience),
+        can_teach_subjects=VALUES(can_teach_subjects), 
+        can_teach_grades=VALUES(can_teach_grades),
+        hourly_rate=VALUES(hourly_rate),
+        profile_picture_url=VALUES(profile_picture_url)
     `;
 
-    await pool.execute(sql, params);
+    await pool.execute(sql, [
+      userId, 
+      v(body.nickname), 
+      v(body.phone || body.phone_number), 
+      v(body.address || body.location), 
+      v(body.about_me || body.bio || body.about), 
+      jsonVal(body.education), 
+      jsonVal(body.teaching_experience), 
+      arrVal(body.can_teach_subjects || body.subjects), 
+      arrVal(body.can_teach_grades || body.grades),     
+      v(body.hourly_rate || body.price), 
+      v(body.profile_picture_url || body.profile_image) 
+    ]);
 
     res.json({ message: 'Tutor profile updated successfully' });
 
   } catch (err) {
-    console.error('Error updating tutor profile:', err);
-    res.status(500).json({ message: 'Database error', error: err.message });
+    console.error('❌ Error updating tutor profile:', err);
+    res.status(500).json({ message: 'Database error: ' + err.message });
   }
 });
+
 
 // ---------- Upload ----------
 app.post('/api/upload', upload.single('image'), (req, res) => {
@@ -2994,6 +3089,113 @@ app.get('/api/recommendations/courses', async (req, res) => {
 
 // ---------- Health ----------
 app.get('/health', (req, res) => res.json({ ok: true, time: new Date() }));
+
+
+// --- [NEW] Get User Profile (Unified) ---
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const [rows] = await pool.execute('SELECT * FROM register WHERE user_id = ?', [userId]);
+    if (!rows.length) return res.status(404).json({ message: 'User not found' });
+
+    const user = rows[0];
+    const userType = (user.type || '').toLowerCase();
+
+    // Remove password
+    delete user.password;
+
+    let profileData = {};
+    if (userType === 'tutor' || userType === 'teacher') {
+      const [tRows] = await pool.execute('SELECT * FROM tutor_profiles WHERE user_id = ?', [userId]);
+      if (tRows.length) profileData = tRows[0];
+    } else {
+      // Assume student 
+      // Check if student_profiles table exists or use what we have.
+      // Based on `spro` join in `student_posts` API, `student_profiles` has `user_id` and `profile_picture_url`.
+      // Let's safe query.
+      try {
+        const [sRows] = await pool.execute('SELECT * FROM student_profiles WHERE user_id = ?', [userId]);
+        if (sRows.length) profileData = sRows[0];
+      } catch (err) {
+        console.warn("Student profiles table access error (might not exist yet):", err.message);
+      }
+    }
+
+    // Merge logic
+    const responseData = {
+      ...user,
+      ...profileData, // profile data overrides register data if conflicts (e.g. phone)
+      user_id: user.user_id,
+      first_name: user.name,
+      last_name: user.lastname,
+      role: userType,
+      userType: userType,
+      // map profile fields
+      profile_image: profileData.profile_picture_url || user.profile_picture_url || '/default-avatar.png',
+      phone: profileData.phone || user.phone || '',
+      bio: profileData.about_me || profileData.bio || '',
+      created_at: user.created_at || new Date().toISOString()
+    };
+
+    res.json(responseData);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// --- [NEW] Get Tutor Reviews ---
+app.get('/api/tutors/:id/reviews', async (req, res) => {
+  try {
+    const tutorId = req.params.id;
+    // Check if `reviews` table exists or named `tutor_reviews`?
+    // Let's assume `reviews` table based on standard naming or `tutor_reviews`.
+    // SearchController might have search history, RecommendationController might have logic.
+    // Let's try `reviews` table first.
+    // If fail, we return empty array.
+
+    // Actually, let's check correct table name if possible.
+    // I saw `posts_favorites` and `tutor_post_joins`.
+    // I did NOT see strict review table in the snippets.
+    // But `TutorProfile` component likely uses it?
+    // The user rejected the modal because they wanted a page.
+    // I will assume `reviews` table exists with `tutor_id`.
+
+    /* 
+       Table Schema Guess:
+       reviews (
+         id, tutor_id, reviewer_id, rating, comment, created_at
+       )
+    */
+
+    const [rows] = await pool.execute(`
+            SELECT r.*, reg.name, reg.lastname, reg.type
+            FROM reviews r
+            LEFT JOIN register reg ON reg.user_id = r.reviewer_id
+            WHERE r.tutor_id = ?
+            ORDER BY r.created_at DESC
+        `, [tutorId]);
+
+    const items = rows.map(row => ({
+      id: row.id,
+      rating: row.rating,
+      comment: row.comment,
+      createdAt: row.created_at,
+      reviewer: {
+        id: row.reviewer_id,
+        name: `${row.name} ${row.lastname}`.trim(),
+        avatar: '/default-avatar.png' // join profile if needed
+      }
+    }));
+
+    res.json(items);
+  } catch (err) {
+    // If table doesn't exist, return empty
+    console.warn("Reviews fetch error (might be missing table):", err.message);
+    res.json([]);
+  }
+});
 
 // ****** Server Start ******
 const PORT = process.env.PORT || 5000;

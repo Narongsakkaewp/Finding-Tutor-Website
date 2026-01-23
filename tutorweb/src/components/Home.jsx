@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import {
   Heart, MapPin, Calendar, Search, Star, BookOpen, Users, ChevronRight,
   MessageSquarePlus, CalendarCheck, Sparkles, GraduationCap, Clock,
-  MonitorPlay, CheckCircle, Tag, DollarSign, User
+  MonitorPlay, CheckCircle, Tag, DollarSign, User, Phone, Mail
 } from "lucide-react";
 import RecommendedTutors from "../components/RecommendedTutors";
 import SmartSearch from "../components/SmartSearch";
@@ -423,12 +423,6 @@ function HomeStudent() {
                     </div>
                   </div>
                 </div>
-
-                {/* <div className="flex flex-wrap gap-4 pt-2 opacity-90">
-                   <div className="flex items-center gap-2 text-indigo-100 text-sm font-medium"><CheckCircle size={16} className="text-emerald-400 fill-emerald-400/20" /> 500+ ติวเตอร์</div>
-                   <div className="flex items-center gap-2 text-indigo-100 text-sm font-medium"><CheckCircle size={16} className="text-emerald-400 fill-emerald-400/20" /> 50+ วิชา</div>
-                   <div className="flex items-center gap-2 text-indigo-100 text-sm font-medium"><CheckCircle size={16} className="text-emerald-400 fill-emerald-400/20" /> เรียนออนไลน์ได้</div>
-                </div> */}
               </div>
 
               <div className="hidden lg:col-span-5 lg:flex justify-end relative pointer-events-none">
@@ -488,12 +482,12 @@ function HomeStudent() {
               {searchTab === "tutors" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {loading ? [...Array(4)].map((_, i) => <div key={i} className="h-64 bg-gray-100 rounded-2xl animate-pulse"></div>) :
-                    tutors.length > 0 ? tutors.map(t => <TutorCard key={t.id} item={t} onOpen={(i) => { setPreview(i); setPreviewType("tutor"); }} />) :
+                    tutors.length > 0 ? tutors.map(t => <TutorCard key={t.id} item={t} onOpen={(i) => { setPreview(i); setPreviewType("tutor_only"); }} />) :
                       <div className="col-span-full"><EmptyState label="ไม่พบติวเตอร์ที่ค้นหา" /></div>}
                 </div>
               )}
               {searchTab === "courses" && <TutorPostFeed searchKey={query} onOpen={(i) => { setPreview(i); setPreviewType("tutor"); }} />}
-              {searchTab === "requests" && <StudentPostFeed searchKey={query} />}
+              {searchTab === "requests" && <StudentPostFeed searchKey={query} onOpen={(item) => { setPreview(item); setPreviewType("student_post"); }} />}
             </div>
           </section>
         )}
@@ -501,40 +495,48 @@ function HomeStudent() {
       </div>
 
       {/* --- Global Modal --- */}
-      <Modal open={!!preview} onClose={() => setPreview(null)} title={previewType === "tutor" ? "รายละเอียดติวเตอร์" : "รายละเอียดวิชา"}>
-        {preview && previewType === "tutor" && (
+      <Modal open={!!preview} onClose={() => setPreview(null)} title={(previewType === "tutor" || previewType === "tutor_only") ? "รายละเอียดติวเตอร์" : previewType === "student_post" ? "รายละเอียดประกาศนักเรียน" : "รายละเอียดวิชา"}>
+        {preview && (previewType === "tutor" || previewType === "tutor_only") && (
           <div className="space-y-8 divide-y divide-gray-100">
             {/* --- SECTION 1: TUTOR POST DETAILS --- */}
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <Badge text="ประกาศสอนพิเศษ" color="indigo" />
-                <span className="text-xs text-gray-400">โพสต์เมื่อ: {new Date(preview.createdAt || new Date()).toLocaleDateString("th-TH")}</span>
-              </div>
+            {previewType === "tutor" && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <Badge text="ประกาศสอนพิเศษ" color="indigo" />
+                  <span className="text-xs text-gray-400">โพสต์เมื่อ: {new Date(preview.createdAt || new Date()).toLocaleDateString("th-TH")}</span>
+                </div>
 
-              <h3 className="text-2xl font-bold text-gray-900">{preview.subject}</h3>
-              <p className="text-gray-700 whitespace-pre-line leading-relaxed bg-gray-50 p-4 rounded-xl border border-gray-100">
-                {preview.post_desc || "ไม่มีรายละเอียดเพิ่มเติมในโพสต์นี้"}
-              </p>
+                <h3 className="text-2xl font-bold text-gray-900">{preview.subject}</h3>
+                <p className="text-gray-700 whitespace-pre-line leading-relaxed bg-gray-50 p-4 rounded-xl border border-gray-100">
+                  {preview.description || preview.content || preview.post_desc || "ไม่มีรายละเอียดเพิ่มเติมในโพสต์นี้"}
+                </p>
 
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="p-3 border rounded-xl">
-                  <div className="text-xs text-gray-500 font-bold mb-1">ระดับชั้นที่สอน</div>
-                  <div className="font-semibold">{preview.target_student_level || "ไม่ระบุ"}</div>
-                </div>
-                <div className="p-3 border rounded-xl">
-                  <div className="text-xs text-gray-500 font-bold mb-1">ราคา</div>
-                  <div className="font-semibold text-emerald-600">{priceText(preview.price)} บาท/ชม.</div>
-                </div>
-                <div className="p-3 border rounded-xl">
-                  <div className="text-xs text-gray-500 font-bold mb-1">สถานที่</div>
-                  <div className="font-semibold">{preview.location || "Online"}</div>
-                </div>
-                <div className="p-3 border rounded-xl">
-                  <div className="text-xs text-gray-500 font-bold mb-1">วัน/เวลาที่สะดวก</div>
-                  <div className="font-semibold">{preview.teaching_days || "-"} {preview.teaching_time}</div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="p-3 border rounded-xl">
+                    <div className="text-xs text-gray-500 font-bold mb-1">ระดับชั้นที่สอน</div>
+                    <div className="font-semibold">{preview.target_student_level || preview.meta?.target_student_level || "ไม่ระบุ"}</div>
+                  </div>
+                  <div className="p-3 border rounded-xl">
+                    <div className="text-xs text-gray-500 font-bold mb-1">ราคา</div>
+                    <div className="font-semibold text-emerald-600">{priceText(preview.price || preview.meta?.price || 0)} บาท/ชม.</div>
+                  </div>
+                  <div className="p-3 border rounded-xl">
+                    <div className="text-xs text-gray-500 font-bold mb-1">สถานที่</div>
+                    <div className="font-semibold">{preview.location || preview.meta?.location || "Online"}</div>
+                  </div>
+                  <div className="p-3 border rounded-xl">
+                    <div className="text-xs text-gray-500 font-bold mb-1">วัน/เวลาที่สอน</div>
+                    <div className="font-semibold">{preview.teaching_days || preview.meta?.teaching_days || "-"} {preview.teaching_time || preview.meta?.teaching_time}</div>
+                  </div>
+                  <div className="p-4 border rounded-xl col-span-2 bg-indigo-50/50">
+                    <div className="text-xs text-indigo-900/60 font-bold mb-2 uppercase tracking-wide">ข้อมูลติดต่อเพิ่มเติม</div>
+                    <div className="font-medium text-indigo-700 whitespace-pre-line leading-relaxed text-base break-words">
+                      {preview.contact_info || preview.meta?.contact_info || "-"}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* --- SECTION 2: TUTOR PROFILE --- */}
             <div className="pt-8 space-y-6">
@@ -543,12 +545,15 @@ function HomeStudent() {
               </h4>
 
               <div className="flex items-start gap-4">
-                <img src={preview.image} alt={preview.name} className="w-20 h-20 rounded-full object-cover border shadow-sm" />
+                <img src={preview.image || preview.authorId?.avatarUrl || "/default-avatar.png"} alt={preview.name || preview.authorId?.name} className="w-20 h-20 rounded-full object-cover border shadow-sm" />
                 <div>
-                  <h5 className="text-xl font-bold text-gray-900">{preview.name} {preview.nickname ? `(${preview.nickname})` : ""}</h5>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="flex items-center gap-1 text-xs text-amber-500 font-bold"><Star size={12} className="fill-amber-500" /> {Number(preview.rating || 0).toFixed(1)} ({preview.reviews} รีวิว)</span>
-                  </div>
+                  <h5 className="text-xl font-bold text-gray-900">{preview.name || preview.authorId?.name} {preview.nickname ? `(${preview.nickname})` : ""}</h5>
+                  {/* แสดงรีวิวถ้ามี */}
+                  {preview.reviews > 0 && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="flex items-center gap-1 text-xs text-amber-500 font-bold"><Star size={12} className="fill-amber-500" /> {Number(preview.rating || 0).toFixed(1)} ({preview.reviews} รีวิว)</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -559,9 +564,16 @@ function HomeStudent() {
                   <div className="text-sm text-gray-600 bg-white border p-3 rounded-lg">
                     {(() => {
                       try {
-                        const edu = typeof preview.education === 'string' ? JSON.parse(preview.education) : preview.education;
+                        let edu = preview.education;
+                        if (typeof edu === 'string') edu = JSON.parse(edu);
+
                         return Array.isArray(edu) && edu.length > 0
-                          ? edu.map((e, i) => <div key={i} className="mb-1 last:mb-0">- {e.degree} {e.major} @ {e.university}</div>)
+                          ? edu.map((e, i) => (
+                            <div key={i} className="mb-2 last:mb-0 border-b last:border-0 pb-2 last:pb-0 border-gray-100">
+                              <div className="font-semibold text-gray-800">{e.degree} {e.major}</div>
+                              <div className="text-xs text-gray-500">{e.institution} {e.year ? `(${e.year})` : ''}</div>
+                            </div>
+                          ))
                           : "ไม่ระบุ";
                       } catch (e) { return "ไม่ระบุ"; }
                     })()}
@@ -572,9 +584,17 @@ function HomeStudent() {
                   <div className="text-sm text-gray-600 bg-white border p-3 rounded-lg">
                     {(() => {
                       try {
-                        const exp = typeof preview.teaching_experience === 'string' ? JSON.parse(preview.teaching_experience) : preview.teaching_experience;
+                        let exp = preview.teaching_experience;
+                        if (typeof exp === 'string') exp = JSON.parse(exp);
+
                         return Array.isArray(exp) && exp.length > 0
-                          ? exp.map((e, i) => <div key={i} className="mb-1 last:mb-0">- {e.title} @ {e.school} ({e.years} ปี)</div>)
+                          ? exp.map((e, i) => (
+                            <div key={i} className="mb-2 last:mb-0 border-b last:border-0 pb-2 last:pb-0 border-gray-100">
+                              <div className="font-semibold text-gray-800">{e.title}</div>
+                              <div className="text-xs text-gray-500 mb-1">{e.duration}</div>
+                              {e.description && <div className="text-xs text-gray-600 italic">"{e.description}"</div>}
+                            </div>
+                          ))
                           : "ไม่ระบุ";
                       } catch (e) { return "ไม่ระบุ"; }
                     })()}
@@ -584,18 +604,103 @@ function HomeStudent() {
 
               <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
                 <div className="font-bold text-sm text-indigo-900 mb-2">แนะนำตัว</div>
-                <p className="text-sm text-gray-700 whitespace-pre-line">{preview.profile_bio || "ติวเตอร์ไม่ได้ระบุข้อมูลแนะนำตัว"}</p>
+                <p className="text-sm text-gray-700 whitespace-pre-line">{preview.about_me || preview.profile_bio || "ติวเตอร์ไม่ได้ระบุข้อมูลแนะนำตัว"}</p>
               </div>
 
-              {/* Contact */}
-              <div className="bg-white border-2 border-dashed border-indigo-200 rounded-xl p-4 text-center">
-                <h5 className="text-sm font-bold text-gray-400 uppercase mb-2">ช่องทางติดต่อ</h5>
-                {preview.contact_info ? (
-                  <div className="text-lg font-bold text-indigo-600 select-all whitespace-pre-line">{preview.contact_info}</div>
-                ) : (
-                  <div className="text-gray-400 italic">ไม่ระบุข้อมูลติดต่อ</div>
-                )}
+              <div className="mt-8 pt-6 border-t border-gray-100">
+                <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <Badge text="ช่องทางติดต่อ" color="emerald" />
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {preview.phone ? (
+                    <a href={`tel:${preview.phone}`} className="flex items-center gap-4 p-4 rounded-xl bg-green-50/50 border border-green-100 hover:bg-green-100/50 hover:shadow-md hover:border-green-200 transition-all group cursor-pointer">
+                      <div className="p-3 bg-white text-green-600 rounded-full shadow-sm group-hover:scale-110 transition-transform">
+                        <Phone size={24} className="fill-green-100" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-green-600 font-bold uppercase tracking-wider mb-0.5">เบอร์โทรศัพท์</div>
+                        <div className="text-lg font-bold text-gray-900 truncate group-hover:text-green-700 transition-colors">{preview.phone}</div>
+                      </div>
+                    </a>
+                  ) : (
+                    <div className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 border border-gray-100 opacity-60">
+                      <div className="p-3 bg-white text-gray-400 rounded-full shadow-sm">
+                        <Phone size={24} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-0.5">เบอร์โทรศัพท์</div>
+                        <div className="text-sm font-medium text-gray-400">ไม่ระบุ</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {preview.email ? (
+                    <a href={`mailto:${preview.email}`} className="flex items-center gap-4 p-4 rounded-xl bg-blue-50/50 border border-blue-100 hover:bg-blue-100/50 hover:shadow-md hover:border-blue-200 transition-all group cursor-pointer">
+                      <div className="p-3 bg-white text-blue-600 rounded-full shadow-sm group-hover:scale-110 transition-transform">
+                        <Mail size={24} className="fill-blue-100" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-0.5">อีเมล</div>
+                        <div className="text-lg font-bold text-gray-900 truncate group-hover:text-blue-700 transition-colors">{preview.email}</div>
+                      </div>
+                    </a>
+                  ) : (
+                    <div className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 border border-gray-100 opacity-60">
+                      <div className="p-3 bg-white text-gray-400 rounded-full shadow-sm">
+                        <Mail size={24} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-0.5">อีเมล</div>
+                        <div className="text-sm font-medium text-gray-400">ไม่ระบุ</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {preview && previewType === "student_post" && (
+          <div className="space-y-6">
+            <div className="flex items-start gap-4">
+              <img src={preview.user?.profile_image || preview.authorId?.avatarUrl || preview.profile_picture_url || "/default-avatar.png"} className="w-16 h-16 rounded-full object-cover border" alt="" />
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">{preview.user?.first_name || preview.authorId?.name || (preview.name ? `${preview.name} ${preview.lastname || ""}` : "นักเรียน")}</h3>
+                <div className="text-sm text-gray-500">ลงประกาศเมื่อ: {new Date(preview.createdAt || preview.created_at).toLocaleDateString("th-TH")}</div>
+                <Badge text="กำลังหาครู" color="rose" />
+              </div>
+            </div>
+
+            <div className="bg-gray-50 p-5 rounded-2xl space-y-3 border border-gray-100">
+              <h4 className="text-lg font-bold text-indigo-700">{preview.subject}</h4>
+              <p className="text-gray-700 leading-relaxed whitespace-pre-line">{preview.description || preview.content || "-"}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 bg-white border rounded-xl">
+                <div className="text-xs text-gray-500 font-bold uppercase">สถานที่</div>
+                <div className="font-semibold text-gray-800 flex items-center gap-2"><MapPin size={16} /> {preview.location || "-"}</div>
+              </div>
+              <div className="p-3 bg-white border rounded-xl">
+                <div className="text-xs text-gray-500 font-bold uppercase">งบประมาณ</div>
+                <div className="font-semibold text-emerald-600 flex items-center gap-2"><DollarSign size={16} /> {preview.budget ? `${preview.budget} ฿` : "-"}</div>
+              </div>
+              <div className="p-3 bg-white border rounded-xl">
+                <div className="text-xs text-gray-500 font-bold uppercase">วัน/เวลาที่ต้องการรเรียน</div>
+                <div className="font-semibold text-blue-600 flex items-center gap-2"><Calendar size={16} /> {preview.preferred_days || "-"} {preview.preferred_time}</div>
+              </div>
+              <div className="p-3 bg-white border rounded-xl">
+                <div className="text-xs text-gray-500 font-bold uppercase">ระดับชั้น</div>
+                <div className="font-semibold text-gray-800 flex items-center gap-2"><GraduationCap size={16} /> {preview.grade_level || "-"}</div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t">
+              <button className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg transition-all" onClick={() => alert("ระบบแชทกำลังพัฒนา")}>
+                <MessageSquarePlus className="inline-block mr-2" /> ติดต่อสอบถาม
+              </button>
             </div>
           </div>
         )}
@@ -794,6 +899,57 @@ function HomeRouter() {
 
   if (role === "tutor") return <HomeTutor />;
   return <HomeStudent />;
+}
+
+function TutorReviewsList({ tutorId, API_BASE }) {
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (tutorId) {
+      fetchReviews();
+    }
+  }, [tutorId]);
+
+  const fetchReviews = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_BASE}/api/tutors/${tutorId}/reviews`);
+      if (res.ok) {
+        const data = await res.json();
+        setReviews(data);
+      }
+    } catch (e) {
+      console.error("Fetch reviews error", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div className="text-center py-4 text-gray-400">กำลังโหลดรีวิว...</div>;
+  if (reviews.length === 0) return <div className="text-center py-4 text-gray-400 border border-dashed rounded-xl">ยังไม่มีรีวิว</div>;
+
+  return (
+    <div className="space-y-4">
+      {reviews.map(r => (
+        <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex gap-4">
+          <img src={r.reviewer?.avatar || "/default-avatar.png"} alt="reviewer" className="w-10 h-10 rounded-full object-cover bg-gray-100" />
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-gray-900 text-sm">{r.reviewer?.name || "ไม่ระบุชื่อ"}</h4>
+              <span className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleDateString("th-TH")}</span>
+            </div>
+            <div className="flex items-center gap-1 mb-1">
+              {[...Array(5)].map((_, i) => (
+                <Star key={i} size={14} className={i < r.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"} />
+              ))}
+            </div>
+            <p className="text-sm text-gray-600">{r.comment}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default HomeRouter;

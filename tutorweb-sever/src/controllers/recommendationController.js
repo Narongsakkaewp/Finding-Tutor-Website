@@ -421,3 +421,91 @@ exports.getRecommendedCourses = async (req, res) => {
         res.status(500).json({ message: "Server error" });
     }
 };
+// ---------------------------------------------------------
+// 🧠 PART 3: ระบบแนะนำ "เพื่อนติว" (Study Buddy)
+// ---------------------------------------------------------
+exports.getStudyBuddyRecommendations = async (req, res) => {
+    try {
+        const pool = req.db;
+        const userId = req.query.user_id;
+
+        if (!userId) return res.json([]);
+
+        // 1. ดึงข้อมูล "ตัวเรา" (My Profile & My Posts)
+        // ดูว่าเราโพสต์หาติววิชาอะไรบ้าง และเราอยู่ที่ไหน
+        const [myProfile] = await pool.query('SELECT address, grade_level, institution FROM student_profiles WHERE user_id = ?', [userId]);
+        const [myPosts] = await pool.query('SELECT subject, location FROM student_posts WHERE student_id = ? ORDER BY created_at DESC LIMIT 5', [userId]);
+        
+        const myLocation = myProfile[0]?.address || "";
+        const myInterests = myPosts.map(p => p.subject); // วิชาที่เราอยากเรียน
+
+        if (myInterests.length === 0 && !myLocation) {
+            // ถ้าไม่มีข้อมูลอะไรเลย ส่งเพื่อนล่าสุดไปให้ดูเล่นๆ
+            const [randomFriends] = await pool.query(`
+                SELECT r.user_id, r.name, r.lastname, sp.profile_picture_url, sp.grade_level, sp.institution
+                FROM register r
+                JOIN student_profiles sp ON r.user_id = sp.user_id
+                WHERE r.user_id != ? AND r.role = 'student'
+                ORDER BY r.created_at DESC LIMIT 5
+            `, [userId]);
+            return res.json(randomFriends);
+        }
+
+        // 2. ขยายคำค้นหา (เช่น เราหา "คอม" ระบบจะหาเพื่อนที่หา "Python" ด้วย)
+        let searchKeywords = [];
+        myInterests.forEach(subj => {
+            searchKeywords.push(...expandKeywords(subj));
+        });
+        searchKeywords = [...new Set(searchKeywords)]; // ตัดคำซ้ำ
+
+        // 3. ดึง "เพื่อนคนอื่น" มาเทียบ (Candidates)
+        // กรองเบื้องต้น: เป็นนักเรียนเหมือนกัน (role='student') และไม่ใช่ตัวเรา
+        const [candidates] = await pool.query(`
+            SELECT 
+                r.user_id, r.name, r.lastname, 
+                sp.profile_picture_url, sp.grade_level, sp.institution, sp.address,
+                (SELECT GROUP_CONCAT(subject SEPARATOR ', ') FROM student_posts WHERE student_id = r.user_id ORDER BY created_at DESC LIMIT 3) as looking_for
+            FROM register r
+            JOIN student_profiles sp ON r.user_id = sp.user_id
+            WHERE r.user_id != ? AND r.role = 'student'
+            LIMIT 100
+        `, [userId]);
+
+        // 4. ให้คะแนนความเข้ากันได้ (Scoring)
+        const scoredFriends = candidates.map(friend => {
+            let score = 0;
+            const friendLookingFor = (friend.looking_for || "").toLowerCase();
+            const friendLocation = (friend.address || "").toLowerCase();
+
+            // 4.1 วิชาตรงกัน (หาติววิชาเดียวกัน = ไปติวด้วยกันได้)
+            const isSubjectMatch = searchKeywords.some(kw => friendLookingFor.includes(kw));
+            if (isSubjectMatch) score += 50;
+
+            // 4.2 สถานที่ใกล้กัน (จังหวัด/เขต เดียวกัน)
+            if (myLocation && friendLocation) {
+                if (friendLocation.includes(myLocation) || myLocation.includes(friendLocation)) {
+                    score += 30;
+                }
+            }
+
+            // 4.3 ระดับชั้น/สถาบัน ใกล้เคียงกัน
+            if (myProfile[0]?.institution && friend.institution) {
+                if (friend.institution === myProfile[0].institution) score += 20; // โรงเรียนเดียวกัน
+            }
+
+            return { ...friend, match_score: score };
+        });
+
+        // 5. คัดเลือกเฉพาะคนที่มีคะแนน > 0 และเรียงลำดับ
+        const buddies = scoredFriends
+            .filter(f => f.match_score > 0)
+            .sort((a, b) => b.match_score - a.match_score)
+            .slice(0, 5); // เอาแค่ 5 คน
+
+        res.json(buddies);
+
+    } catch (err) {
+        console.error("Study Buddy Error:", err);
+        res.status(500).json({ error: err.message });
+    }
+};

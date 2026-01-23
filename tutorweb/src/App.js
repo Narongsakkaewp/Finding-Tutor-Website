@@ -14,8 +14,9 @@ import TutorLayout from './components/TutorLayout';
 import StudentCalendar from './components/StudentCalendar';
 import Settings from './components/Settings';
 import ReportIssueModal from './components/ReportIssueModal';
+import UserProfilePage from './pages/UserProfilePage'; // [NEW]
 
-// ✅ 1. Import ไอคอนสวยๆ จาก lucide-react เพื่อใช้แทน Bootstrap Icons
+// ✅ 1. Import Icons from lucide-react
 import {
   LayoutDashboard,
   Bell,
@@ -59,6 +60,8 @@ function App() {
   const [backPage, setBackPage] = useState(() => {
     return localStorage.getItem('backPage') || 'mypost';
   });
+
+  const [viewingUserId, setViewingUserId] = useState(null); // [NEW] For viewing other profiles
 
   const [postsCache, setPostsCache] = useState([]);
 
@@ -167,6 +170,12 @@ function App() {
     }
   };
 
+  const handleViewProfile = (userId) => {
+    setViewingUserId(userId);
+    setBackPage(currentPage);
+    setCurrentPage('user_profile');
+  };
+
   const renderPage = () => {
     switch (currentPage) {
       case 'home': return <Home />;
@@ -185,6 +194,7 @@ function App() {
         return (
           <MyPost
             onOpenDetails={(id) => openPostDetails(id, 'mypost')}
+            onViewProfile={handleViewProfile} // [NEW]
             postsCache={postsCache}
             setPostsCache={setPostsCache}
           />
@@ -210,6 +220,13 @@ function App() {
       case 'tutor_layout': return <TutorLayout />;
       case 'student_calendar': return <StudentCalendar />;
       case 'settings': return <Settings />;
+      case 'user_profile': // [NEW]
+        return (
+          <UserProfilePage
+            userId={viewingUserId}
+            onBack={() => setCurrentPage(backPage || 'home')}
+          />
+        );
       default: return <Home />;
     }
   };

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   MapPin, Calendar, Clock, Users, DollarSign, Heart,
-  Filter, Search, Plus, X, ChevronDown, Mail, Phone, User
+  Filter, Search, Plus, X, ChevronDown, Mail, Phone, User, Star
 } from "lucide-react";
 import LongdoLocationPicker from './LongdoLocationPicker';
 
@@ -182,7 +182,7 @@ function Modal({ open, onClose, children, title }) {
 }
 
 /* ---------- Main Component ---------- */
-function MyPost({ setPostsCache }) {
+function MyPost({ setPostsCache, onViewProfile }) {
   const user = pickUser();
   const userType = pickUserType();
   const isTutor = userType === "tutor";
@@ -194,7 +194,6 @@ function MyPost({ setPostsCache }) {
 
   const [posts, setPosts] = useState([]);
   const [expanded, setExpanded] = useState(false);
-  const [viewingUser, setViewingUser] = useState(null);
 
   const [loading, setLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState({});
@@ -757,7 +756,13 @@ function MyPost({ setPostsCache }) {
                 <div key={post.id} className="bg-white border p-4 rounded-2xl shadow-sm">
                   <div
                     className="flex items-center gap-3 mb-2 cursor-pointer group"
-                    onClick={() => setViewingUser(post.user)}
+                    onClick={() => {
+                      // Use onViewProfile if available
+                      if (onViewProfile) {
+                        // Prefer owner_id for fetching profile
+                        onViewProfile(post.owner_id);
+                      }
+                    }}
                   >
                     <img
                       src={post.user?.profile_image}
@@ -880,9 +885,9 @@ function MyPost({ setPostsCache }) {
                               disabled={busy || isExpired || (isFull && !isTutor)}
                               onClick={() => handleJoin(post)}
                               className={`px-4 py-2 rounded-xl text-white ${isExpired ? "bg-gray-400 cursor-not-allowed" :
-                                  (isFull && !isTutor) ? "bg-gray-400 cursor-not-allowed" :
-                                    isTutor ? "bg-indigo-600 hover:bg-indigo-700" : // สีครามสำหรับติวเตอร์
-                                      "bg-purple-600 hover:bg-purple-700"
+                                (isFull && !isTutor) ? "bg-gray-400 cursor-not-allowed" :
+                                  isTutor ? "bg-indigo-600 hover:bg-indigo-700" : // สีครามสำหรับติวเตอร์
+                                    "bg-purple-600 hover:bg-purple-700"
                                 }`}
                             >
                               {isExpired ? "หมดเวลา" :
@@ -920,42 +925,7 @@ function MyPost({ setPostsCache }) {
           </div>
         )}
 
-        {viewingUser && (
-          <Modal open={!!viewingUser} onClose={() => setViewingUser(null)} title="ข้อมูลผู้ใช้งาน">
-            <div className="flex flex-col items-center p-4">
-              <img
-                src={viewingUser.profile_image || "/default-avatar.png"}
-                alt="profile"
-                className="w-24 h-24 rounded-full object-cover border-4 border-indigo-50 shadow-md mb-4"
-              />
-              <h3 className="text-xl font-bold text-gray-900">{viewingUser.first_name} {viewingUser.last_name}</h3>
-              <div className="w-full space-y-3">
-                {viewingUser.email && (
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <Mail className="text-indigo-500 w-5 h-5" />
-                    <div>
-                      <p className="text-xs text-gray-400">อีเมล</p>
-                      <p className="text-sm font-medium text-gray-700">{viewingUser.email}</p>
-                    </div>
-                  </div>
-                )}
-                {viewingUser.phone && (
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <Phone className="text-emerald-500 w-5 h-5" />
-                    <div>
-                      <p className="text-xs text-gray-400">เบอร์โทรศัพท์</p>
-                      <p className="text-sm font-medium text-gray-700">{viewingUser.phone}</p>
-                    </div>
-                  </div>
-                )}
-                {/* ถ้าไม่มีข้อมูลติดต่อเลย */}
-                {!viewingUser.email && !viewingUser.phone && (
-                  <p className="text-center text-gray-400 text-sm">ไม่มีข้อมูลติดต่อเพิ่มเติม</p>
-                )}
-              </div>
-            </div>
-          </Modal>
-        )}
+
 
       </div>
     </div>

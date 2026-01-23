@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Review from "../components/Review";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive, Sparkles, User } from "lucide-react";
+import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive, Sparkles, User, Users } from "lucide-react";
 
 /* ---------- Helpers ---------- */
 
@@ -44,16 +44,16 @@ function Stat({ label, value }) {
   );
 }
 
-function Card({ title, children, icon: Icon }) {
+function Card({ title, children, icon: Icon, className = "" }) {
   return (
-    <section className="bg-white rounded-2xl shadow-sm border p-4 md:p-5">
+    <section className={`bg-white rounded-2xl shadow-sm border p-4 md:p-5 flex flex-col ${className}`}>
       {title && (
         <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
           {Icon && <Icon className="text-indigo-500" size={20} />}
           <h3 className="text-lg font-bold text-gray-800">{title}</h3>
         </div>
       )}
-      <div>{children}</div>
+      <div className="flex-1">{children}</div>
     </section>
   );
 }
@@ -188,9 +188,10 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewTargetId, setReviewTargetId] = useState(null);
 
-  // ✅ State สำหรับระบบแนะนำติวเตอร์
+  // ✅ State สำหรับระบบแนะนำ
   const [recommendedTutors, setRecommendedTutors] = useState([]);
   const [recsBasedOn, setRecsBasedOn] = useState("");
+  const [buddies, setBuddies] = useState([]); // State สำหรับเก็บเพื่อน
 
   const [openMenuFor, setOpenMenuFor] = useState(null);
   const [showHiddenModal, setShowHiddenModal] = useState(false);
@@ -216,6 +217,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
     (async () => {
       try {
         const me = currentUser?.user_id || 0;
+
         // 1. Profile
         let prof = {
           avatarUrl: currentUser?.profile_picture_url || "/default-avatar.png",
@@ -274,12 +276,11 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           if (!cancelled) setEvents(evData.items || []);
         }
 
-        // ✅ 4. Fetch Recommended Tutors (Real Data)
+        // 4. Fetch Recommended Tutors
         const recRes = await fetch(`http://localhost:5000/api/recommendations?user_id=${me}`);
         if (recRes.ok) {
           const recData = await recRes.json();
           if (!cancelled) {
-            // API อาจจะส่งกลับเป็น Array หรือ Object { items: [], based_on: "" }
             if (Array.isArray(recData)) {
               setRecommendedTutors(recData);
             } else {
@@ -287,6 +288,13 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               setRecsBasedOn(recData.based_on || "");
             }
           }
+        }
+
+        // ✅ 5. Fetch Study Buddies (ย้ายมาไว้ตรงนี้ เพื่อให้ใช้ 'me' ได้และทำงานถูกต้อง)
+        const budRes = await fetch(`http://localhost:5000/api/recommendations/friends?user_id=${me}`);
+        if (budRes.ok) {
+          const budData = await budRes.json();
+          if (!cancelled) setBuddies(budData);
         }
 
       } catch (e) { console.error(e); }
@@ -532,7 +540,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
             </Card>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-6 sticky top-6 self-start">
 
             {/* ✅ ติวเตอร์แนะนำสำหรับคุณ (แก้ให้มี Scrollbar) */}
             <Card title="ติวเตอร์แนะนำสำหรับคุณ" icon={Sparkles}>
@@ -543,7 +551,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               )}
 
               {/* 👇 เพิ่ม div ครอบตรงนี้ เพื่อจำกัดความสูงและใส่ Scrollbar 👇 */}
-              <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+              <div className="max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
                 {!recommendedTutors.length ? <Empty line="ยังไม่มีข้อมูลแนะนำ" /> : (
                   <ul className="space-y-3">
                     {recommendedTutors.map((tutor) => (
@@ -566,14 +574,35 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               </div>
             </Card>
 
-            {/* วิชาที่สนใจ (คงเดิม) */}
-            {/* <Card title="วิชาที่สนใจ">
-              {!profile.subjects?.length ? <Empty line="ยังไม่มีวิชา" /> : (
-                <ul className="list-disc pl-5 space-y-1 text-gray-700">
-                  {profile.subjects.map((s, i) => <li key={i}>{s.name}</li>)}
-                </ul>
-              )}
-            </Card> */}
+            {/* ✅ Study Buddies Section */}
+            <Card title="เพื่อนติวที่น่าสนใจ" icon={Users}>
+              <div className="max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                {!buddies.length ? <Empty line="ยังไม่พบเพื่อนติวที่ตรงกัน" /> : (
+                  <ul className="space-y-3">
+                    {buddies.map((friend) => (
+                      <li key={friend.user_id} className="flex items-center gap-3 p-3 border rounded-xl hover:bg-orange-50 cursor-pointer transition-all">
+                        <img src={friend.profile_picture_url || '/default-avatar.png'} alt={friend.name} className="w-10 h-10 rounded-full object-cover border" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold text-gray-800">{friend.name} {friend.lastname}</div>
+                          <div className="text-xs text-gray-500 truncate">
+                            {friend.looking_for ? `กำลังหา: ${friend.looking_for}` : "กำลังมองหาเพื่อนติว"}
+                          </div>
+                          {friend.match_score > 0 && (
+                            <span className="text-[10px] text-orange-500 font-medium">
+                              Match {friend.match_score}% {friend.address ? `• ${friend.address}` : ""}
+                            </span>
+                          )}
+                        </div>
+                        <button className="px-3 py-1 bg-orange-100 text-orange-600 rounded-lg text-xs font-bold hover:bg-orange-200">
+                          ทักแชท
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </Card>
+
           </div>
         </div>
       </div>

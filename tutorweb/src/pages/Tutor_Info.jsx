@@ -448,12 +448,12 @@ export default function TutorInfoPage({ setCurrentPage }) {
                     {/* --- About Me --- */}
                     <div>
                         <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">เกี่ยวกับคุณ</h3>
-                        <textarea id="about_me" name="about_me" rows="4" className="mt-1 w-full border border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำตัวเอง, สไตล์การสอน, ประสบการณ์..." value={formData.about_me} onChange={handleChange}></textarea>
+                        <textarea id="about_me" name="about_me" rows="4" className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำตัวเอง, สไตล์การสอน, ประสบการณ์..." value={formData.about_me} onChange={handleChange}></textarea>
                     </div>
 
                     {/* --- Education Section --- */}
                     <div>
-                        <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">ประวัติการศึกษา</h3>
+                        <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">ประวัติการศึกษา <span className='text-sm text-gray-500'>(เรียงจากเก่าสุดไปใหม่สุด)</span></h3>
                         {formData.education.map((edu, index) => (
                             <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 border rounded-md relative">
                                 <button
