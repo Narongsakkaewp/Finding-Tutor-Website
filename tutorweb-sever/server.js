@@ -517,6 +517,7 @@ app.get('/api/tutor-posts', async (req, res) => {
       LEFT JOIN (
         SELECT tutor_post_id, COUNT(*) AS c
         FROM tutor_post_joins
+        WHERE status='approved'
         GROUP BY tutor_post_id
       ) jc ON jc.tutor_post_id = tp.tutor_post_id
       LEFT JOIN tutor_post_joins jme
@@ -626,6 +627,13 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
         content: r.description,
         subject: r.subject,
         createdAt: r.created_at,
+        // ✅ สำหรับโชว์ "ผู้เข้าร่วม: x/y"
+        group_size: Number(r.group_size || 1),
+        authorId: {
+          id: r.tutor_id,
+          name: `${r.name || ''}${r.lastname ? ' ' + r.lastname : ''}`.trim() || `ติวเตอร์ #${r.tutor_id}`,
+          avatarUrl: r.profile_picture_url || ''
+        },
         images: [],
         meta: {
           target_student_level: r.target_student_level || 'ไม่ระบุ',
@@ -713,7 +721,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
       });
     }
   } catch (e) {
-    console.error('GET /api/tutor-posts/:id error', e);
+    //console.error('GET /api/tutor-posts/:id error', e);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -994,21 +1002,25 @@ app.post('/api/student_posts', async (req, res) => {
 // ===== POST: สร้างโพสต์ติวเตอร์ =====
 app.post('/api/tutor-posts', upload.none(), async (req, res) => {
   console.log('--- POST /api/tutor-posts --- content-type:', req.headers['content-type'], 'body:', req.body);
-  try {
-    if (!req.body) {
-      return res.status(400).json({ success: false, message: 'ไม่พบข้อมูลใน body ของคำขอ' });
-    }
 
-    const b = req.body;
+  try {
+    const b = req.body || {};
+
+    const rawGroup =
+      b.group_size ?? b.groupSize ?? b.capacity ?? b.max_participants ?? b.maxStudents;
+
+    const parsedGroup = parseInt(rawGroup, 10);
+    const groupSize = Number.isFinite(parsedGroup) && parsedGroup > 0 ? parsedGroup : 1;
+
     const payload = {
       tutor_id: Number(b.tutor_id ?? b.user_id),
-      subject: b.subject,
+      subject: (b.subject || "").trim(),
       description: b.description ?? b.details ?? null,
       target_student_level: b.target_student_level ?? b.level ?? null,
       teaching_days: b.teaching_days ?? b.days ?? null,
       teaching_time: b.teaching_time ?? b.time ?? null,
       location: b.location ?? b.place ?? null,
-      group_size: Number(b.group_size ?? 0) || 0,
+      group_size: groupSize,
       price: Number(b.price ?? b.hourly_rate ?? 0) || 0,
       contact_info: b.contact_info ?? b.contact ?? null
     };
@@ -1091,11 +1103,11 @@ const JOIN_CONFIG = {
     ownerCol: 'tutor_id',
     joinsTable: 'tutor_post_joins',
     joinPostIdCol: 'tutor_post_id',
-    hasCapacity: false,
-    capacityCol: null,
+    hasCapacity: true,
+    capacityCol: 'group_size',
     notifyType: 'tutor_join_request',
     notifyMessage: id => `มีคำขอเข้าร่วมโพสต์ติวเตอร์ #${id}`,
-    countApprovedOnly: false,
+    countApprovedOnly: true,
   },
 };
 
@@ -1104,28 +1116,54 @@ async function doJoinUnified(type, postId, me) {
   const cfg = JOIN_CONFIG[type];
   if (!cfg) throw new Error('invalid post type');
 
-  const [[post]] = await pool.query(
-    `SELECT ${cfg.ownerCol} AS owner_id${cfg.hasCapacity ? `, ${cfg.capacityCol} AS capacity` : ''} 
-     FROM ${cfg.postsTable} WHERE ${cfg.postIdCol} = ?`,
-    [postId]
-  );
-  if (!post) return { http: 404, body: { success: false, message: 'post not found' } };
-  if (post.owner_id === me) return { http: 400, body: { success: false, message: 'คุณเป็นเจ้าของโพสต์นี้' } };
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-  if (cfg.hasCapacity) {
-    const [[cnt]] = await pool.query(
-      `SELECT COUNT(*) AS c FROM ${cfg.joinsTable} WHERE ${cfg.joinPostIdCol} = ? AND status='approved'`,
+    // ✅ lock post row กัน race
+    const [[post]] = await conn.query(
+      `SELECT ${cfg.ownerCol} AS owner_id${cfg.hasCapacity ? `, ${cfg.capacityCol} AS capacity` : ''} 
+       FROM ${cfg.postsTable} 
+       WHERE ${cfg.postIdCol} = ?
+       FOR UPDATE`,
       [postId]
     );
-    if (cnt.c >= post.capacity) {
-      return { http: 409, body: { success: false, message: 'กลุ่มนี้เต็มแล้ว' } };
-    }
-  }
 
-  // สำหรับ tutor: สร้าง/อัปเดตแถวใน tutor_post_joins เพื่อบันทึกคำขอเข้าร่วม
-  if (cfg.joinsTable === 'tutor_post_joins') {
-    try {
-      await pool.query(
+    if (!post) {
+      await conn.rollback();
+      return { http: 404, body: { success: false, message: 'post not found' } };
+    }
+    if (Number(post.owner_id) === Number(me)) {
+      await conn.rollback();
+      return { http: 400, body: { success: false, message: 'คุณเป็นเจ้าของโพสต์นี้' } };
+    }
+
+    // ✅ เช็คเต็ม (approved เท่านั้น)
+    if (cfg.hasCapacity) {
+      const capacity = Number(post.capacity || 0);
+
+      if (capacity > 0) {
+        const [[cnt]] = await conn.query(
+          `SELECT COUNT(*) AS c 
+           FROM ${cfg.joinsTable} 
+           WHERE ${cfg.joinPostIdCol} = ? AND status='approved'
+           FOR UPDATE`,
+          [postId]
+        );
+
+        if (Number(cnt.c || 0) >= capacity) {
+          await conn.rollback();
+          return {
+            http: 409,
+            body: { success: false, message: 'กลุ่มนี้เต็มแล้ว', full: true, join_count: Number(cnt.c || 0), group_size: capacity }
+          };
+        }
+      }
+    }
+
+    // ✅ insert/update เป็น pending (เหมือนเดิม แต่ใช้ conn)
+    if (cfg.joinsTable === 'tutor_post_joins') {
+      await conn.query(
         `INSERT INTO tutor_post_joins
           (tutor_post_id, user_id, status, requested_at, name, lastname)
          SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
@@ -1139,45 +1177,58 @@ async function doJoinUnified(type, postId, me) {
         `,
         [postId, me, me]
       );
-    } catch (e) {
-      console.error('Insert tutor_post_joins error:', e);
-      // ไม่ต้องหยุด flow ของการแจ้งเตือน แต่ log ไว้
+    } else {
+      // student_post_joins
+      await conn.query(
+        `INSERT INTO student_post_joins
+          (student_post_id, user_id, status, requested_at, name, lastname)
+         SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
+         FROM register r
+         WHERE r.user_id = ?
+         ON DUPLICATE KEY UPDATE
+           status = IF(VALUES(status)='pending' AND status <> 'approved', 'pending', status),
+           requested_at = VALUES(requested_at),
+           name = VALUES(name),
+           lastname = VALUES(lastname)
+        `,
+        [postId, me, me]
+      );
     }
-  }
 
-  let countSql = `SELECT COUNT(*) AS c FROM ${cfg.joinsTable} WHERE ${cfg.joinPostIdCol} = ?`;
-  if (cfg.countApprovedOnly) countSql += ` AND status='approved'`;
-  const [[cntRow]] = await pool.query(countSql, [postId]);
+    // นับ approved เพื่อส่งกลับ
+    let countSql = `SELECT COUNT(*) AS c FROM ${cfg.joinsTable} WHERE ${cfg.joinPostIdCol} = ?`;
+    if (cfg.countApprovedOnly) countSql += ` AND status='approved'`;
+    const [[cntRow]] = await conn.query(countSql, [postId]);
 
-  // เตรียมข้อความแจ้งเตือน: ถ้าเป็น tutor ให้ใส่ชื่อผู้ขอเข้าร่วมลงในข้อความด้วย
-  let notifyMessage = cfg.notifyMessage(postId);
-  if (cfg.joinsTable === 'tutor_post_joins') {
-    try {
-      const [[actorRow]] = await pool.query('SELECT name, lastname FROM register WHERE user_id = ?', [me]);
-      let subject = '';
-      try {
-        const [[pRow]] = await pool.query('SELECT subject FROM tutor_posts WHERE tutor_post_id = ?', [postId]);
-        subject = pRow?.subject || '';
-      } catch (e) {
-        console.error('Fetch post subject error:', e);
-      }
-
+    // เตรียมข้อความแจ้งเตือน
+    let notifyMessage = cfg.notifyMessage(postId);
+    if (cfg.joinsTable === 'tutor_post_joins') {
+      const [[actorRow]] = await conn.query('SELECT name, lastname FROM register WHERE user_id = ?', [me]);
+      const [[pRow]] = await conn.query('SELECT subject FROM tutor_posts WHERE tutor_post_id = ?', [postId]);
+      const subject = pRow?.subject || '';
       if (actorRow) {
         notifyMessage = `มีคำขอเข้าร่วมจาก ${actorRow.name || ''}${actorRow.lastname ? ' ' + actorRow.lastname : ''} (โพสต์ติวเตอร์ #${postId}${subject ? `: ${subject}` : ''})`;
       }
-    } catch (e) {
-      console.error('Fetch actor name error:', e);
     }
+
+    await conn.query(
+      'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
+      [post.owner_id, me, cfg.notifyType, notifyMessage, postId]
+    );
+
+    await conn.commit();
+
+    return {
+      http: 200,
+      body: { success: true, joined: true, pending_me: true, join_count: Number(cntRow.c || 0) }
+    };
+
+  } catch (e) {
+    try { await conn.rollback(); } catch {}
+    throw e;
+  } finally {
+    conn.release();
   }
-
-  // ✅ แจ้งเตือน (5 คอลัมน์ตามตารางจริง)
-  const [ins] = await pool.query(
-    'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-    [post.owner_id, me, cfg.notifyType, notifyMessage, postId]
-  );
-  console.debug('Inserted notification id:', ins.insertId, 'for post', postId, 'actor', me);
-
-  return { http: 200, body: { success: true, joined: true, pending_me: true, join_count: Number(cntRow.c || 0) } };
 }
 
 async function doUnjoinUnified(type, postId, me) {
@@ -1292,131 +1343,6 @@ app.delete('/api/tutor-posts/:id/join', async (req, res) => {
   }
 });
 
-// ---------- Student Join/Unjoin (เดิม)
-app.post('/api/student_posts/:id/join', async (req, res) => {
-  try {
-    const postId = Number(req.params.id);
-    const me = Number(req.body.user_id);
-    if (!Number.isFinite(postId) || !Number.isFinite(me)) {
-      return res.status(400).json({ success: false, message: 'invalid postId or user_id' });
-    }
-
-    const [[post]] = await pool.query(
-      'SELECT student_id, group_size, subject FROM student_posts WHERE student_post_id = ?',
-      [postId]
-    );
-    if (!post) return res.status(404).json({ success: false, message: 'post not found' });
-
-    if (post.student_id === me) {
-      return res.status(400).json({ success: false, message: 'คุณเป็นเจ้าของโพสต์นี้' });
-    }
-
-    // Check user type
-    const [[userRole]] = await pool.query('SELECT type FROM register WHERE user_id = ?', [me]);
-    const isTutor = userRole?.type === 'tutor' || userRole?.type === 'teacher';
-
-    if (isTutor) {
-      // --- Logic สำหรับ Tutor (ลงตาราง student_post_offers) ---
-
-      // [NEW] Check if post already has an approved tutor
-      const [[taken]] = await pool.query(
-        'SELECT 1 FROM student_post_offers WHERE student_post_id = ? AND status="approved" LIMIT 1',
-        [postId]
-      );
-      if (taken) {
-        return res.status(409).json({ success: false, message: 'โพสต์นี้มีติวเตอร์ดูแลแล้ว' });
-      }
-
-      // Check if already exists/pending to prevent spam notification
-      const [[existingOffer]] = await pool.query(
-        'SELECT status FROM student_post_offers WHERE student_post_id = ? AND tutor_id = ?',
-        [postId, me]
-      );
-
-      await pool.query(
-        `
-        INSERT INTO student_post_offers
-          (student_post_id, tutor_id, status, requested_at, name, lastname)
-        SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
-        FROM register r
-        WHERE r.user_id = ?
-        ON DUPLICATE KEY UPDATE
-          status       = IF(VALUES(status)='pending' AND status <> 'approved', 'pending', status),
-          requested_at = VALUES(requested_at),
-          name         = VALUES(name),
-          lastname     = VALUES(lastname)
-        `,
-        [postId, me, me]
-      );
-
-      // Only notify if it wasn't already there or wasn't pending (though logic above resets to pending)
-      // Simple check: if we didn't find it before, OR it was rejected before (now reset to pending)
-      if (!existingOffer || existingOffer.status === 'rejected') {
-        await pool.query(
-          'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-          [
-            post.student_id,
-            me,
-            'offer',
-            `มีติวเตอร์เสนอสอนวิชา "${post.subject}"`,
-            postId
-          ]
-        );
-      }
-
-      // Count only offers? or just return success
-      return res.json({ success: true, joined: true, message: 'ส่งข้อเสนอสอนเรียบร้อย' });
-
-    } else {
-      // --- Logic สำหรับ Student (ลงตาราง student_post_joins) ---
-      const [[cnt]] = await pool.query(
-        'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status="approved"',
-        [postId]
-      );
-      if (cnt.c >= post.group_size) {
-        return res.status(409).json({ success: false, message: 'กลุ่มนี้เต็มแล้ว' });
-      }
-
-      await pool.query(
-        `
-        INSERT INTO student_post_joins
-          (student_post_id, user_id, status, requested_at, name, lastname)
-        SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
-        FROM register r
-        WHERE r.user_id = ?
-        ON DUPLICATE KEY UPDATE
-          status       = IF(VALUES(status)='pending' AND status <> 'approved', 'pending', status),
-          requested_at = VALUES(requested_at),
-          name         = VALUES(name),
-          lastname     = VALUES(lastname)
-        `,
-        [postId, me, me]
-      );
-
-      const [[cntApproved]] = await pool.query(
-        'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status="approved"',
-        [postId]
-      );
-
-      await pool.query(
-        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-        [
-          post.student_id,
-          me,
-          'join_request', // Student join request
-          `มีคำขอเข้าร่วมโพสต์ #${postId}`,
-          postId
-        ]
-      );
-
-      return res.json({ success: true, joined: true, join_count: Number(cntApproved.c || 0) });
-    }
-
-  } catch (err) {
-    console.error(err);
-    return sendDbError(res, err);
-  }
-});
 
 // ✅ API ลบโพสต์นักเรียน
 app.delete('/api/student_posts/:id', async (req, res) => {
@@ -1554,85 +1480,149 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
   const targetUserId = Number(req.params.userId);
   const action = String(req.body?.action || '').toLowerCase();
 
-  if (!Number.isFinite(postId) || !Number.isFinite(targetUserId)) return res.status(400).json({ message: 'invalid ids' });
-  if (!['approve', 'reject'].includes(action)) return res.status(400).json({ message: 'Invalid action' });
+  if (!Number.isFinite(postId) || !Number.isFinite(targetUserId)) {
+    return res.status(400).json({ message: 'invalid ids' });
+  }
+  if (!['approve', 'reject'].includes(action)) {
+    return res.status(400).json({ message: 'Invalid action' });
+  }
 
   try {
     const conn = await pool.getConnection();
     try {
-      const [[sp]] = await conn.query(`
-        SELECT sp.student_id AS owner_id, sp.subject, r.name AS owner_name, r.lastname AS owner_lastname 
-        FROM student_posts sp 
-        JOIN register r ON r.user_id = sp.student_id 
-        WHERE sp.student_post_id = ?`, [postId]);
+      await conn.beginTransaction();
 
-      if (!sp) { conn.release(); return res.status(404).json({ message: 'post not found' }); }
+      // ✅ ล็อกแถวโพสต์เพื่อกัน race + ดึง group_size มาด้วย
+      const [[sp]] = await conn.query(`
+        SELECT
+          sp.student_id AS owner_id,
+          sp.subject,
+          sp.group_size,
+          r.name AS owner_name,
+          r.lastname AS owner_lastname
+        FROM student_posts sp
+        JOIN register r ON r.user_id = sp.student_id
+        WHERE sp.student_post_id = ?
+        FOR UPDATE
+      `, [postId]);
+
+      if (!sp) {
+        await conn.rollback();
+        conn.release();
+        return res.status(404).json({ message: 'post not found' });
+      }
 
       const newStatus = action === 'approve' ? 'approved' : 'rejected';
 
-      // ลองหาใน student_post_joins ก่อน
+      // ✅ ถ้าเป็น approve: เช็คจำนวนที่อนุมัติแล้ว เทียบกับ group_size ก่อน
+      const capacity = Number(sp.group_size ?? 0);
+
+      if (newStatus === 'approved' && capacity > 0) {
+        // ล็อกแถว join ที่อนุมัติแล้ว (กันชน)
+        const [[cntRow]] = await conn.query(`
+          SELECT COUNT(*) AS c
+          FROM student_post_joins
+          WHERE student_post_id = ? AND status = 'approved'
+          FOR UPDATE
+        `, [postId]);
+
+        const approvedCount = Number(cntRow?.c ?? 0);
+
+        if (approvedCount >= capacity) {
+          await conn.rollback();
+          conn.release();
+          return res.status(409).json({
+            success: false,
+            message: 'เต็มแล้ว ไม่สามารถอนุมัติเพิ่มได้',
+            join_count: approvedCount,
+            group_size: capacity
+          });
+        }
+      }
+
+      // ✅ อัปเดตเฉพาะรายการที่ยัง pending เท่านั้น (กันกดซ้ำแล้ว count เพี้ยน)
       const [attemptJoin] = await conn.query(
-        `UPDATE student_post_joins SET status = ?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at) WHERE student_post_id = ? AND user_id = ?`,
+        `UPDATE student_post_joins
+         SET status = ?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at)
+         WHERE student_post_id = ? AND user_id = ? AND status = 'pending'`,
         [newStatus, newStatus, postId, targetUserId]
       );
 
       let isTutorTable = false;
+
       if (attemptJoin.affectedRows === 0) {
-        // ถ้าไม่มี ลองหาใน student_post_offers
         const [attemptOffer] = await conn.query(
-          `UPDATE student_post_offers SET status = ?, decided_at = NOW() WHERE student_post_id = ? AND tutor_id = ?`,
+          `UPDATE student_post_offers
+           SET status = ?, decided_at = NOW()
+           WHERE student_post_id = ? AND tutor_id = ? AND status = 'pending'`,
           [newStatus, postId, targetUserId]
         );
+
         if (attemptOffer.affectedRows > 0) {
           isTutorTable = true;
         } else {
+          await conn.rollback();
           conn.release();
-          return res.status(404).json({ message: 'request not found in both joins and offers' });
+          return res.status(404).json({ message: 'request not found (or not pending)' });
         }
       }
 
-      // Action successful, now notify/calendar
+      // ✅ commit ก่อน แล้วค่อยทำงานหนัก (calendar/notification) ลดโอกาส lock นาน
+      await conn.commit();
+      conn.release();
+
+      // ------- หลัง commit: notify/calendar -------
       if (newStatus === 'approved') {
         if (!isTutorTable) {
-          // Case Student: Create Calendar logic for "Join" (same as before)
           await createCalendarEventsForStudentApproval(postId, targetUserId);
-          await conn.query(`INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)`,
-            [targetUserId, sp.owner_id, 'join_approved', `คำขอของคุณสำหรับโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId]);
+          await pool.query(
+            `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
+             VALUES (?, ?, ?, ?, ?)`,
+            [targetUserId, sp.owner_id, 'join_approved', `คำขอของคุณสำหรับโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId]
+          );
         } else {
-          // Case Tutor (Offer Accepted):
-          // Tutor doesn't strictly need a calendar event for "Student Post" in the same way, OR maybe they do?
-          // Actually, if a tutor offers to teach, and student accepts, BOTH should have calendar events?
-          // Reuse createCalendarEventsForStudentApproval? It creates events for postId + userId.
-          // However, `createCalendarEventsForStudentApproval` assumes joining. 
-          // Let's assume reuse is fine or we might check that function later.
           await createCalendarEventsForStudentApproval(postId, targetUserId);
 
           const studentName = `${sp.owner_name} ${sp.owner_lastname}`.trim();
-          await conn.query(`INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)`,
-            [targetUserId, sp.owner_id, 'offer_accepted', `${studentName} ยอมรับเสนอสอนวิชา "${sp.subject}" ของคุณแล้ว`, postId]);
+          await pool.query(
+            `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
+             VALUES (?, ?, ?, ?, ?)`,
+            [targetUserId, sp.owner_id, 'offer_accepted', `${studentName} ยอมรับเสนอสอนวิชา "${sp.subject}" ของคุณแล้ว`, postId]
+          );
 
-          // [NEW] Auto-Reject ALL other pending offers for this post
-          await conn.query(`
-            UPDATE student_post_offers 
-            SET status = 'rejected', decided_at = NOW() 
+          // Auto-Reject offers อื่น
+          await pool.query(`
+            UPDATE student_post_offers
+            SET status = 'rejected', decided_at = NOW()
             WHERE student_post_id = ? AND status = 'pending' AND tutor_id != ?
           `, [postId, targetUserId]);
         }
       } else {
-        // Rejected
         await deleteCalendarEventForUser(targetUserId, postId);
-        const notiType = isTutorTable ? 'offer_rejected' : 'join_rejected'; // Maybe separate type
-        await conn.query(`INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)`,
-          [targetUserId, sp.owner_id, 'join_rejected', `คำขอ/ข้อเสนอของคุณสำหรับโพสต์ #${postId} ถูกปฏิเสธ`, postId]);
+        await pool.query(
+          `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
+           VALUES (?, ?, ?, ?, ?)`,
+          [targetUserId, sp.owner_id, isTutorTable ? 'offer_rejected' : 'join_rejected', `คำขอ/ข้อเสนอของคุณสำหรับโพสต์ #${postId} ถูกปฏิเสธ`, postId]
+        );
       }
-      conn.release();
 
-      // Return counting
-      // Note: join_count usually means 'student count'.
-      const [[cnt]] = await pool.query('SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status = "approved"', [postId]);
-      // Return list again? Or just success.
-      return res.json({ success: true, status: newStatus, join_count: Number(cnt.c || 0) });
+      // ✅ ส่ง join_count กลับแบบล่าสุด
+      const [[cnt]] = await pool.query(
+        `SELECT COUNT(*) AS c
+         FROM student_post_joins
+         WHERE student_post_id = ? AND status = 'approved'`,
+        [postId]
+      );
+
+      return res.json({
+        success: true,
+        status: newStatus,
+        join_count: Number(cnt.c || 0),
+        group_size: Number(sp.group_size || 0)
+      });
+
     } catch (e) {
+      try { await conn.rollback(); } catch { }
       conn.release();
       throw e;
     }
@@ -1641,6 +1631,7 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 function localDateStr(d = new Date()) {
   const y = d.getFullYear();
@@ -1901,34 +1892,132 @@ app.get('/api/tutor_posts/:id/requests', async (req, res) => {
 
 // === อนุมัติ/ปฏิเสธ คำขอของ tutor post (REWRITE) ===
 app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
+  const postId = Number(req.params.id);
+  const userId = Number(req.params.userId);
+  const action = String((req.body?.action || req.query?.action || '')).toLowerCase();
+
+  if (!Number.isFinite(postId) || !Number.isFinite(userId)) {
+    return res.status(400).json({ message: 'invalid ids' });
+  }
+  if (!['approve', 'reject'].includes(action)) {
+    return res.status(400).json({ message: 'invalid action' });
+  }
+
+  const newStatus = action === 'approve' ? 'approved' : 'rejected';
+
+  let capacity = 0;
+  let joinCountAfter = 0;
+
   try {
-    const postId = Number(req.params.id);
-    const userId = Number(req.params.userId);
-    const action = String((req.body?.action || req.query?.action || '')).toLowerCase();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
 
-    if (!Number.isFinite(postId) || !Number.isFinite(userId)) return res.status(400).json({ message: 'invalid ids' });
-    if (!['approve', 'reject'].includes(action)) return res.status(400).json({ message: 'invalid action' });
+      // ✅ ล็อกแถวโพสต์ + เอา group_size มาเช็ค
+      const [[tp]] = await conn.query(
+        `SELECT tutor_post_id, group_size
+         FROM tutor_posts
+         WHERE tutor_post_id = ?
+         FOR UPDATE`,
+        [postId]
+      );
 
-    const newStatus = action === 'approve' ? 'approved' : 'rejected';
-    const [r] = await pool.query(
-      `UPDATE tutor_post_joins SET status=?, decided_at = NOW(), joined_at = IF(?='approved', NOW(), joined_at) WHERE tutor_post_id=? AND user_id=?`,
-      [newStatus, newStatus, postId, userId]
-    );
+      if (!tp) {
+        await conn.rollback();
+        conn.release();
+        return res.status(404).json({ message: 'post not found' });
+      }
 
-    if (!r.affectedRows) return res.status(404).json({ message: 'request not found' });
+      capacity = Number(tp.group_size ?? 0);
 
+      // ✅ ถ้า approve ให้เช็คจำนวน approved ก่อน
+      if (newStatus === 'approved' && capacity > 0) {
+        const [[cntRow]] = await conn.query(
+          `SELECT COUNT(*) AS c
+           FROM tutor_post_joins
+           WHERE tutor_post_id = ? AND status = 'approved'
+           FOR UPDATE`,
+          [postId]
+        );
+
+        const approvedCount = Number(cntRow?.c ?? 0);
+
+        if (approvedCount >= capacity) {
+          await conn.rollback();
+          conn.release();
+          return res.status(409).json({
+            success: false,
+            message: 'เต็มแล้ว ไม่สามารถอนุมัติเพิ่มได้',
+            join_count: approvedCount,
+            group_size: capacity,
+          });
+        }
+      }
+
+      // ✅ อัปเดตเฉพาะ pending กันกดซ้ำ
+      const [r] = await conn.query(
+        `UPDATE tutor_post_joins
+         SET status = ?, decided_at = NOW(),
+             joined_at = IF(?='approved', NOW(), joined_at)
+         WHERE tutor_post_id = ? AND user_id = ? AND status = 'pending'`,
+        [newStatus, newStatus, postId, userId]
+      );
+
+      if (!r.affectedRows) {
+        await conn.rollback();
+        conn.release();
+        return res.status(404).json({ message: 'request not found (or not pending)' });
+      }
+
+      // ✅ นับใหม่ (ยังอยู่ใน transaction)
+      const [[cnt2]] = await conn.query(
+        `SELECT COUNT(*) AS c
+         FROM tutor_post_joins
+         WHERE tutor_post_id = ? AND status = 'approved'`,
+        [postId]
+      );
+      joinCountAfter = Number(cnt2?.c ?? 0);
+
+      await conn.commit();
+      conn.release();
+    } catch (e) {
+      try { await conn.rollback(); } catch { }
+      conn.release();
+      throw e;
+    }
+
+    // ------- หลัง commit ค่อยทำงานหนัก -------
     if (newStatus === 'approved') {
-      // 🔥 เรียกฟังก์ชันสร้างปฏิทิน
       await createCalendarEventsForTutorApproval(postId, userId);
-      await pool.query('INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?,?,?,?,?)', [userId, null, 'join_approved', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ได้รับการอนุมัติแล้ว`, postId]);
+      await pool.query(
+        `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
+         VALUES (?,?,?,?,?)`,
+        [userId, null, 'join_approved', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ได้รับการอนุมัติแล้ว`, postId]
+      );
     } else {
       await deleteCalendarEventForUser(userId, postId);
     }
 
-    const [[cnt]] = await pool.query(`SELECT COUNT(*) AS c FROM tutor_post_joins WHERE tutor_post_id = ? AND status = 'approved'`, [postId]);
-    const [joiners] = await pool.query(`SELECT user_id, name, lastname FROM tutor_post_joins WHERE tutor_post_id = ? AND status = 'approved' ORDER BY joined_at ASC`, [postId]);
-    return res.json({ success: true, status: newStatus, join_count: Number(cnt.c || 0), joiners });
-  } catch (e) { return sendDbError(res, e); }
+    // ส่งรายชื่อผู้เข้าร่วม (approved) กลับไปด้วย
+    const [joiners] = await pool.query(
+      `SELECT user_id, name, lastname, joined_at
+       FROM tutor_post_joins
+       WHERE tutor_post_id = ? AND status = 'approved'
+       ORDER BY joined_at ASC`,
+      [postId]
+    );
+
+    return res.json({
+      success: true,
+      status: newStatus,
+      join_count: joinCountAfter,
+      group_size: capacity,
+      joiners,
+    });
+
+  } catch (e) {
+    return sendDbError(res, e);
+  }
 });
 
 // ---------- Notifications (ฉบับอัปเกรด: ดึงรูป + ชื่อวิชา) ----------
@@ -2150,13 +2239,13 @@ app.put('/api/tutor-profile/:userId', async (req, res) => {
     console.log("📝 Update Tutor Payload:", body);
 
     if (body.name || body.lastname || body.first_name || body.last_name) {
-      await pool.execute('UPDATE register SET name=?, lastname=? WHERE user_id=?', 
-        [ body.name || body.first_name, body.lastname || body.last_name, userId ]
+      await pool.execute('UPDATE register SET name=?, lastname=? WHERE user_id=?',
+        [body.name || body.first_name, body.lastname || body.last_name, userId]
       );
     }
 
     const v = (val) => (val === undefined || val === 'null' || val === '') ? null : val;
-    
+
     const jsonVal = (val) => {
       if (!val) return null;
       return typeof val === 'string' ? val : JSON.stringify(val);
@@ -2190,17 +2279,17 @@ app.put('/api/tutor-profile/:userId', async (req, res) => {
     `;
 
     await pool.execute(sql, [
-      userId, 
-      v(body.nickname), 
-      v(body.phone || body.phone_number), 
-      v(body.address || body.location), 
-      v(body.about_me || body.bio || body.about), 
-      jsonVal(body.education), 
-      jsonVal(body.teaching_experience), 
-      arrVal(body.can_teach_subjects || body.subjects), 
-      arrVal(body.can_teach_grades || body.grades),     
-      v(body.hourly_rate || body.price), 
-      v(body.profile_picture_url || body.profile_image) 
+      userId,
+      v(body.nickname),
+      v(body.phone || body.phone_number),
+      v(body.address || body.location),
+      v(body.about_me || body.bio || body.about),
+      jsonVal(body.education),
+      jsonVal(body.teaching_experience),
+      arrVal(body.can_teach_subjects || body.subjects),
+      arrVal(body.can_teach_grades || body.grades),
+      v(body.hourly_rate || body.price),
+      v(body.profile_picture_url || body.profile_image)
     ]);
 
     res.json({ message: 'Tutor profile updated successfully' });

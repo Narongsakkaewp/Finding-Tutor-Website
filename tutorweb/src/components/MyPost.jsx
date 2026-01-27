@@ -335,6 +335,7 @@ function MyPost({ setPostsCache, onViewProfile }) {
           teaching_days: formData.teaching_days,
           teaching_time: formData.teaching_time,
           location: formData.location.trim(),
+          group_size: Number(formData.group_size) || 1,
           price: Number(formData.price),
           contact_info: formData.contact_info.trim(),
         };
@@ -666,7 +667,7 @@ function MyPost({ setPostsCache, onViewProfile }) {
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนผู้เรียน (คน)</label>
-                          <input type="number" name="group_size" min="1" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                          <input type="number" name="group_size" min="0" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                       </div>
 
@@ -719,7 +720,10 @@ function MyPost({ setPostsCache, onViewProfile }) {
               const isOwner = meId === post.owner_id;
               const busy = !!joinLoading[post.id];
               const favBusy = !!favLoading[post.id];
-              const isFull = post.post_type === "student" ? Number(post.join_count) >= Number(post.group_size || 0) : false;
+              const cap = Number(post.group_size || 0);
+              const joinedCount = Number(post.join_count || 0);
+              const isFull = cap > 0 && joinedCount >= cap;
+
 
               //เงื่อนไขที่ถ้าเลยวันที่โพสต์แล้ว จะไม่สามารถกด Join ได้
               let isExpired = false;
@@ -909,13 +913,15 @@ function MyPost({ setPostsCache, onViewProfile }) {
                           </button>
                         ) : (
                           <button
-                            disabled={busy || isExpired}
+                            disabled={busy || isExpired || isFull}
                             onClick={() => handleJoinTutor(post)}
-                            className={`px-4 py-2 rounded-xl text-white ${isExpired ? "bg-gray-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"}`}
+                            className={`px-4 py-2 rounded-xl text-white ${(isExpired || isFull) ? "bg-gray-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"
+                              }`}
                           >
-                            {isExpired ? "หมดเวลา" : busy ? "..." : "Join"}
+                            {isExpired ? "หมดเวลา" : isFull ? "เต็มแล้ว" : busy ? "..." : "Join"}
                           </button>
                         )
+
                       )}
                     </div>
                   </div>

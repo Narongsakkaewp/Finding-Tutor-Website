@@ -1,3 +1,4 @@
+// src/components/MyPostDetails.jsx
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 
 const API_BASE = "http://localhost:5000";
@@ -24,6 +25,32 @@ const normalizePost = (p = {}) => ({
   },
 });
 
+/* ---------- helper: map tutor response -> same shape as student ---------- */
+function mapTutorToUnified(t = {}) {
+  return {
+    id: t.id ?? t.tutor_post_id,
+    owner_id: t.owner_id ?? t.tutor_id ?? t.user_id,
+    createdAt: t.createdAt ?? t.created_at ?? new Date().toISOString(),
+    subject: t.subject || "",
+    description: t.description || t.content || "",
+    // tutor: data อยู่ใน meta เป็นหลัก (แต่กันไว้เผื่อบาง endpoint ส่ง top-level)
+    location: t.meta?.location ?? t.location ?? "",
+    group_size: Number(t.group_size ?? t.meta?.group_size ?? 0),
+    budget: Number(t.meta?.price ?? t.price ?? 0), // ให้ UI ใช้ budget เดิมได้
+    preferred_days: t.meta?.teaching_days ?? t.teaching_days ?? "",
+    preferred_time: t.meta?.teaching_time ?? t.teaching_time ?? "",
+    contact_info: t.meta?.contact_info ?? t.contact_info ?? "",
+    join_count: Number(t.join_count ?? 0),
+    joined: !!t.joined,
+    _isTutor: true,
+    user: t.user || {
+      first_name: t.name || t.first_name || "",
+      last_name: t.lastname || t.last_name || "",
+      profile_image: t.profile_picture_url || t.profile_image || "/default-avatar.png",
+    },
+  };
+}
+
 function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, postType = null }) {
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -40,45 +67,23 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
     (async () => {
       try {
         let single = null;
-          let fromTutor = false;
 
-          // check cache again (in case postsCache was populated after first check)
-          const found2 = postsCache.find((p) => Number(p.id) === Number(postId));
-          if (found2) {
-            single = found2;
-          }
+        // check cache again (in case postsCache was populated after first check)
+        const found2 = postsCache.find((p) => Number(p.id) === Number(postId));
+        if (found2) single = found2;
 
-          const isTutorType = String(postType || "").toLowerCase().includes("tutor");
+        const isTutorType = String(postType || "").toLowerCase().includes("tutor");
 
-          // ถ้า notification บอกว่าเป็นโพสต์ติวเตอร์ ให้ลองดึง tutor postก่อน
-          if (!single && isTutorType) {
-            try {
-              console.debug("MyPostDetails: attempting tutor fetch for id=", postId);
-              const rt = await fetch(`${API_BASE}/api/tutor-posts/${postId}`);
-              if (rt.ok) {
-                const t = await rt.json();
-                single = normalizePost({
-                  id: t.id ?? t.tutor_post_id,
-                  owner_id: t.owner_id ?? t.tutor_id ?? t.user_id,
-                  createdAt: t.created_at ?? t.createdAt,
-                  subject: t.subject,
-                  description: t.description,
-                  location: t.location,
-                  group_size: Number(t.group_size ?? 0),
-                  budget: Number(t.price ?? 0),
-                  preferred_days: t.teaching_days || "",
-                  preferred_time: t.teaching_time || "",
-                  contact_info: t.contact_info || "",
-                  join_count: Number(t.join_count ?? 0),
-                  joined: !!t.joined,
-                  user: {
-                    first_name: t.user?.first_name || t.name || "",
-                    last_name: t.user?.last_name || t.lastname || "",
-                    profile_image: t.user?.profile_image || t.profile_picture_url || "",
-                  },
-                });
-                fromTutor = true;
-              }
+        // ถ้า notification บอกว่าเป็นโพสต์ติวเตอร์ ให้ลองดึง tutor post ก่อน
+        if (!single && isTutorType) {
+          try {
+            console.debug("MyPostDetails: attempting tutor fetch for id=", postId);
+            const rt = await fetch(`${API_BASE}/api/tutor-posts/${postId}`);
+            if (rt.ok) {
+              const t = await rt.json();
+              // ✅ สำคัญ: อย่า normalize tutor ด้วย normalizePost แบบเดิม
+              single = mapTutorToUnified(t);
+            }
           } catch (err) {
             console.error("MyPostDetails tutor fetch error:", err);
           }
@@ -92,10 +97,10 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
             const list = Array.isArray(data)
               ? data
               : Array.isArray(data.items)
-              ? data.items
-              : Array.isArray(data.data)
-              ? data.data
-              : [];
+                ? data.items
+                : Array.isArray(data.data)
+                  ? data.data
+                  : [];
             const normalized = list.map(normalizePost);
             single = normalized.find((p) => Number(p.id) === Number(postId));
           } catch (e2) {
@@ -110,27 +115,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
             const r2 = await fetch(`${API_BASE}/api/tutor-posts/${postId}`);
             if (r2.ok) {
               const t = await r2.json();
-              single = normalizePost({
-                id: t.id ?? t.tutor_post_id,
-                owner_id: t.owner_id ?? t.tutor_id ?? t.user_id,
-                createdAt: t.created_at ?? t.createdAt,
-                subject: t.subject,
-                description: t.description,
-                location: t.location,
-                group_size: Number(t.group_size ?? 0),
-                budget: Number(t.price ?? 0),
-                preferred_days: t.teaching_days || "",
-                preferred_time: t.teaching_time || "",
-                contact_info: t.contact_info || "",
-                join_count: Number(t.join_count ?? 0),
-                joined: !!t.joined,
-                user: {
-                  first_name: t.user?.first_name || t.name || "",
-                  last_name: t.user?.last_name || t.lastname || "",
-                  profile_image: t.user?.profile_image || t.profile_picture_url || "",
-                },
-              });
-              fromTutor = true;
+              single = mapTutorToUnified(t);
             } else {
               console.debug("MyPostDetails fallback tutor fetch returned", r2.status, r2.statusText);
             }
@@ -139,10 +124,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           }
         }
 
-        if (single) {
-          if (fromTutor) single._isTutor = true;
-          setPost(single);
-        }
+        if (single) setPost(single);
       } catch (e) {
         console.error(e);
       } finally {
@@ -154,24 +136,35 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
   // ล็อกให้ปุ่มอนุมัติ/ปฏิเสธแสดงเสมอ
   const canModerate = true;
 
+  // tutor?
+  const isTutorPost = useMemo(() => {
+    return String(postType || "").toLowerCase().includes("tutor") || !!post?._isTutor;
+  }, [postType, post]);
+
   // คำนวณชื่อเจ้าของโพสต์และรูป (รองรับหลายรูปแบบข้อมูลจาก API)
   const ownerName = useMemo(() => {
     if (!post) return "";
     const u = post.user || {};
-    // ถ้ามี first/last ให้ใช้
     if (u.first_name || u.last_name) {
       return `${(u.first_name || "").trim()}${u.last_name ? " " + u.last_name.trim() : ""}`.trim();
     }
-    // ถ้ามี fullname ในฟิลด์อื่น
     if (u.name) return u.name;
     if (post.authorId?.name) return post.authorId.name;
-    // fallback
     return `ผู้ใช้ #${post.owner_id}`;
   }, [post]);
 
   const ownerAvatar = useMemo(() => {
     return post?.user?.profile_image || post?.authorId?.avatarUrl || "/default-avatar.png";
   }, [post]);
+
+  // ✅ ใช้ค่าที่ "รวมรูปแบบแล้ว" ชุดเดียว (กันแสดงไม่ครบ)
+  const locationText = post?.location || post?.meta?.location || "-";
+  const dayText = post?.preferred_days || post?.meta?.teaching_days || "-";
+  const timeText = post?.preferred_time || post?.meta?.teaching_time || "-";
+  const contactText = post?.contact_info || post?.meta?.contact_info || "-";
+  const money = Number(post?.budget ?? post?.meta?.price ?? 0) || 0;
+  const capacity = Number(post?.group_size ?? post?.meta?.group_size ?? 0) || 0;
+  const joinedCount = Number(post?.join_count ?? 0) || 0;
 
   if (loading) {
     return (
@@ -215,9 +208,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
               className="w-12 h-12 rounded-full"
             />
             <div>
-              <div className="font-semibold">
-                {ownerName}
-              </div>
+              <div className="font-semibold">{ownerName}</div>
               <div className="text-xs text-gray-500">
                 {new Date(post.createdAt).toLocaleString()}
               </div>
@@ -228,31 +219,44 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           <p className="mt-2 whitespace-pre-line">{post.description}</p>
 
           <div className="grid sm:grid-cols-2 gap-y-1 text-sm text-gray-700 mt-4">
-            <div>📍 สถานที่: {post.location}</div>
-            <div>👥 จำนวนคน: {post.group_size}</div>
-            <div>💰 งบประมาณ: {post.budget} บาท</div>
-            <div>📅 วันสะดวก: {post.preferred_days}</div>
-            <div>⏰ เวลา: {post.preferred_time}</div>
-            <div>✉️ ติดต่อ: {post.contact_info}</div>
+            <div>📍 สถานที่: {locationText}</div>
+            <div>👥 จำนวนคน: {capacity ? capacity : "-"}</div>
+            <div>💰 งบประมาณ: {money} บาท</div>
+            <div>📅 วันสะดวก: {dayText}</div>
+            <div>⏰ เวลา: {timeText}</div>
+            <div>✉️ ติดต่อ: {contactText}</div>
           </div>
 
+          {/* ✅ แสดงผู้เข้าร่วมเป็น 2/2 ถ้ามีจำนวนคน */}
           <div className="mt-4 text-sm text-gray-600 border-t pt-3">
-            {(String(postType || '').toLowerCase().includes('tutor') || !!post?._isTutor) ? (
-              <>ผู้เข้าร่วม: <b>{Number(post.join_count ?? 0)} คน</b>{post.joined ? " • คุณเข้าร่วมแล้ว" : ""}</>
+            {capacity > 0 ? (
+              <>
+                ผู้เข้าร่วม: <b>{joinedCount} / {capacity}</b> คน
+                {post.joined ? " • คุณเข้าร่วมแล้ว" : ""}
+              </>
             ) : (
-              <>เข้าร่วมแล้ว: <b>{Number(post.join_count ?? 0)}</b> / {post.group_size} คน {post.joined ? "• คุณเข้าร่วมแล้ว" : ""}</>
+              <>
+                ผู้เข้าร่วม: <b>{joinedCount}</b> คน
+                {post.joined ? " • คุณเข้าร่วมแล้ว" : ""}
+              </>
             )}
           </div>
 
           {/* แสดงบล็อคคำขอ */}
           <JoinRequestsManager
-            postId={post.id}
+            postId={Number(postId)}
             canModerate={canModerate}
-            isTutor={String(postType || '').toLowerCase().includes('tutor') || !!post?._isTutor}
+            isTutor={isTutorPost}
             onJoinChange={(newCount) => {
               setPost((p) => ({ ...p, join_count: Number(newCount ?? p.join_count) }));
-              if (typeof setPostsCache === 'function') {
-                setPostsCache((arr) => (Array.isArray(arr) ? arr.map((pp) => (pp.id === post.id ? { ...pp, join_count: Number(newCount ?? pp.join_count) } : pp)) : arr));
+              if (typeof setPostsCache === "function") {
+                setPostsCache((arr) =>
+                  Array.isArray(arr)
+                    ? arr.map((pp) =>
+                      pp.id === post.id ? { ...pp, join_count: Number(newCount ?? pp.join_count) } : pp
+                    )
+                    : arr
+                );
               }
             }}
           />
@@ -275,9 +279,14 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
     if (!postId) return;
     setLoading(true);
     try {
-      const base = isTutor ? 'tutor_posts' : 'student_posts';
-      const res = await fetch(`${API_BASE}/api/${base}/${postId}/requests`);
+      const base = isTutor ? "tutor_posts" : "student_posts";
+      const url = `${API_BASE}/api/${base}/${postId}/requests`;
+      console.log("[JoinRequests] GET", url);
+
+      const res = await fetch(url, { cache: "no-store" });
       const data = await res.json();
+
+      console.log("[JoinRequests] rows =", Array.isArray(data) ? data.length : data);
       setRequests(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("load join requests error:", e);
@@ -291,12 +300,12 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
     if (!postId) return;
     setJoinersLoading(true);
     try {
-      const base = isTutor ? 'tutor_posts' : 'student_posts';
-      const res = await fetch(`${API_BASE}/api/${base}/${postId}/joiners`);
+      const base = isTutor ? "tutor_posts" : "student_posts";
+      const res = await fetch(`${API_BASE}/api/${base}/${postId}/joiners`, { cache: "no-store" });
       const data = await res.json();
       setJoiners(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error('load joiners error:', e);
+      console.error("load joiners error:", e);
       setJoiners([]);
     } finally {
       setJoinersLoading(false);
@@ -308,12 +317,18 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
     loadJoiners();
   }, [loadRequests, loadJoiners]);
 
+  // ✅ pending เท่านั้น (กัน approved โผล่ซ้ำด้านล่าง)
+  const pendingRequests = useMemo(() => {
+    return (Array.isArray(requests) ? requests : []).filter(
+      (r) => (r?.status || "pending") === "pending"
+    );
+  }, [requests]);
+
   const approve = async (req) => {
-    if (!window.confirm(`ยืนยันอนุมัติให้ ${req.name} ${req.lastname || ""} ?`))
-      return;
+    if (!window.confirm(`ยืนยันอนุมัติให้ ${req.name} ${req.lastname || ""} ?`)) return;
 
     try {
-      const base = isTutor ? 'tutor_posts' : 'student_posts';
+      const base = isTutor ? "tutor_posts" : "student_posts";
       const res = await fetch(`${API_BASE}/api/${base}/${postId}/requests/${req.user_id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -321,19 +336,14 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        console.error('approve failed:', res.status, data);
-      }
+      if (!res.ok) console.error("approve failed:", res.status, data);
 
       await loadRequests();
       await loadJoiners();
 
-      if (typeof onJoinChange === 'function') {
-        if (data && (typeof data.join_count === 'number' || typeof data.join_count === 'string')) {
+      if (typeof onJoinChange === "function") {
+        if (data && (typeof data.join_count === "number" || typeof data.join_count === "string")) {
           onJoinChange(Number(data.join_count));
-        } else {
-          // fallback: increment by 1
-          onJoinChange((prev) => (typeof prev === 'number' ? prev + 1 : 1));
         }
       }
     } catch (e) {
@@ -342,11 +352,10 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
   };
 
   const reject = async (req) => {
-    if (!window.confirm(`ปฏิเสธคำขอของ ${req.name} ${req.lastname || ""} ?`))
-      return;
+    if (!window.confirm(`ปฏิเสธคำขอของ ${req.name} ${req.lastname || ""} ?`)) return;
 
     try {
-      const base = isTutor ? 'tutor_posts' : 'student_posts';
+      const base = isTutor ? "tutor_posts" : "student_posts";
       const res = await fetch(`${API_BASE}/api/${base}/${postId}/requests/${req.user_id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -354,8 +363,8 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
       });
 
       if (!res.ok) {
-        const txt = await res.text().catch(() => '');
-        console.error('reject failed:', res.status, txt);
+        const txt = await res.text().catch(() => "");
+        console.error("reject failed:", res.status, txt);
       }
 
       await loadRequests();
@@ -364,7 +373,6 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
       console.error("reject error:", e);
     }
   };
-
 
   if (loading && joinersLoading) {
     return (
@@ -377,47 +385,56 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
 
   return (
     <div className="mt-6 border-t pt-4">
-      <h2 className="font-semibold mb-3">คำขอเข้าร่วม</h2>
+      {/* =======================
+        ผู้เข้าร่วม (Approved)
+    ======================= */}
+      <h2 className="font-semibold mb-3">ชื่อผู้เข้าร่วม</h2>
 
-      {/* Joined users */}
       {joinersLoading ? (
         <div className="text-sm text-gray-500">กำลังโหลดผู้เข้าร่วม…</div>
-      ) : joiners && joiners.length > 0 ? (
-        <div className="mb-3 space-y-2">
+      ) : Array.isArray(joiners) && joiners.length > 0 ? (
+        <div className="mb-5 space-y-2">
           {joiners.map((j) => (
-            <div key={`joined-${j.user_id}`} className="flex items-center justify-between border rounded-lg p-3 bg-white">
-              <div className="text-sm text-gray-700">
-                {j.name} {j.lastname} <span className="text-gray-400 text-xs">#{j.user_id}</span>
+            <div
+              key={`joined-${j.user_id}`}
+              className="flex items-center justify-between border rounded-lg p-3 bg-emerald-50 border-emerald-200"
+            >
+              <div className="text-sm text-gray-800 font-medium">
+                {j.name} {j.lastname}{" "}
+                <span className="text-gray-400 text-xs font-normal">#{j.user_id}</span>
               </div>
-              <div className="text-xs text-gray-500">{j.joined_at ? new Date(j.joined_at).toLocaleDateString() : ''}</div>
+              <div className="text-xs text-gray-500">
+                {j.joined_at ? new Date(j.joined_at).toLocaleDateString() : ""}
+              </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="text-sm text-gray-500 mb-3">ยังไม่มีผู้เข้าร่วม</div>
+        <div className="text-sm text-gray-500 mb-5">ยังไม่มีผู้เข้าร่วม</div>
       )}
 
-      {/* Pending requests */}
-      {requests.length === 0 ? (
+      {/* คำขอเข้าร่วม (Pending) */}
+      
+      <h2 className="font-semibold mb-3">คำขอเข้าร่วม</h2>
+
+      {pendingRequests.length === 0 ? (
         <div className="text-sm text-gray-500">ยังไม่มีคำขอเข้าร่วม</div>
       ) : (
         <div className="space-y-2">
-          {requests.map((r) => (
+          {pendingRequests.map((r) => (
             <div
-              key={r.user_id}
+              key={`pending-${r.user_id}`}
               className="flex justify-between items-center border rounded-lg p-3 bg-white"
             >
               <div className="text-sm text-gray-700">
                 {r.name} {r.lastname}{" "}
                 <span className="text-gray-400 text-xs">#{r.user_id}</span>
-                {r.status && (
-                  <span className="ml-2 text-xs px-2 py-0.5 rounded bg-gray-100">
-                    {r.status}
-                  </span>
-                )}
+                <span className="ml-2 text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                  pending
+                </span>
               </div>
 
-              {canModerate && (!r.status || r.status === "pending") && (
+              {canModerate && (
                 <div className="flex gap-2">
                   <button
                     onClick={() => approve(r)}
@@ -440,6 +457,5 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
     </div>
   );
 }
-
 
 export default MyPostDetails;

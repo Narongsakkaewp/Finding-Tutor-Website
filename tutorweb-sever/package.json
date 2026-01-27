@@ -13,6 +13,7 @@
     "geolib": "^3.3.4",
     "google-auth-library": "^10.5.0",
     "google-spreadsheet": "^5.0.2",
+    "mime-types": "^3.0.2",
     "multer": "^2.0.2",
     "mysql2": "^3.14.3",
     "node-cron": "^4.2.1",
