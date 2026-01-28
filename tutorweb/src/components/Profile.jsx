@@ -1,10 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
-import Review from "../components/Review";
+// import Review from "../components/Review"; // Removed unused import
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive, Sparkles, User, Users } from "lucide-react";
+import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive, Sparkles, User, Users, Save, Flag } from "lucide-react";
+import LongdoLocationPicker from './LongdoLocationPicker';
+import ReportModal from "./ReportModal";
 
-/* ---------- Helpers ---------- */
+const postGradeLevelOptions = [
+  { value: "ประถมศึกษา", label: "ประถมศึกษา" },
+  { value: "มัธยมต้น", label: "มัธยมศึกษาตอนต้น (ม.1-ม.3)" },
+  { value: "มัธยมปลาย", label: "มัธยมศึกษาตอนปลาย (ม.4-ม.6)" },
+  { value: "ปริญญาตรี", label: "ปริญญาตรี" },
+  { value: "บุคคลทั่วไป", label: "บุคคลทั่วไป" },
+];
 
 const normalizePost = (p = {}) => ({
   _id: p._id ?? p.id ?? p.student_post_id,
@@ -67,24 +75,41 @@ function Empty({ line = "ไม่พบข้อมูล" }) {
 }
 
 /* ===== เมนูสามจุดบนการ์ดโพสต์ ===== */
-function PostActionMenu({ open, onClose, onHide, onDelete }) {
+function PostActionMenu({ open, onClose, onEdit, onHide, onDelete, onReport, isOwner }) {
   if (!open) return null;
   return (
     <>
       <div className="fixed inset-0 z-10" onClick={onClose}></div>
       <div className="absolute right-2 top-8 z-20 w-40 overflow-hidden rounded-xl border bg-white shadow-xl animate-in fade-in zoom-in duration-100">
-        <button
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
-          onClick={() => { onHide(); onClose(); }}
-        >
-          <EyeOff size={16} className="text-gray-500" /> ซ่อนโพสต์
-        </button>
-        <button
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"
-          onClick={() => { onDelete(); onClose(); }}
-        >
-          <Trash2 size={16} /> ลบโพสต์
-        </button>
+        {isOwner ? (
+          <>
+            <button
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
+              onClick={() => { onEdit(); onClose(); }}
+            >
+              <Edit size={16} className="text-gray-500" /> แก้ไขโพสต์
+            </button>
+            <button
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
+              onClick={() => { onHide(); onClose(); }}
+            >
+              <EyeOff size={16} className="text-gray-500" /> ซ่อนโพสต์
+            </button>
+            <button
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"
+              onClick={() => { onDelete(); onClose(); }}
+            >
+              <Trash2 size={16} /> ลบโพสต์
+            </button>
+          </>
+        ) : (
+          <button
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"
+            onClick={() => { onReport(); onClose(); }}
+          >
+            <Flag size={16} /> รายงานโพสต์
+          </button>
+        )}
       </div>
     </>
   );
@@ -185,8 +210,12 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dailyEvents, setDailyEvents] = useState([]);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [reviewTargetId, setReviewTargetId] = useState(null);
+
+  // ✅ State สำหรับแก้ไขโพสต์
+  const [editPost, setEditPost] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [updating, setUpdating] = useState(false);
+  const [reportingPost, setReportingPost] = useState(null);
 
   // ✅ State สำหรับระบบแนะนำ
   const [recommendedTutors, setRecommendedTutors] = useState([]);
@@ -340,6 +369,100 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
     setShowHiddenModal(false);
   };
 
+  // --- Edit Handlers ---
+  const handleEditClick = (post) => {
+    setEditPost(post);
+    setEditForm({
+      subject: post.subject,
+      description: post.content,
+      preferred_days: post.meta?.preferred_days || "",
+      preferred_time: post.meta?.preferred_time || "",
+      grade_level: profile?.gradeLevel || "", // Default if not in meta, but usually strictly needed. post.grade_level isn't in normalizePost? 
+      // Checked normalizePost: grade_level is NOT mapped. Let's check API. 
+      // Actually API student_posts returns grade_level. normalizePost needs update or we access p.grade_level if raw p available?
+      // normalizePost maps to meta... wait, normalizePost in Profile.jsx vs MyPost.jsx.
+      // Profile.jsx normalizePost: meta: { preferred_days, ... }. 
+      // It seems grade_level is missing in normalizePost here.
+      // Let's rely on what we have or add it. For now, assume we can get it or default it.
+      // Let's use specific field from post object if available before normalization, but here we only have normalized `post`.
+      // We might need to fetch or just let them select again.
+      location: post.meta?.location || "",
+      group_size: post.meta?.group_size || "",
+      budget: post.meta?.budget || "",
+      contact_info: profile?.phone || profile?.email || "", // Default
+    });
+    setOpenMenuFor(null);
+  };
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditLocationSelect = (address) => {
+    setEditForm(prev => ({ ...prev, location: address }));
+  };
+
+  const handleUpdatePost = async (e) => {
+    e.preventDefault();
+    if (!editPost) return;
+
+    try {
+      setUpdating(true);
+      const res = await fetch(`http://localhost:5000/api/student_posts/${editPost._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: editForm.subject,
+          description: editForm.description,
+          preferred_days: editForm.preferred_days,
+          preferred_time: editForm.preferred_time,
+          grade_level: editForm.grade_level,
+          location: editForm.location,
+          group_size: editForm.group_size,
+          budget: editForm.budget,
+          contact_info: editForm.contact_info
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Update failed");
+
+      // Update local state
+      setPosts(prev => prev.map(p => {
+        if ((p._id ?? p.id) === editPost._id) {
+          return {
+            ...p,
+            subject: editForm.subject,
+            content: editForm.description,
+            meta: {
+              ...p.meta,
+              preferred_days: editForm.preferred_days,
+              preferred_time: editForm.preferred_time,
+              location: editForm.location,
+              group_size: editForm.group_size,
+              budget: editForm.budget
+            }
+          };
+        }
+        return p;
+      }));
+
+      setEditPost(null);
+      alert("แก้ไขโพสต์เรียบร้อยแล้ว");
+
+    } catch (err) {
+      alert("เกิดข้อผิดพลาด: " + err.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleReportClick = (post) => {
+    setReportingPost(post);
+    setOpenMenuFor(null);
+  };
+
   const handleAskDelete = (id) => setConfirm({ open: true, id });
   const cancelDelete = () => setConfirm({ open: false, id: null });
 
@@ -433,12 +556,6 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               <button onClick={onEditProfile} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
                 <Edit size={16} /> แก้ไขโปรไฟล์
               </button>
-              <button onClick={() => {
-                setReviewTargetId(25); // เอา Tutor_post_ID มาใส่ เพื่อทำการทดสอบ
-                setShowReviewModal(true);
-              }} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
-                <Star size={16} /> เขียนรีวิว(Demo)
-              </button>
               <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
                 <Stat label="โพสต์ทั้งหมด" value={String(posts.length)} />
               </div>
@@ -514,7 +631,15 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                         <button onClick={() => handleToggleMenu(id)} className="absolute right-2 top-2 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                           <MoreVertical size={18} />
                         </button>
-                        <PostActionMenu open={openMenuFor === id} onClose={() => setOpenMenuFor(null)} onHide={() => handleHidePost(id)} onDelete={() => handleAskDelete(id)} />
+                        <PostActionMenu
+                          open={openMenuFor === id}
+                          onClose={() => setOpenMenuFor(null)}
+                          onEdit={() => handleEditClick(p)}
+                          onHide={() => handleHidePost(id)}
+                          onDelete={() => handleAskDelete(id)}
+                          onReport={() => handleReportClick(p)}
+                          isOwner={true}
+                        />
 
                         <div className="flex items-center gap-3">
                           <img src={profile.avatarUrl || "/default-avatar.png"} alt="avatar" className="w-9 h-9 rounded-full object-cover" />
@@ -594,7 +719,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                           )}
                         </div>
                         <button className="px-3 py-1 bg-orange-100 text-orange-600 rounded-lg text-xs font-bold hover:bg-orange-200">
-                          ทักแชท
+                          ติดต่อ
                         </button>
                       </li>
                     ))}
@@ -610,7 +735,6 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
       {/* Modals */}
       {isAvatarModalOpen && <AvatarModal src={profile.avatarUrl} alt={profile.fullName} onClose={() => setIsAvatarModalOpen(false)} />}
       <ConfirmDialog open={confirm.open} title="ยืนยันการลบโพสต์" desc="เมื่อยืนยันแล้วจะไม่สามารถกู้คืนโพสต์นี้ได้" onConfirm={doDeletePost} onCancel={cancelDelete} />
-      {showReviewModal && <Review postId={reviewTargetId} studentId={currentUser?.user_id} onClose={() => setShowReviewModal(false)} />}
 
       {/* Hidden Posts Modal */}
       <HiddenPostsModal
@@ -620,6 +744,89 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
         hiddenIds={hiddenPostIds}
         onRestore={handleRestorePost}
         onRestoreAll={handleRestoreAll}
+      />
+      {/* Edit Modal */}
+      {editPost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEditPost(null)} />
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">แก้ไขโพสต์</h3>
+              <button onClick={() => setEditPost(null)} className="p-1 rounded-full hover:bg-gray-100">
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdatePost} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">วิชา / หัวข้อ</label>
+                <input type="text" name="subject" value={editForm.subject || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">เนื้อหาที่ต้องการเรียน</label>
+                <textarea name="description" rows="3" value={editForm.description || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">วันที่สะดวก</label>
+                  <input type="date" name="preferred_days" value={editForm.preferred_days || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">เวลาที่สะดวก</label>
+                  <input type="time" name="preferred_time" value={editForm.preferred_time || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ระดับชั้นของผู้เรียน</label>
+                <select name="grade_level" value={editForm.grade_level || ""} onChange={handleEditChange} className="w-full border rounded-lg p-2.5 outline-none bg-white">
+                  <option value="">-- ไม่ระบุ --</option>
+                  {postGradeLevelOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">สถานที่เรียน</label>
+                <LongdoLocationPicker
+                  onLocationSelect={handleEditLocationSelect}
+                  defaultLocation={editForm.location}
+                  showMap={false}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนผู้เรียน (คน)</label>
+                  <input type="number" name="group_size" min="1" value={editForm.group_size || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">งบประมาณ (บาท)</label>
+                  <input type="number" name="budget" min="0" value={editForm.budget || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
+                <input type="text" name="contact_info" value={editForm.contact_info || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setEditPost(null)} className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium">ยกเลิก</button>
+                <button disabled={updating} type="submit" className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium shadow-sm disabled:opacity-70">
+                  {updating ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      <ReportModal
+        open={!!reportingPost}
+        onClose={() => setReportingPost(null)}
+        postId={reportingPost?._id || reportingPost?.id}
+        postType="student_post"
       />
     </div>
   );

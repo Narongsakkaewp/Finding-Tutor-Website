@@ -110,9 +110,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
                 {tutor.price} บ./ชม.
               </span>
               {tutor.relevance_score > 0 && (
-                <span className="text-xs text-indigo-500 font-medium">
-                  ความตรงใจ {tutor.relevance_score}%
-                </span>
+                <span className="text-xs text-indigo-500 font-medium"></span>
               )}
             </div>
           </div>

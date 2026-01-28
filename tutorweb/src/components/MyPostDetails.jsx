@@ -25,6 +25,10 @@ const normalizePost = (p = {}) => ({
   },
 });
 
+function pickUserType() {
+  try { return (localStorage.getItem("userType") || "").toLowerCase(); } catch { return ""; }
+}
+
 /* ---------- helper: map tutor response -> same shape as student ---------- */
 function mapTutorToUnified(t = {}) {
   return {
@@ -67,21 +71,14 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
     (async () => {
       try {
         let single = null;
-
-        // check cache again (in case postsCache was populated after first check)
-        const found2 = postsCache.find((p) => Number(p.id) === Number(postId));
-        if (found2) single = found2;
-
         const isTutorType = String(postType || "").toLowerCase().includes("tutor");
 
-        // ถ้า notification บอกว่าเป็นโพสต์ติวเตอร์ ให้ลองดึง tutor post ก่อน
-        if (!single && isTutorType) {
+        // ✅ Case 1: Tutor Post
+        if (isTutorType) {
           try {
-            console.debug("MyPostDetails: attempting tutor fetch for id=", postId);
             const rt = await fetch(`${API_BASE}/api/tutor-posts/${postId}`);
             if (rt.ok) {
               const t = await rt.json();
-              // ✅ สำคัญ: อย่า normalize tutor ด้วย normalizePost แบบเดิม
               single = mapTutorToUnified(t);
             }
           } catch (err) {
@@ -89,38 +86,49 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           }
         }
 
-        // ถ้ายังไม่เจอ ให้ค้นจาก student posts (เดิม)
-        if (!single) {
+        // ✅ Case 2: Student Post (Fetch Direct)
+        else {
           try {
-            const res = await fetch(`${API_BASE}/api/student_posts?me=${me || 0}`);
-            const data = await res.json();
-            const list = Array.isArray(data)
-              ? data
-              : Array.isArray(data.items)
-                ? data.items
-                : Array.isArray(data.data)
-                  ? data.data
-                  : [];
-            const normalized = list.map(normalizePost);
-            single = normalized.find((p) => Number(p.id) === Number(postId));
+            // Try direct fetch first (New API)
+            const rs = await fetch(`${API_BASE}/api/student-posts/${postId}`);
+            if (rs.ok) {
+              const s = await rs.json();
+              single = normalizePost(s);
+            } else {
+              // Fallback: If API missing, try legacy feed search (optional, but keeping for safety)
+              console.warn("Direct student post fetch failed, falling back to feed search");
+              const res = await fetch(`${API_BASE}/api/student_posts?me=${me || 0}`);
+              const data = await res.json();
+              const list = Array.isArray(data) ? data : (data.items || data.data || []);
+              const normalized = list.map(normalizePost);
+              single = normalized.find((p) => Number(p.id) === Number(postId));
+            }
           } catch (e2) {
             console.error("MyPostDetails student fetch error:", e2);
           }
         }
 
-        // fallback: ถ้ายังไม่เจอ ให้ลองดึง tutor อีกครั้ง (ในกรณีไม่ได้ลองก่อน)
-        if (!single && !isTutorType) {
-          try {
-            console.debug("MyPostDetails: attempting tutor fallback fetch for id=", postId);
-            const r2 = await fetch(`${API_BASE}/api/tutor-posts/${postId}`);
-            if (r2.ok) {
-              const t = await r2.json();
-              single = mapTutorToUnified(t);
-            } else {
-              console.debug("MyPostDetails fallback tutor fetch returned", r2.status, r2.statusText);
-            }
-          } catch (err) {
-            console.error("MyPostDetails tutor fallback error:", err);
+        // ✅ Case 3: Fallback (If type mismatch or not found)
+        if (!single) {
+          // If we tried student and failed, maybe it's tutor?
+          if (!isTutorType) {
+            try {
+              const r2 = await fetch(`${API_BASE}/api/tutor-posts/${postId}`);
+              if (r2.ok) {
+                const t = await r2.json();
+                single = mapTutorToUnified(t);
+              }
+            } catch (e) { }
+          }
+          // If we tried tutor and failed, maybe it's student?
+          else {
+            try {
+              const rs = await fetch(`${API_BASE}/api/student-posts/${postId}`);
+              if (rs.ok) {
+                const s = await rs.json();
+                single = normalizePost(s);
+              }
+            } catch (e) { }
           }
         }
 
@@ -135,6 +143,51 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
 
   // ล็อกให้ปุ่มอนุมัติ/ปฏิเสธแสดงเสมอ
   const canModerate = true;
+
+  // เพิ่ม State สำหรับปุ่ม
+  const [busy, setBusy] = useState(false);
+  const userType = pickUserType();
+  const isUserTutor = userType === "tutor"; // คนดูเป็นติวเตอร์ไหม
+
+  const handleJoin = async () => {
+    if (isTutorPost) return; // Student posts only for now
+    if (isUserTutor) {
+      if (!window.confirm("ยืนยันที่จะเสนอสอนให้นักเรียนคนนี้?")) return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/student_posts/${postId}/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: me })
+      });
+      const data = await res.json();
+      if (!res.ok) return alert(data?.message || "Error joining");
+
+      // Update local state
+      setPost(p => ({ ...p, joined: true, pending_me: true, join_count: data.join_count }));
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const handleUnjoin = async () => {
+    if (isTutorPost) return;
+    if (!window.confirm(isUserTutor ? "ต้องการยกเลิกข้อเสนอ?" : "ต้องการยกเลิกคำขอ?")) return;
+
+    setBusy(true);
+    try {
+      // Use query param for user_id to match server expectation
+      const res = await fetch(`${API_BASE}/api/student_posts/${postId}/join?user_id=${me}`, {
+        method: "DELETE"
+      });
+      const data = await res.json();
+      if (!res.ok) return alert(data?.message || "Error unjoining");
+
+      // Update local state: joined->false
+      setPost(p => ({ ...p, joined: false, pending_me: false, join_count: data.join_count }));
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
+  };
 
   // tutor?
   const isTutorPost = useMemo(() => {
@@ -231,12 +284,12 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           <div className="mt-4 text-sm text-gray-600 border-t pt-3">
             {capacity > 0 ? (
               <>
-                ผู้เข้าร่วม: <b>{joinedCount} / {capacity}</b> คน
+                ผู้เข้าร่วม: <b>{joinedCount + (isTutorPost ? 0 : 1)} / {capacity}</b> คน
                 {post.joined ? " • คุณเข้าร่วมแล้ว" : ""}
               </>
             ) : (
               <>
-                ผู้เข้าร่วม: <b>{joinedCount}</b> คน
+                ผู้เข้าร่วม: <b>{joinedCount + (isTutorPost ? 0 : 1)}</b> คน
                 {post.joined ? " • คุณเข้าร่วมแล้ว" : ""}
               </>
             )}
@@ -414,7 +467,7 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
       )}
 
       {/* คำขอเข้าร่วม (Pending) */}
-      
+
       <h2 className="font-semibold mb-3">คำขอเข้าร่วม</h2>
 
       {pendingRequests.length === 0 ? (

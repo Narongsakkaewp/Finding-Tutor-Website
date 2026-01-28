@@ -17,59 +17,102 @@ const SUBJECT_KNOWLEDGE_BASE = {
     'bio': ['ชีว', 'sci']
 };
 
-// Function to expand search keywords
+// Function to expand search keywords (Bidirectional: Parent <-> Child)
 const expandKeywords = (text) => {
     if (!text) return [];
-    let keywords = [text.toLowerCase()];
+
+    // Use Set to avoid duplicates automatically
+    let keywords = new Set([text.toLowerCase()]);
+    const lowerText = text.toLowerCase();
+
     Object.keys(SUBJECT_KNOWLEDGE_BASE).forEach(key => {
-        if (text.toLowerCase().includes(key)) {
-            keywords = [...keywords, ...SUBJECT_KNOWLEDGE_BASE[key]];
+        const values = SUBJECT_KNOWLEDGE_BASE[key];
+
+        // 1. Forward: If text contains "Key" -> Add "Values"
+        // (e.g. Search "Program" -> Get "Python", "Java", "Code")
+        if (lowerText.includes(key)) {
+            values.forEach(v => keywords.add(v));
+        }
+
+        // 2. Reverse: If text contains any "Value" -> Add "Key"
+        // (e.g. Search "Python" -> Get "Program", "Code")
+        const isMatchValue = values.some(v => lowerText.includes(v));
+        if (isMatchValue) {
+            keywords.add(key);
+            // Optional: Add other siblings? Maybe too much noise.
+            // keeping it simple adds the Category name.
         }
     });
-    return keywords;
+
+    return Array.from(keywords);
 };
 
-// --- ⚖️ 2. Scoring Weights ---
+// ฟังก์ชันช่วยแปลงตัวอักษรพิเศษให้ใช้กับ Regex ได้ (เช่น C++, C#)
+const escapeRegExp = (string) => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+// --- ⚖️ 2. Scoring Weights () ---
 const WEIGHTS = {
-    SUBJECT_EXACT: 60,   // Exact subject match
-    SUBJECT_RELATED: 40, // Related subject match
-    GRADE: 20,           // Grade level match
-    BUDGET: 15,          // Budget match
-    LOCATION: 25         // Location match
+    SUBJECT_EXACT: 80,
+    SUBJECT_PARTIAL: 30,
+    SUBJECT_RELATED: 20,
+    GRADE: 20,
+    BUDGET: 15,
+    LOCATION: 25
 };
 
 // --- 🧠 Matching Engine for Student (Finding Tutors) ---
 const calculateRelevanceScore = (requirement, tutorPost) => {
     let score = 0;
 
-    const reqSubject = (requirement.subject || "").toLowerCase();
-    const tutorSubject = (tutorPost.subject || "").toLowerCase();
+    const reqSubject = (requirement.subject || "").trim().toLowerCase();
+    const tutorSubject = (tutorPost.subject || "").trim().toLowerCase();
 
-    // 1. Subject Score
-    const expandedReq = expandKeywords(reqSubject);
-    if (tutorSubject.includes(reqSubject) || reqSubject.includes(tutorSubject)) {
-        score += WEIGHTS.SUBJECT_EXACT;
-    } else if (expandedReq.some(kw => tutorSubject.includes(kw))) {
-        score += WEIGHTS.SUBJECT_RELATED;
+    // 1. Subject Score (Logic ใหม่ ฉลาดขึ้น) 🧠
+    if (reqSubject && tutorSubject) {
+        // สร้าง Regex เพื่อหาคำแบบ "เต็มคำ" (Word Boundary)
+        // \b หมายถึงขอบคำ เช่น หา "Java" จะไม่เจอใน "JavaScript"
+        // แต่ถ้าเป็น C++ หรือ C# ต้องระวังเรื่อง \b เราเลยใช้การเช็คแบบพิเศษ
+
+        const escapedReq = escapeRegExp(reqSubject);
+
+        // 1.1 ตรงกันเป๊ะๆ 100%
+        if (reqSubject === tutorSubject) {
+            score += WEIGHTS.SUBJECT_EXACT + 20; // โบนัสพิเศษ
+        }
+        // 1.2 ตรงแบบเต็มคำ (เช่น "ติว Java ตัวต่อตัว" มีคำว่า "Java" โดดๆ)
+        else if (new RegExp(`(?:^|\\s)${escapedReq}(?:$|\\s)`, 'i').test(tutorSubject)) {
+            score += WEIGHTS.SUBJECT_EXACT;
+        }
+        // 1.3 ตรงแบบเป็นส่วนประกอบ (เช่นหา "Java" เจอ "JavaScript")
+        else if (tutorSubject.includes(reqSubject)) {
+            score += WEIGHTS.SUBJECT_PARTIAL; // ให้คะแนนแค่นิดเดียวพอ
+        }
+        // 1.4 คำที่เกี่ยวข้อง (Knowledge Base)
+        else {
+            const expandedReq = expandKeywords(reqSubject);
+            if (expandedReq.some(kw => tutorSubject.includes(kw))) {
+                score += WEIGHTS.SUBJECT_RELATED;
+            }
+        }
     }
 
-    // 2. Budget Score
+    // 2. Budget Score (เหมือนเดิม)
     if (requirement.budget > 0) {
         const price = Number(tutorPost.price) || 0;
-        if (price <= requirement.budget) score += WEIGHTS.BUDGET;
+        if (price > 0 && price <= requirement.budget) score += WEIGHTS.BUDGET;
         else if (price <= requirement.budget * 1.2) score += (WEIGHTS.BUDGET / 2);
     }
 
-    // 3. Location Score
+    // 3. Location Score (เหมือนเดิม)
     if (requirement.location && tutorPost.location) {
-        // Simple string matching for location
         if (tutorPost.location.includes(requirement.location) || requirement.location.includes(tutorPost.location)) {
             score += WEIGHTS.LOCATION;
         }
-        // (Geolib logic can be re-enabled here if lat/lon are available)
     }
 
-    // 4. Grade Matching
+    // 4. Grade Matching (เหมือนเดิม)
     const reqGrade = requirement.grade_level || "";
     const tutorTarget = tutorPost.target_student_level || "";
     if (tutorTarget && reqGrade) {
@@ -435,7 +478,7 @@ exports.getStudyBuddyRecommendations = async (req, res) => {
         // ดูว่าเราโพสต์หาติววิชาอะไรบ้าง และเราอยู่ที่ไหน
         const [myProfile] = await pool.query('SELECT address, grade_level, institution FROM student_profiles WHERE user_id = ?', [userId]);
         const [myPosts] = await pool.query('SELECT subject, location FROM student_posts WHERE student_id = ? ORDER BY created_at DESC LIMIT 5', [userId]);
-        
+
         const myLocation = myProfile[0]?.address || "";
         const myInterests = myPosts.map(p => p.subject); // วิชาที่เราอยากเรียน
 
@@ -445,7 +488,7 @@ exports.getStudyBuddyRecommendations = async (req, res) => {
                 SELECT r.user_id, r.name, r.lastname, sp.profile_picture_url, sp.grade_level, sp.institution
                 FROM register r
                 JOIN student_profiles sp ON r.user_id = sp.user_id
-                WHERE r.user_id != ? AND r.role = 'student'
+                WHERE r.user_id != ? AND r.type = 'student'
                 ORDER BY r.created_at DESC LIMIT 5
             `, [userId]);
             return res.json(randomFriends);
@@ -467,7 +510,7 @@ exports.getStudyBuddyRecommendations = async (req, res) => {
                 (SELECT GROUP_CONCAT(subject SEPARATOR ', ') FROM student_posts WHERE student_id = r.user_id ORDER BY created_at DESC LIMIT 3) as looking_for
             FROM register r
             JOIN student_profiles sp ON r.user_id = sp.user_id
-            WHERE r.user_id != ? AND r.role = 'student'
+            WHERE r.user_id != ? AND r.type = 'student'
             LIMIT 100
         `, [userId]);
 

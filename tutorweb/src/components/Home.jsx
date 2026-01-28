@@ -250,7 +250,7 @@ function PostList({ type = "student", searchKey, tutorId, onOpen }) {
             {/* [NEW] Join Count & Tutor Badge for Student Posts */}
             {isStudent && (
               <div className="mt-3 pt-3 border-t border-gray-50 flex items-center flex-wrap gap-2 text-xs text-gray-500">
-                <span>เข้าร่วมแล้ว: <b>{p.join_count || 0}</b> / {p.group_size || 0} คน</span>
+                <span>เข้าร่วมแล้ว: <b>{(p.join_count || 0) + 1}</b> / {p.group_size || 0} คน</span>
                 {p.has_tutor && (
                   <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-bold border border-indigo-100">
                     ได้ติวเตอร์แล้ว
@@ -265,7 +265,6 @@ function PostList({ type = "student", searchKey, tutorId, onOpen }) {
   );
 }
 
-// ✅ 1. StudentPosts (ใช้ใน Modal)
 // ✅ 1. StudentPosts (ใช้ใน Modal)
 function StudentPosts({ subjectKey, onOpen }) {
   // ถ้ามีคำค้นหา -> ใช้ type="student" (ค้นหาปกติ)

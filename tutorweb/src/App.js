@@ -15,6 +15,7 @@ import StudentCalendar from './components/StudentCalendar';
 import Settings from './components/Settings';
 import ReportIssueModal from './components/ReportIssueModal';
 import UserProfilePage from './pages/UserProfilePage'; // [NEW]
+import AdminDashboard from './components/AdminDashboard'; // [NEW]
 
 // ✅ 1. Import Icons from lucide-react
 import {
@@ -23,8 +24,10 @@ import {
   FileText,
   Heart,
   User,
-  LogOut
+  LogOut,
+  ShieldAlert
 } from "lucide-react";
+
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -227,6 +230,7 @@ function App() {
             onBack={() => setCurrentPage(backPage || 'home')}
           />
         );
+      case 'admin_dashboard': return <AdminDashboard />;
       default: return <Home />;
     }
   };
@@ -306,6 +310,9 @@ function App() {
                     <SidebarItem id="home" label="หน้าหลัก" icon={LayoutDashboard} />
                     <SidebarItem id="notification" label="การแจ้งเตือน" icon={Bell} badge={newNotificationCount} />
                     <SidebarItem id="mypost" label="โพสต์" icon={FileText} />
+                    {user?.role === 'admin' && (
+                      <SidebarItem id="admin_dashboard" label="แอดมิน" icon={ShieldAlert} />
+                    )}
                   </ul>
                 </div>
 

@@ -1,7 +1,8 @@
 // src/components/Notification.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import Review from "./Review";
 import {
-  Bell, Check, Clock, ChevronRight, User, BookOpen, Calendar, CheckCircle
+  Bell, Check, Clock, ChevronRight, User, BookOpen, Calendar, CheckCircle, Shield
 } from "lucide-react";
 
 function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
@@ -98,6 +99,10 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
   const [offerModal, setOfferModal] = useState(null); // { tutor, post_id, actor_id, notification_id ... }
   const [offerLoading, setOfferLoading] = useState(false);
 
+  // --- Review Modal State ---
+  const [reviewModal, setReviewModal] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+
   const fetchTutorData = async (actorId) => {
     try {
       const res = await fetch(`http://localhost:5000/api/tutor-profile/${actorId}`);
@@ -114,15 +119,12 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
 
     // Handle schedule alerts separately (they don't have notification_id for marking as read)
     if (item.is_schedule_alert) {
-      // For schedule alerts, we might want to navigate directly or just acknowledge
-      // For now, let's just navigate if there's a path
       let path = null;
       if (item.type.includes('schedule_student')) {
         path = `/feed?tab=student&open=${item.related_id}`;
       } else if (item.type.includes('schedule_tutor')) {
         path = `/feed?tab=tutor&open=${item.related_id}`;
       } else if (item.type === 'schedule_tomorrow' || item.type === 'schedule_today') {
-        // Fallback for old notifications or calendar events
         path = `/feed?tab=student&open=${item.related_id}`;
       }
 
@@ -145,8 +147,6 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     }
 
     if (item.type === 'offer') {
-      // ตรวจสอบว่าเคยตอบรับไปแล้วหรือยัง (เช็คจาก API status)
-      // แต่เบื้องต้นเปิด Modal ก่อน
       setOfferLoading(true);
       const tutor = await fetchTutorData(item.actor_id);
       setOfferLoading(false);
@@ -164,13 +164,34 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
       return;
     }
 
+    // --- Handle Review Request ---
+    if (item.type === 'review_request') {
+      setReviewLoading(true);
+      const tutor = await fetchTutorData(item.actor_id);
+      setReviewLoading(false);
+
+      if (tutor) {
+        setReviewModal({
+          notification_id: item.notification_id,
+          post_id: item.related_id,
+          actor_id: item.actor_id,
+          post_type: 'unknown',
+          post_subject: item.post_subject || `โพสต์ #${item.related_id}`, // Pass subject from item
+          tutorImage: item.actor_avatar, // Store avatar
+          tutor
+        });
+      } else {
+        alert("ไม่สามารถโหลดข้อมูลติวเตอร์ได้");
+      }
+      return;
+    }
+
     let path = null;
     if (item.type === 'join_request') path = `/feed?tab=student&open=${item.related_id}`;
     else if (item.type === 'tutor_join_request') path = `/feed?tab=tutor&open=${item.related_id}`;
     else if (item.type === 'join_approved') path = `/feed?tab=student&open=${item.related_id}`; // หรือไปที่ calendar
 
     if (typeof onOpenPost === "function" && path) {
-      // Extract params
       const url = new URL(path, window.location.origin);
       onOpenPost(url.searchParams.get("open"), item.type, path);
     } else if (path) {
@@ -210,7 +231,6 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     if (onReadAll) onReadAll();
   };
 
-  // ✅ Component ย่อย: Avatar ที่ไม่แตก
   const Avatar = ({ src, type }) => {
     const [imgError, setImgError] = useState(false);
 
@@ -221,10 +241,11 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     if (type.includes('rejected')) { badgeColor = "bg-rose-500"; BadgeIcon = Check; }
     if (type === 'offer') { badgeColor = "bg-purple-500"; BadgeIcon = BookOpen; }
     if (type.includes('schedule')) { badgeColor = "bg-orange-500"; BadgeIcon = Calendar; }
+    if (type === 'system_alert') { badgeColor = "bg-blue-600"; BadgeIcon = Shield; } // ✅ System Alert
 
     return (
       <div className="relative shrink-0">
-        {src && !imgError ? (
+        {src && !imgError && type !== 'system_alert' ? (
           <img
             src={src}
             alt="avatar"
@@ -232,8 +253,12 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
             className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-md"
           />
         ) : (
-          <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center border-2 border-white shadow-sm">
-            <User size={24} className="text-gray-400" />
+          <div className={`w-14 h-14 rounded-full flex items-center justify-center border-2 border-white shadow-sm ${type === 'system_alert' ? 'bg-blue-50' : 'bg-gray-100'}`}>
+            {type === 'system_alert' ? (
+              <Shield size={24} className="text-blue-600" />
+            ) : (
+              <User size={24} className="text-gray-400" />
+            )}
           </div>
         )}
 
@@ -253,6 +278,18 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     // สร้างข้อความ
     let content;
     switch (item.type) {
+      case "system_alert": // ✅ Handle System Alert
+        content = (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-blue-600 flex items-center gap-2">
+              🛡️ แจ้งเตือนจากผู้ดูแลระบบ
+            </span>
+            <span className="text-gray-700">
+              {item.message}
+            </span>
+          </div>
+        );
+        break;
       case "join_request":
       case "tutor_join_request":
         content = (
@@ -313,6 +350,18 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
             </span>
             <span className="text-gray-700">
               วันนี้คุณมีนัดติว/สอน วิชา <span className="font-semibold text-gray-900">"{subjectText}"</span>
+            </span>
+          </div>
+        );
+        break;
+      case "review_request":
+        content = (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-indigo-600 flex items-center gap-2">
+              ⭐ ให้คะแนนการสอน
+            </span>
+            <span className="text-gray-700">
+              {item.message || `ได้เวลาให้คะแนนการเรียนวิชา ${subjectText}`}
             </span>
           </div>
         );
@@ -460,6 +509,18 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     // ✅ ปรับเป็น max-w-6xl (กว้างสะใจ) และพื้นหลังสีเทาอ่อน
     <div className="w-full min-h-screen bg-gray-50/50 pb-20">
       <OfferModal />
+      {/* ใช้ Component Review ที่แยกไฟล์มา */}
+      {reviewModal && (
+        <Review
+          postId={reviewModal.post_id}
+          tutorId={reviewModal.actor_id}
+          studentId={normalizedUserId}
+          onClose={() => setReviewModal(null)}
+          initialSubject={reviewModal.post_subject}
+          initialTutorName={`${reviewModal.tutor.name || ''} ${reviewModal.tutor.lastname || ''}`.trim() || reviewModal.tutor.nickname}
+          initialTutorImage={reviewModal.tutorImage || reviewModal.tutor.profile_picture_url}
+        />
+      )}
 
       {/* Header Bar */}
       <div className="sticky top-0 z-20 px-4 md:px-8 py-4 mb-8">

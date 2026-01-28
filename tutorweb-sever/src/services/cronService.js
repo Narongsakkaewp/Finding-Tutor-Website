@@ -39,6 +39,16 @@ async function checkAndSendNotifications() {
         await processNotifications(conn, todayNames, today, 'schedule_today', 'วันนี้คุณมีนัดติว/สอน');
         await processCalendarEvents(conn, today, 'schedule_today', 'วันนี้คุณมีนัดติว/สอน');
 
+        // 3. Check for "Yesterday" (Review Request)
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayNames = getDayNames(yesterday);
+        console.log(`🔎 [Cron] Checking Yesterday (for Review): ${yesterday.toDateString()}`);
+
+        // We reuse processNotifications logic but checking for review status inside a new helper or modifying existing one?
+        // Let's make a specialized function for review requests to avoid cluttering processNotifications
+        await processReviewRequests(conn, yesterdayNames, yesterday);
+
     } catch (err) {
         console.error('❌ [Cron] Error:', err);
     } finally {
@@ -179,14 +189,14 @@ function isSameDate(d1, d2) {
         d1.getDate() === d2.getDate();
 }
 
-async function sendNotificationIfNotExists(conn, userId, type, message, relatedId) {
+async function sendNotificationIfNotExists(conn, userId, type, message, relatedId, actorId = null) {
     if (!userId) return;
 
-    // Prevent duplicate for same day (Check if sent in last 1 MINUTE to allow easier testing)
+    // Check if ANY notification of this type/related_id exists for this user (Strict check)
+    // This prevents re-sending even if the server restarts or manual trigger is run multiple times.
     const [existing] = await conn.query(`
     SELECT notification_id FROM notifications 
     WHERE user_id = ? AND type = ? AND related_id = ? 
-      AND created_at > DATE_SUB(NOW(), INTERVAL 1 MINUTE)
     LIMIT 1
   `, [userId, type, relatedId]);
 
@@ -194,10 +204,10 @@ async function sendNotificationIfNotExists(conn, userId, type, message, relatedI
         console.log(`        🔔 Sending Notification to User ID: ${userId} (${type})`);
         await conn.query(`
       INSERT INTO notifications (user_id, actor_id, type, message, related_id, created_at)
-      VALUES (?, NULL, ?, ?, ?, NOW())
-    `, [userId, type, message, relatedId]);
+      VALUES (?, ?, ?, ?, ?, NOW())
+    `, [userId, actorId, type, message, relatedId]);
     } else {
-        console.log(`        ⚠️ Skipping User ID: ${userId} (Already sent recently)`);
+        // console.log(`        ⚠️ Skipping User ID: ${userId} (Already sent)`);
     }
 }
 
@@ -214,4 +224,108 @@ function initCron() {
     // setTimeout(checkAndSendNotifications, 5000); 
 }
 
-module.exports = { initCron, checkAndSendNotifications };
+
+async function processReviewRequests(conn, dayNames, targetDate) {
+    // Reverted to original Day Matching logic as requested
+    const dateStr = targetDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    // A. Student Accepted Tutor Offer
+    const [offers] = await conn.query(`
+        SELECT sp.student_post_id, sp.subject, sp.preferred_days,
+               sp.student_id AS student_id, o.tutor_id AS tutor_id
+        FROM student_posts sp
+        JOIN student_post_offers o ON sp.student_post_id = o.student_post_id
+        WHERE o.status = 'approved'
+    `);
+
+    for (const post of offers) {
+        if (isDayMatch(post.preferred_days, dayNames, targetDate)) {
+            // 1. Notify Owner (Student who created the post)
+            try {
+                const [exists] = await conn.query(
+                    `SELECT review_id FROM reviews WHERE student_id=? AND post_id=? AND post_type='student_post'`,
+                    [post.student_id, post.student_post_id]
+                );
+                if (exists.length === 0) {
+                    await sendNotificationIfNotExists(conn, post.student_id, 'review_request',
+                        `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject}`, post.student_post_id, post.tutor_id);
+                }
+            } catch (e) {
+                console.log("⚠️ Error checking review existence (Owner):", e.message);
+            }
+
+            // 2. Notify Joiners (Study Buddies)
+            try {
+                const [joiners] = await conn.query(
+                    `SELECT user_id FROM student_post_joins WHERE student_post_id = ? AND status = 'approved'`,
+                    [post.student_post_id]
+                );
+
+                for (const joiner of joiners) {
+                    // Check if joiner already reviewed
+                    const [jExists] = await conn.query(
+                        `SELECT review_id FROM reviews WHERE student_id=? AND post_id=? AND post_type='student_post'`,
+                        [joiner.user_id, post.student_post_id]
+                    );
+                    if (jExists.length === 0) {
+                        await sendNotificationIfNotExists(conn, joiner.user_id, 'review_request',
+                            `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject} (ร่วมติว)`, post.student_post_id, post.tutor_id);
+                    }
+                }
+            } catch (e) {
+                console.log("⚠️ Error processing study buddies:", e.message);
+            }
+        }
+    }
+
+    // B. Student Joined Tutor Post
+    const [joins] = await conn.query(`
+         SELECT tp.tutor_post_id, tp.subject, tp.teaching_days,
+                tp.tutor_id AS tutor_id, j.user_id AS student_id
+         FROM tutor_posts tp
+         JOIN tutor_post_joins j ON tp.tutor_post_id = j.tutor_post_id
+         WHERE j.status = 'approved'
+    `);
+
+    for (const post of joins) {
+        if (isDayMatch(post.teaching_days, dayNames, targetDate)) {
+            try {
+                const [exists] = await conn.query(
+                    `SELECT review_id FROM reviews WHERE student_id=? AND post_id=? AND post_type='tutor_post'`,
+                    [post.student_id, post.tutor_post_id]
+                );
+                if (exists.length === 0) {
+                    await sendNotificationIfNotExists(conn, post.student_id, 'review_request',
+                        `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject}`, post.tutor_post_id, post.tutor_id);
+                }
+            } catch (e) {
+                console.log("⚠️ Error checking review existence:", e.message);
+            }
+        }
+    }
+}
+
+
+async function checkMissedReviewRequests(daysBack = 7) {
+    console.log(`🔎 [Manual] Checking missed reviews for past ${daysBack} days...`);
+    const conn = await pool.getConnection();
+    try {
+        const today = new Date();
+        for (let i = 1; i <= daysBack; i++) {
+            const pastDate = new Date(today);
+            pastDate.setDate(pastDate.getDate() - i);
+
+            const dayNames = getDayNames(pastDate);
+            console.log(`   > Checking date: ${pastDate.toDateString()}`);
+            await processReviewRequests(conn, dayNames, pastDate);
+        }
+    } catch (e) {
+        console.error("Manual review check error:", e);
+    } finally {
+        conn.release();
+    }
+}
+
+module.exports = { initCron, checkAndSendNotifications, checkMissedReviewRequests };
+
+

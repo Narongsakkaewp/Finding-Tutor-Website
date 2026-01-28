@@ -2,9 +2,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   MapPin, Calendar, Clock, Users, DollarSign, Heart,
-  Filter, Search, Plus, X, ChevronDown, Mail, Phone, User, Star
+  Filter, Search, Plus, X, ChevronDown, Mail, Phone, User, Star,
+  MoreHorizontal, Edit, Trash2, Flag
 } from "lucide-react";
 import LongdoLocationPicker from './LongdoLocationPicker';
+import ReportModal from "./ReportModal";
 
 const API_BASE = "http://localhost:5000";
 
@@ -45,7 +47,6 @@ const normalizeStudentPost = (p = {}) => ({
   join_count: Number(p.join_count ?? 0),
   joined: !!p.joined,
   pending_me: !!p.pending_me,
-  fav_count: Number(p.fav_count ?? 0),
   fav_count: Number(p.fav_count ?? 0),
   favorited: !!p.favorited,
   has_tutor: !!p.has_tutor, // [NEW]
@@ -181,6 +182,53 @@ function Modal({ open, onClose, children, title }) {
   );
 }
 
+function PostActionMenu({ isOpen, onClose, isOwner, onEdit, onDelete, onReport }) {
+  if (!isOpen) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="absolute right-0 top-10 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
+        {isOwner ? (
+          <>
+            <button
+              onClick={() => {
+                onEdit();
+                onClose();
+              }}
+              className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-3 text-gray-700 transition-colors"
+            >
+              <Edit size={18} />
+              <span>แก้ไขโพสต์</span>
+            </button>
+            <button
+              onClick={() => {
+                onDelete();
+                onClose();
+              }}
+              className="w-full text-left px-4 py-3 hover:bg-red-50 flex items-center gap-3 text-red-600 transition-colors"
+            >
+              <Trash2 size={18} />
+              <span>ลบโพสต์</span>
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => {
+              onReport();
+              onClose();
+            }}
+            className="w-full text-left px-4 py-3 hover:bg-red-50 flex items-center gap-3 text-red-600 transition-colors"
+          >
+            <Flag size={18} />
+            <span>รายงานโพสต์</span>
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
 /* ---------- Main Component ---------- */
 function MyPost({ setPostsCache, onViewProfile }) {
   const user = pickUser();
@@ -194,6 +242,12 @@ function MyPost({ setPostsCache, onViewProfile }) {
 
   const [posts, setPosts] = useState([]);
   const [expanded, setExpanded] = useState(false);
+  const [menuOpenId, setMenuOpenId] = useState(null);
+  const [reportingPost, setReportingPost] = useState(null);
+
+  // [NEW] Edit Mode State
+  const [editMode, setEditMode] = useState(false);
+  const [editingPostId, setEditingPostId] = useState(null);
 
   const [loading, setLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState({});
@@ -294,6 +348,9 @@ function MyPost({ setPostsCache, onViewProfile }) {
       setLoading(true);
       setError("");
 
+      const method = editMode ? "PUT" : "POST";
+      const idPart = editMode ? `/${editingPostId}` : "";
+
       if (feedType === "student") {
         const required = ["subject", "description", "preferred_days", "preferred_time", "location", "group_size", "budget", "contact_info", "grade_level"];
         for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
@@ -310,8 +367,8 @@ function MyPost({ setPostsCache, onViewProfile }) {
           budget: Number(formData.budget),
           contact_info: formData.contact_info.trim(),
         };
-        const res = await fetch(`${API_BASE}/api/student_posts`, {
-          method: "POST",
+        const res = await fetch(`${API_BASE}/api/student_posts${idPart}`, {
+          method: method,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
@@ -340,21 +397,23 @@ function MyPost({ setPostsCache, onViewProfile }) {
           contact_info: formData.contact_info.trim(),
         };
 
-        const res = await fetch(`${API_BASE}/api/tutor-posts`, {
-          method: "POST",
+        const res = await fetch(`${API_BASE}/api/tutor-posts${idPart}`, {
+          method: method,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
 
         const body = await res.json();
         if (!res.ok || !body.success) {
-          throw new Error(body?.message || "เกิดข้อผิดพลาดในการสร้างโพสต์ (tutor)");
+          throw new Error(body?.message || "เกิดข้อผิดพลาดในการสร้าง/แก้ไขโพสต์ (tutor)");
         }
       }
 
       await fetchPosts();
       setExpanded(false);
       setFormData(initialFormData);
+      setEditMode(false);
+      setEditingPostId(null);
 
     } catch (err) {
       alert(err.message || "Server error");
@@ -384,16 +443,32 @@ function MyPost({ setPostsCache, onViewProfile }) {
   };
 
   const handleUnjoin = async (post) => {
-    if (feedType !== "student") return;
+    if (!window.confirm("ยืนยันที่จะยกเลิก?")) return;
+    console.log("handleUnjoin clicked", post.id, "Type:", feedType);
+    if (feedType !== "student") {
+      console.warn("handleUnjoin aborted: feedType mismatch", feedType);
+      return;
+    }
     setJoinLoading(s => ({ ...s, [post.id]: true }));
     try {
+      console.log("Sending DELETE request...");
       const res = await fetch(`${API_BASE}/api/student_posts/${post.id}/join?user_id=${meId}`, { method: "DELETE" });
       const data = await res.json();
+      console.log("DELETE response:", res.status, data);
+
       if (!res.ok) return alert(data?.message);
 
       // อัปเดต state: ถ้ากดเลิก สถานะ pending_me และ joined จะเป็น false
-      const updater = (arr) => arr.map(p => p.id === post.id ? { ...p, joined: false, pending_me: false, join_count: data.join_count } : p);
+      const updater = (arr) => arr.map(p => {
+        if (p.id === post.id) {
+          return { ...p, joined: false, pending_me: false, join_count: Number(data.join_count ?? 0) };
+        }
+        return p;
+      });
       setPosts(updater);
+    } catch (e) {
+      console.error("handleUnjoin error:", e);
+      alert(e.message);
     } finally { setJoinLoading(s => ({ ...s, [post.id]: false })); }
   };
 
@@ -486,6 +561,87 @@ function MyPost({ setPostsCache, onViewProfile }) {
     }
   };
 
+  // --- Report Handler ---
+  const handleReportClick = (post, type) => {
+    setReportingPost({ ...post, post_type: type });
+    setMenuOpenId(null);
+  };
+
+  // Placeholder for edit/delete handlers (if needed later)
+  // Placeholder for edit/delete handlers (if needed later)
+  const handleEditClick = (post, type) => {
+    // Populate form data
+    if (type === "student") {
+      setFormData({
+        subject: post.subject || "",
+        description: post.description || "",
+        preferred_days: post.preferred_days || "",
+        preferred_time: post.preferred_time || "",
+        grade_level: post.grade_level || "",
+        location: post.location || "",
+        group_size: post.group_size || "",
+        budget: post.budget || "",
+        contact_info: post.contact_info || "",
+        target_student_level: [],
+        teaching_days: "",
+        teaching_time: "",
+        price: ""
+      });
+      setFeedType("student");
+    } else {
+      // Tutor
+      setFormData({
+        subject: post.subject || "",
+        description: post.description || "",
+        preferred_days: "",
+        preferred_time: "",
+        grade_level: "",
+        location: post.meta?.location || "",
+        group_size: post.group_size || "",
+        budget: "",
+        contact_info: post.meta?.contact_info || "",
+        target_student_level: (post.meta?.target_student_level || "").split(',').filter(x => x),
+        teaching_days: post.meta?.teaching_days || "",
+        teaching_time: post.meta?.teaching_time || "",
+        price: post.meta?.price || ""
+      });
+      setFeedType("tutor");
+    }
+
+    setEditMode(true);
+    setEditingPostId(post.id);
+    setExpanded(true); // Open Modal
+    setMenuOpenId(null);
+  };
+
+  const handleDeleteClick = async (postId, type) => {
+    if (!window.confirm("คุณต้องการลบโพสต์นี้ใช่หรือไม่?")) return;
+
+    try {
+      setLoading(true);
+      const endpoint = type === "student"
+        ? `${API_BASE}/api/student_posts/${postId}`
+        : `${API_BASE}/api/tutor-posts/${postId}`;
+
+      const res = await fetch(endpoint, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: meId })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "ลบโพสต์ไม่สำเร็จ");
+
+      alert("ลบโพสต์เรียบร้อยแล้ว");
+      await fetchPosts(); // Refresh list
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+      setMenuOpenId(null);
+    }
+  };
+
   const currentUserName = user?.name || user?.first_name || "User";
 
   return (
@@ -564,8 +720,17 @@ function MyPost({ setPostsCache, onViewProfile }) {
 
               <Modal
                 open={expanded}
-                onClose={() => setExpanded(false)}
-                title={feedType === "student" ? "นักเรียนสร้างโพสต์" : "ติวเตอร์สร้างโพสต์"}
+                onClose={() => {
+                  setExpanded(false);
+                  setEditMode(false);
+                  setEditingPostId(null);
+                  setFormData(initialFormData);
+                }}
+                title={
+                  editMode
+                    ? (feedType === "student" ? "แก้ไขโพสต์นักเรียน" : "แก้ไขโพสต์ติวเตอร์")
+                    : (feedType === "student" ? "นักเรียนสร้างโพสต์" : "ติวเตอร์สร้างโพสต์")
+                }
               >
                 <form onSubmit={handleSubmit} className="space-y-5">
 
@@ -694,14 +859,19 @@ function MyPost({ setPostsCache, onViewProfile }) {
                   )}
 
                   <div className="flex justify-end gap-3 pt-6 border-t mt-4">
-                    <button type="button" onClick={() => setExpanded(false)} className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium transition-colors">ยกเลิก</button>
+                    <button type="button" onClick={() => {
+                      setExpanded(false);
+                      setEditMode(false);
+                      setEditingPostId(null);
+                      setFormData(initialFormData);
+                    }} className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium transition-colors">ยกเลิก</button>
                     <button disabled={loading} type="submit" className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium shadow-sm hover:shadow transition-all disabled:opacity-70 disabled:cursor-not-allowed">
                       {loading ? (
                         <span className="flex items-center gap-2">
                           <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                           กำลังโพสต์...
                         </span>
-                      ) : "สร้างโพสต์"}
+                      ) : (editMode ? "บันทึกการแก้ไข" : "สร้างโพสต์")}
                     </button>
                   </div>
                 </form>
@@ -722,7 +892,7 @@ function MyPost({ setPostsCache, onViewProfile }) {
               const favBusy = !!favLoading[post.id];
               const cap = Number(post.group_size || 0);
               const joinedCount = Number(post.join_count || 0);
-              const isFull = cap > 0 && joinedCount >= cap;
+              const isFull = cap > 0 && (post.post_type === 'student' ? (joinedCount + 1) : joinedCount) >= cap;
 
 
               //เงื่อนไขที่ถ้าเลยวันที่โพสต์แล้ว จะไม่สามารถกด Join ได้
@@ -758,37 +928,60 @@ function MyPost({ setPostsCache, onViewProfile }) {
 
               return (
                 <div key={post.id} className="bg-white border p-4 rounded-2xl shadow-sm">
-                  <div
-                    className="flex items-center gap-3 mb-2 cursor-pointer group"
-                    onClick={() => {
-                      // Use onViewProfile if available
-                      if (onViewProfile) {
-                        // Prefer owner_id for fetching profile
-                        onViewProfile(post.owner_id);
-                      }
-                    }}
-                  >
-                    <img
-                      src={post.user?.profile_image}
-                      alt="profile"
-                      className="w-10 h-10 rounded-full object-cover mr-3 shrink-0 border group-hover:border-indigo-500 transition-colors"
-                    />
-                    <div>
-                      <p className="font-semibold group-hover:text-indigo-600 group-hover:underline transition-colors">
-                        {post.user?.first_name} {post.user?.last_name}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${post.post_type === 'student'
-                          ? 'bg-rose-200 text-rose-700'
-                          : 'bg-green-200 text-green-700'
-                          }`}>
-                          {post.post_type === 'student' ? 'นักเรียน' : 'ติวเตอร์'}
-                        </span>
-                        <span className="text-xs text-gray-400">•</span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(post.createdAt).toLocaleString()}
-                        </span>
+                  <div className="flex items-center justify-between mb-2">
+                    <div
+                      className="flex items-center gap-3 cursor-pointer group"
+                      onClick={() => {
+                        // Use onViewProfile if available
+                        if (onViewProfile) {
+                          // Prefer owner_id for fetching profile
+                          onViewProfile(post.owner_id);
+                        }
+                      }}
+                    >
+                      <img
+                        src={post.user?.profile_image}
+                        alt="profile"
+                        className="w-10 h-10 rounded-full object-cover mr-3 shrink-0 border group-hover:border-indigo-500 transition-colors"
+                      />
+                      <div>
+                        <p className="font-semibold group-hover:text-indigo-600 group-hover:underline transition-colors">
+                          {post.user?.first_name} {post.user?.last_name}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${post.post_type === 'student'
+                            ? 'bg-rose-200 text-rose-700'
+                            : 'bg-green-200 text-green-700'
+                            }`}>
+                            {post.post_type === 'student' ? 'นักเรียน' : 'ติวเตอร์'}
+                          </span>
+                          <span className="text-xs text-gray-400">•</span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(post.createdAt).toLocaleString()}
+                          </span>
+                        </div>
                       </div>
+                    </div>
+
+                    {/* Action Menu Trigger */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpenId(menuOpenId === post.id ? null : post.id);
+                        }}
+                        className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-600"
+                      >
+                        <MoreHorizontal size={20} />
+                      </button>
+                      <PostActionMenu
+                        isOpen={menuOpenId === post.id}
+                        onClose={() => setMenuOpenId(null)}
+                        isOwner={isOwner}
+                        onEdit={() => handleEditClick(post, post.post_type)}
+                        onDelete={() => handleDeleteClick(post.id, post.post_type)}
+                        onReport={() => handleReportClick(post, post.post_type)}
+                      />
                     </div>
                   </div>
 
@@ -846,11 +1039,15 @@ function MyPost({ setPostsCache, onViewProfile }) {
                     <div className="text-sm text-gray-600">
                       {post.post_type === "student" ? (
                         <>
-                          เข้าร่วมแล้ว : <b>{post.join_count}</b> / {post.group_size} คน
+                          เข้าร่วมแล้ว : <b>{(post.join_count || 0) + 1}</b> / {post.group_size} คน
                           {/* [NEW] Badge shown to everyone */}
                           {post.has_tutor && <span className="ml-2 px-2 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded-full font-bold border border-indigo-200">ได้ติวเตอร์แล้ว</span>}
 
-                          {post.joined && <span className="ml-2 px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 rounded-full">คุณเข้าร่วมแล้ว</span>}
+                          {post.joined && (
+                            isTutor
+                              ? <span className="ml-2 px-2 py-0.5 text-xs bg-indigo-50 text-indigo-700 rounded-full">คุณได้รับเลือกสอน</span>
+                              : <span className="ml-2 px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 rounded-full">คุณเข้าร่วมแล้ว</span>
+                          )}
                           {post.pending_me && !post.joined && <span className="ml-2 px-2 py-0.5 text-xs bg-amber-50 text-amber-700 rounded-full">รออนุมัติ</span>}
                         </>
                       ) : (
@@ -934,6 +1131,13 @@ function MyPost({ setPostsCache, onViewProfile }) {
 
 
       </div>
+      {/* Report Modal */}
+      <ReportModal
+        open={!!reportingPost}
+        onClose={() => setReportingPost(null)}
+        postId={reportingPost?.id}
+        postType={reportingPost?.post_type}
+      />
     </div>
   );
 }

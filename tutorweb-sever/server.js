@@ -193,6 +193,12 @@ app.get('/api/test-cron', async (req, res) => {
   await checkAndSendNotifications();
   res.json({ message: 'Cron job manual trigger executed' });
 });
+
+app.get('/api/debug/backfill-reviews', async (req, res) => {
+  const { checkMissedReviewRequests } = require('./src/services/cronService');
+  await checkMissedReviewRequests(7); // Check past 7 days
+  res.json({ message: 'Backfill check for reviews triggered (past 7 days)' });
+});
 app.use('/api/search', searchRoutes);
 app.get('/api/search/history', searchController.getMySearchHistory); // ดึงประวัติการค้นหาของฉัน
 app.delete('/api/search/history/:id', searchController.deleteSearchHistory); // ลบประวัติการค้นหา
@@ -202,6 +208,80 @@ app.use('/api/favorites', favoriteRoutes);
 app.get('/api/recommendations/courses', recommendationController.getRecommendations);
 app.get('/api/recommendations/tutor', recommendationController.getStudentRequestsForTutor);
 app.get('/api/recommendations/friends', recommendationController.getStudyBuddyRecommendations);
+
+// --- ⭐ Reviews API ---
+// --- ⭐ Reviews API ---
+app.post('/api/reviews', async (req, res) => {
+  try {
+    let {
+      tutor_id, student_id, tutor_post_id, post_id, post_type,
+      rating, rating_punctuality, rating_worth, rating_teaching,
+      comment
+    } = req.body;
+
+    // Support tutor_post_id or post_id from frontend (normalize to post_id/tutor_id)
+    const targetPostId = tutor_post_id || post_id;
+
+    // 1. Try to resolve missing tutor_id OR missing post_type from tutor_posts
+    if (targetPostId) {
+      // Check Tutor Posts
+      const [posts] = await pool.query('SELECT tutor_id FROM tutor_posts WHERE tutor_post_id = ?', [targetPostId]);
+      if (posts.length > 0) {
+        if (!tutor_id) tutor_id = posts[0].tutor_id;
+        post_id = targetPostId;
+        post_type = 'tutor_post';
+      } else {
+        // Check Student Posts (if not found in tutor_posts)
+        const [sp] = await pool.query('SELECT student_id FROM student_posts WHERE student_post_id = ?', [targetPostId]);
+        if (sp.length > 0) {
+          post_id = targetPostId;
+          post_type = 'student_post';
+          // Note: For student posts, tutor_id must be provided by frontend as it's not the post owner
+        }
+      }
+    }
+
+    // Validate inputs
+    if (!tutor_id || !student_id || !rating) {
+      console.warn("❌ Missing fields:", { tutor_id, student_id, rating, body: req.body });
+      return res.status(400).json({ success: false, message: 'Missing required fields (tutor_id or valid post_id)' });
+    }
+
+    // Insert Review with detailed ratings
+    const [result] = await pool.query(
+      `INSERT INTO reviews
+        (tutor_id, student_id, post_id, post_type, rating, rating_punctuality, rating_worth, rating_teaching, comment, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        tutor_id, student_id, post_id || 0, post_type || 'unknown',
+        rating,
+        rating_punctuality || rating, // Fallback to overall if not provided
+        rating_worth || rating,
+        rating_teaching || rating,
+        comment || ''
+      ]
+    );
+
+    // Notify Tutor
+    // "นักเรียนคนนี้ได้รีวิวให้แล้ว"
+    // Fetch student name for better message
+    const [[student]] = await pool.query('SELECT name, lastname FROM register WHERE user_id=?', [student_id]);
+    const studentName = student ? `${student.name} ${student.lastname}`.trim() : 'นักเรียน';
+
+    await pool.query(
+      `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
+       VALUES (?, ?, 'review_received', ?, ?)`,
+      [tutor_id, student_id, `นักเรียน ${studentName} ได้รีวิวการสอนของคุณแล้ว`, result.insertId]
+    );
+
+    res.json({ success: true, message: 'Review submitted successfully', reviewId: result.insertId });
+
+  } catch (err) {
+    console.error('POST /api/reviews error:', err);
+    res.status(500).json({ success: false, message: 'Server error: ' + err.message });
+  }
+});
+
 
 // --- 📅 Schedule API (New) ---
 // ประเภทผู้ใช้
@@ -237,12 +317,69 @@ app.post('/api/login', async (req, res) => {
 
     res.json({
       success: true,
-      user: { ...user, role: mapped, userType: mapped },
+      user: {
+        ...user,
+        role: user.role || mapped, // Use DB role (admin) if exists, else fallback to type
+        userType: mapped
+      },
       userType: mapped,
+      role: user.role || mapped // Send explicit role key
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Database error' });
+  }
+});
+
+// ✅ API: Get Single Student Post
+app.get('/api/student-posts/:id', async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const [rows] = await pool.query(`
+      SELECT
+        sp.student_post_id, sp.student_id, sp.subject, sp.description,
+        sp.preferred_days, sp.preferred_time, sp.location, sp.group_size, sp.budget, sp.contact_info,
+        sp.grade_level, sp.created_at,
+        r.name, r.lastname, r.email, r.type,
+        spro.profile_picture_url, spro.phone,
+        (SELECT COUNT(*) FROM student_post_joins WHERE student_post_id = sp.student_post_id AND status = 'approved') AS join_count
+      FROM student_posts sp
+      LEFT JOIN register r ON r.user_id = sp.student_id
+      LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
+      WHERE sp.student_post_id = ?
+    `, [postId]);
+
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    const post = rows[0];
+
+    // Normalize response for MyPostDetails
+    const result = {
+      id: post.student_post_id,
+      owner_id: post.student_id,
+      subject: post.subject,
+      description: post.description,
+      location: post.location,
+      group_size: post.group_size,
+      budget: post.budget,
+      preferred_days: post.preferred_days,
+      preferred_time: post.preferred_time,
+      contact_info: post.contact_info,
+      createdAt: post.created_at,
+      join_count: Number(post.join_count || 0),
+      user: {
+        first_name: post.name,
+        last_name: post.lastname,
+        profile_image: post.profile_picture_url || '/default-avatar.png'
+      }
+    };
+
+    res.json(result);
+  } catch (err) {
+    console.error("Get Single Student Post Error:", err);
+    res.status(500).json({ message: 'Server Error' });
   }
 });
 
@@ -277,7 +414,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
         FROM student_posts sp
         LEFT JOIN register r ON r.user_id = sp.student_id
         LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id /* เพิ่ม JOIN รูปโปรไฟล์ */
-        WHERE ${whereConditions}
+        WHERE sp.is_active = 1 AND (${whereConditions})
         ORDER BY sp.student_post_id DESC
         LIMIT ? OFFSET ?`,
       [...sqlParams, limit, offset]
@@ -285,7 +422,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
 
     // นับจำนวนทั้งหมด (Count)
     const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM student_posts sp WHERE ${whereConditions}`,
+      `SELECT COUNT(*) AS total FROM student_posts sp WHERE sp.is_active = 1 AND (${whereConditions})`,
       sqlParams
     );
 
@@ -449,6 +586,9 @@ app.get('/api/tutor-posts', async (req, res) => {
       params.push(tutorId);
     }
 
+    // ✅ Add Soft Delete Filter
+    where.push('tp.is_active = 1');
+
     // ถ้ามีการค้นหาด้วย subject (รองรับ Smart Search)
     let orderBy = 'ORDER BY tp.created_at DESC, tp.tutor_post_id DESC';
 
@@ -609,7 +749,7 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
               teaching_days, teaching_time, location, price, contact_info,
               COALESCE(created_at, NOW()) AS created_at
        FROM tutor_posts
-       WHERE tutor_id = ?
+       WHERE tutor_id = ? AND is_active = 1
        ORDER BY tutor_post_id DESC
        LIMIT ? OFFSET ?`,
       [tutorId, limit, offset]
@@ -780,14 +920,15 @@ app.get('/api/student_posts', async (req, res) => {
     const search = (req.query.search || '').trim(); // รับคำค้นหา
 
     // 1. สร้างเงื่อนไขการค้นหา (Smart Search)
-    let searchClause = '';
+    // ✅ Add Soft Delete Filter
+    let searchClause = 'WHERE sp.is_active = 1';
     // params: [join_me, pending_me, fav_me, offer_me (approved), offer_me (pending)]
     const queryParams = [me, me, me, me, me];
 
     // Filter by student_id (owner)
     const ownerId = Number(req.query.student_id);
     if (ownerId > 0) {
-      searchClause = `WHERE sp.student_id = ?`;
+      searchClause += ` AND sp.student_id = ?`;
       queryParams.push(ownerId);
     }
 
@@ -800,11 +941,7 @@ app.get('/api/student_posts', async (req, res) => {
         `(sp.subject LIKE ? OR sp.description LIKE ?)`
       ).join(' OR ');
 
-      if (searchClause) {
-        searchClause += ` AND (${conditions})`;
-      } else {
-        searchClause = `WHERE (${conditions})`;
-      }
+      searchClause += ` AND (${conditions})`;
 
       // เพิ่มคำค้นหาลงใน parameters (2 ครั้งต่อ 1 คำค้น)
       keywords.forEach(kw => {
@@ -888,6 +1025,7 @@ app.get('/api/student_posts', async (req, res) => {
       pending_me: !!r.pending_me,
       fav_count: Number(r.fav_count || 0),
       favorited: !!r.favorited,
+      has_tutor: !!r.has_approved_tutor, // ✅ Send status to frontend
       user: {
         first_name: r.name || '',
         last_name: r.lastname || '',
@@ -914,88 +1052,19 @@ app.post('/api/student_posts', async (req, res) => {
       location, group_size, budget, contact_info, grade_level
     } = req.body;
 
-    if (!user_id) return res.status(400).json({ success: false, message: 'user_id is required' });
+    // validate required used in frontend
+    if (!user_id || !subject) return res.status(400).json({ message: 'Missing required fields' });
 
-    const groupSizeNum = Number(group_size);
-    const budgetNum = Number(budget);
-    const timeSql = toSqlTime(preferred_time);
+    const [resDb] = await pool.query(`
+      INSERT INTO student_posts 
+      (student_id, subject, description, preferred_days, preferred_time, location, group_size, budget, contact_info, grade_level, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    `, [user_id, subject, description, preferred_days, preferred_time, location, group_size, budget, contact_info, grade_level]);
 
-    if (!Number.isFinite(groupSizeNum) || groupSizeNum <= 0)
-      return res.status(400).json({ success: false, message: 'group_size must be a positive number' });
-    if (!Number.isFinite(budgetNum) || budgetNum < 0)
-      return res.status(400).json({ success: false, message: 'budget must be a number' });
-    if (!timeSql)
-      return res.status(400).json({ success: false, message: 'preferred_time must be HH:MM or HH:MM:SS' });
-
-    const [userExists] = await pool.execute('SELECT 1 FROM register WHERE user_id = ?', [user_id]);
-    if (userExists.length === 0)
-      return res.status(400).json({ success: false, message: `user_id ${user_id} not found in register` });
-
-    const [result] = await pool.execute(
-      `INSERT INTO student_posts
-     (student_id, subject, description, grade_level, preferred_days, preferred_time,
-      location, group_size, budget, contact_info, created_at)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [user_id, subject, description, req.body.grade_level || '', preferred_days, timeSql,
-        location, groupSizeNum, budgetNum, contact_info]
-    );
-
-    const insertId = result.insertId;
-
-    const [rows] = await pool.query(
-      `SELECT
-         sp.student_post_id, sp.student_id, sp.subject, sp.description,
-         sp.preferred_days, sp.preferred_time, sp.location, sp.group_size,
-         sp.budget, sp.contact_info, sp.grade_level, sp.created_at,
-         r.name, r.lastname
-       FROM student_posts sp
-       LEFT JOIN register r ON r.user_id = sp.student_id
-       WHERE sp.student_post_id = ?`,
-      [insertId]
-    );
-
-    const r = rows[0];
-    const created = {
-      id: r.student_post_id,
-      owner_id: r.student_id,
-      subject: r.subject,
-      description: r.description,
-      preferred_days: r.preferred_days,
-      preferred_time: r.preferred_time,
-      location: r.location,
-      group_size: r.group_size,
-      budget: Number(r.budget),
-      contact_info: r.contact_info,
-      createdAt: r.created_at,
-      meta: {
-        grade_level: r.grade_level || 'ไม่ระบุ',
-      },
-      user: {
-        first_name: r.name || '',
-        last_name: r.lastname || '',
-      },
-
-    };
-    // ✅ CALL HERE (หลังส่ง response ได้ก็ได้ แต่อย่าให้ throw)
-    try {
-      const evDate = parseDateFromPreferredDays(r.preferred_days) || new Date().toISOString().slice(0, 10);
-      const evTime = toSqlTimeMaybe(r.preferred_time);
-      await upsertCalendarEvent({
-        user_id: r.student_id,
-        post_id: r.student_post_id,
-        title: `ติว: ${r.subject}`,
-        subject: r.subject,
-        event_date: evDate,
-        event_time: evTime,
-        location: r.location || null
-      });
-
-    } catch (e) { console.warn('calendar upsert (student post) failed:', e.message); }
-
-
-    return res.status(201).json(created);
-  } catch (err) {
-    return sendDbError(res, err);
+    res.json({ success: true, id: resDb.insertId });
+  } catch (e) {
+    console.error('POST /api/student_posts error', e);
+    return sendDbError(res, e);
   }
 });
 
@@ -1224,7 +1293,7 @@ async function doJoinUnified(type, postId, me) {
     };
 
   } catch (e) {
-    try { await conn.rollback(); } catch {}
+    try { await conn.rollback(); } catch { }
     throw e;
   } finally {
     conn.release();
@@ -1345,24 +1414,23 @@ app.delete('/api/tutor-posts/:id/join', async (req, res) => {
 
 
 // ✅ API ลบโพสต์นักเรียน
+// ✅ API ลบโพสต์นักเรียน (Soft Delete + Ownership Check)
 app.delete('/api/student_posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
+    const userId = req.body.user_id || req.query.user_id; // Support both
 
-    // ลบข้อมูลที่เกี่ยวข้องในตาราง joins ก่อน (ถ้าไม่ได้ตั้ง cascade ไว้ใน database)
-    await pool.query('DELETE FROM student_post_joins WHERE student_post_id = ?', [postId]);
+    if (!userId) return res.status(400).json({ message: 'Missing user_id' });
 
-    // ลบโพสต์จริง
-    const [result] = await pool.query('DELETE FROM student_posts WHERE student_post_id = ?', [postId]);
+    // 1. Check Ownership
+    const [rows] = await pool.query('SELECT student_id FROM student_posts WHERE student_post_id = ?', [postId]);
+    if (rows.length === 0) return res.status(404).json({ message: 'Post not found' });
+    if (Number(rows[0].student_id) !== Number(userId)) return res.status(403).json({ message: 'Forbidden' });
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
+    // 2. Soft Delete
+    await pool.query('UPDATE student_posts SET is_active = 0 WHERE student_post_id = ?', [postId]);
 
-    // ลบ Event ในปฏิทินที่เกี่ยวข้องด้วย
-    await pool.query('DELETE FROM calendar_events WHERE post_id = ?', [postId]);
-
-    res.json({ success: true, message: 'Deleted successfully' });
+    res.json({ success: true, message: 'Deleted successfully (soft)' });
   } catch (err) {
     console.error('DELETE /api/student_posts/:id error:', err);
     res.status(500).json({ message: 'Database error' });
@@ -1370,22 +1438,23 @@ app.delete('/api/student_posts/:id', async (req, res) => {
 });
 
 // ✅ API ลบโพสต์ติวเตอร์
+// ✅ API ลบโพสต์ติวเตอร์ (Soft Delete + Ownership Check)
 app.delete('/api/tutor-posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
+    const userId = req.body.user_id || req.query.user_id;
 
-    // ลบข้อมูลที่เกี่ยวข้อง (เช่น favorites, join requests) ถ้ามี
-    // await pool.query('DELETE FROM favorites WHERE post_id = ? AND post_type = "tutor"', [postId]); 
-    // await pool.query('DELETE FROM tutor_post_joins WHERE tutor_post_id = ?', [postId]);
+    if (!userId) return res.status(400).json({ message: 'Missing user_id' });
 
-    // ลบโพสต์จริง
-    const [result] = await pool.query('DELETE FROM tutor_posts WHERE tutor_post_id = ?', [postId]);
+    // 1. Check Ownership
+    const [rows] = await pool.query('SELECT tutor_id FROM tutor_posts WHERE tutor_post_id = ?', [postId]);
+    if (rows.length === 0) return res.status(404).json({ message: 'Post not found' });
+    if (Number(rows[0].tutor_id) !== Number(userId)) return res.status(403).json({ message: 'Forbidden' });
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
+    // 2. Soft Delete
+    await pool.query('UPDATE tutor_posts SET is_active = 0 WHERE tutor_post_id = ?', [postId]);
 
-    res.json({ success: true, message: 'Deleted successfully' });
+    res.json({ success: true, message: 'Deleted successfully (soft)' });
   } catch (err) {
     console.error('DELETE /api/tutor-posts/:id error:', err);
     res.status(500).json({ message: 'Database error' });
@@ -1907,6 +1976,7 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
 
   let capacity = 0;
   let joinCountAfter = 0;
+  let tutorId = null;
 
   try {
     const conn = await pool.getConnection();
@@ -1915,12 +1985,14 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
 
       // ✅ ล็อกแถวโพสต์ + เอา group_size มาเช็ค
       const [[tp]] = await conn.query(
-        `SELECT tutor_post_id, group_size
+        `SELECT tutor_post_id, group_size, tutor_id
          FROM tutor_posts
          WHERE tutor_post_id = ?
          FOR UPDATE`,
         [postId]
       );
+
+      if (tp) tutorId = tp.tutor_id;
 
       if (!tp) {
         await conn.rollback();
@@ -1989,11 +2061,17 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
     // ------- หลัง commit ค่อยทำงานหนัก -------
     if (newStatus === 'approved') {
       await createCalendarEventsForTutorApproval(postId, userId);
-      await pool.query(
-        `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
-         VALUES (?,?,?,?,?)`,
-        [userId, null, 'join_approved', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ได้รับการอนุมัติแล้ว`, postId]
-      );
+      console.log(`🔔 Sending Join Approved Notification: User=${userId}, Actor=${tutorId}, Post=${postId}`);
+      try {
+        await pool.query(
+          `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
+           VALUES (?,?,?,?,?)`,
+          [userId, tutorId, 'join_approved', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ได้รับการอนุมัติแล้ว`, postId]
+        );
+        console.log("✅ Notification inserted successfully");
+      } catch (notifErr) {
+        console.error("❌ Notification Insert Error:", notifErr);
+      }
     } else {
       await deleteCalendarEventForUser(userId, postId);
     }
@@ -2053,7 +2131,7 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         
         -- ข้อมูลวิชา (Subject) จากโพสต์ที่เกี่ยวข้อง
         CASE 
-            WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted') THEN sp.subject
+            WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'review_request', 'system_alert') THEN COALESCE(sp.subject, tp.subject)
             WHEN n.type IN ('tutor_join_request') THEN tp.subject
             ELSE NULL 
         END AS post_subject
@@ -2136,36 +2214,68 @@ app.get('/api/profile/:userId', async (req, res) => {
   }
 });
 
-// Update Student
+// ==========================================
+// 4. UPDATE STUDENT PROFILE (ฉบับแก้ชื่อตัวแปรให้ตรง Frontend)
+// ==========================================
 app.put('/api/profile/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const body = req.body;
 
-    if (body.name || body.lastname) {
-      await pool.execute('UPDATE register SET name=?, lastname=? WHERE user_id=?', [body.name, body.lastname, userId]);
+    console.log("📝 Update Student Payload:", body);
+
+    // 1. อัปเดตตาราง register
+    if (body.name || body.lastname || body.first_name || body.last_name) {
+      await pool.execute('UPDATE register SET name=?, lastname=? WHERE user_id=?',
+        [
+          body.name || body.first_name,
+          body.lastname || body.last_name,
+          userId
+        ]
+      );
     }
 
+    const v = (val) => (val === undefined || val === 'null' || val === '') ? null : val;
+
     const sql = `
-      INSERT INTO student_profiles (user_id, nickname, phone, address, grade_level, institution, faculty, major, about, profile_picture_url)
+      INSERT INTO student_profiles (
+        user_id, nickname, phone, address, 
+        grade_level, institution, faculty, major, 
+        about, profile_picture_url
+      )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
-        nickname=VALUES(nickname), phone=VALUES(phone), address=VALUES(address),
-        grade_level=VALUES(grade_level), institution=VALUES(institution),
-        faculty=VALUES(faculty), major=VALUES(major), about=VALUES(about),
+        nickname=VALUES(nickname), 
+        phone=VALUES(phone), 
+        address=VALUES(address),
+        grade_level=VALUES(grade_level), 
+        institution=VALUES(institution),
+        faculty=VALUES(faculty), 
+        major=VALUES(major), 
+        about=VALUES(about),
         profile_picture_url=VALUES(profile_picture_url)
     `;
 
+    // 🔥 จุดที่แก้: เพิ่มตัวดักจับ phone_number และ about_me
     await pool.execute(sql, [
-      userId, body.nickname, body.phone, body.address,
-      body.grade_level, body.institution, body.faculty, body.major,
-      body.about, body.profile_picture_url
+      userId,
+      v(body.nickname),
+      v(body.phone || body.phone_number || body.phoneNumber || body.tel), // ✅ เพิ่ม body.phone_number
+      v(body.address || body.location),
+      v(body.grade_level),
+      v(body.institution),
+      v(body.faculty),
+      v(body.major),
+      v(body.about || body.about_me || body.bio), // ✅ เพิ่ม body.about_me
+      v(body.profile_picture_url || body.profile_image)
     ]);
 
+    console.log("✅ Update Student Success!");
     res.json({ message: 'Student profile updated successfully' });
+
   } catch (err) {
-    console.error('Update Student Error:', err);
-    res.status(500).json({ message: 'Database error' });
+    console.error('❌ Update Student Error:', err);
+    res.status(500).json({ message: 'Database error: ' + err.message });
   }
 });
 
@@ -2556,30 +2666,7 @@ app.get('/api/review-info/:tutorPostId', async (req, res) => {
 });
 
 // --- API สำหรับบันทึกรีวิว (Mockup) ---
-app.post('/api/reviews', async (req, res) => {
-  try {
-    const { tutor_post_id, student_id, rating, comment } = req.body;
-
-    // 1. หา tutor_id จาก tutor_post_id ก่อน
-    const [posts] = await pool.execute('SELECT tutor_id FROM tutor_posts WHERE tutor_post_id = ?', [tutor_post_id]);
-
-    if (posts.length === 0) return res.status(404).json({ success: false, message: 'Post not found' });
-    const tutor_id = posts[0].tutor_id;
-
-    // 2. บันทึกลงตาราง reviews
-    const [result] = await pool.execute(
-      `INSERT INTO reviews (booking_id, tutor_id, student_id, rating, comment, created_at) 
-       VALUES (0, ?, ?, ?, ?, NOW())`,
-      [tutor_id, student_id, rating, comment]
-    );
-
-    res.json({ success: true, message: 'บันทึกรีวิวสำเร็จ', reviewId: result.insertId });
-
-  } catch (err) {
-    console.error('POST /api/reviews error:', err);
-    res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
+// --- Deleted DUPLICATE POST /api/reviews (merged to top) ---
 
 app.get('/api/tutor-posts/:id', async (req, res) => {
   try {
@@ -2630,6 +2717,9 @@ app.get('/api/tutors/:tutorId/reviews', async (req, res) => {
       SELECT 
         rv.review_id,
         rv.rating,
+        rv.rating_punctuality,
+        rv.rating_worth,
+        rv.rating_teaching,
         rv.comment,
         rv.created_at,
         -- ข้อมูลนักเรียนจากตาราง register
@@ -2649,6 +2739,9 @@ app.get('/api/tutors/:tutorId/reviews', async (req, res) => {
     const reviews = rows.map(row => ({
       id: row.review_id,
       rating: Number(row.rating),
+      rating_punctuality: Number(row.rating_punctuality || row.rating), // Fallback to overall if null
+      rating_worth: Number(row.rating_worth || row.rating),
+      rating_teaching: Number(row.rating_teaching || row.rating),
       comment: row.comment,
       createdAt: row.created_at,
       reviewer: {
@@ -2968,27 +3061,45 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
       return res.status(409).json({ success: false, message: 'กลุ่มนี้เต็มแล้ว' });
     }
 
-    // 4. บันทึกลง Database (ใช้ Insert .. On Duplicate Key Update เพื่อความชัวร์)
-    await pool.query(
-      `INSERT INTO student_post_joins (student_post_id, user_id, status, requested_at, name, lastname)
-       SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
-       FROM register r WHERE r.user_id = ?
-       ON DUPLICATE KEY UPDATE
-         status = IF(VALUES(status)='pending' AND status <> 'approved', 'pending', status),
-         requested_at = VALUES(requested_at)
-      `,
-      [postId, me, me]
-    );
+    // 4. บันทึกลง Database (แยก Table ตามประเภท User)
+    if (isTutor) {
+      // --- TUTOR: ลงใน student_post_offers ---
+      await pool.query(
+        `INSERT INTO student_post_offers (student_post_id, tutor_id, status, requested_at, name, lastname)
+          SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
+          FROM register r WHERE r.user_id = ?
+          ON DUPLICATE KEY UPDATE
+            status = IF(status = 'approved', status, 'pending'),
+            requested_at = NOW()
+         `,
+        [postId, me, me]
+      );
 
-    // 5. แจ้งเตือนเจ้าของโพสต์ (แยกข้อความตามประเภทคนกด)
-    const notiMessage = isTutor
-      ? `มีติวเตอร์ยื่นข้อเสนอสอน สำหรับโพสต์ "${post.subject || 'เรียนพิเศษ'}"`
-      : `มีคำขอเข้าร่วมโพสต์ "${post.subject || 'เรียนพิเศษ'}"`;
+      // แจ้งเตือน: type = 'offer'
+      await pool.query(
+        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
+        [post.student_id, me, 'offer', `มีติวเตอร์ยื่นข้อเสนอสอน สำหรับโพสต์ "${post.subject || 'เรียนพิเศษ'}"`, postId]
+      );
 
-    await pool.query(
-      'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-      [post.student_id, me, 'join_request', notiMessage, postId]
-    );
+    } else {
+      // --- STUDENT: ลงใน student_post_joins ---
+      await pool.query(
+        `INSERT INTO student_post_joins (student_post_id, user_id, status, requested_at, name, lastname)
+          SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
+          FROM register r WHERE r.user_id = ?
+          ON DUPLICATE KEY UPDATE
+            status = IF(status = 'approved', status, 'pending'),
+            requested_at = NOW()
+         `,
+        [postId, me, me]
+      );
+
+      // แจ้งเตือน: type = 'join_request'
+      await pool.query(
+        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
+        [post.student_id, me, 'join_request', `มีคำขอเข้าร่วมโพสต์ "${post.subject || 'เรียนพิเศษ'}"`, postId]
+      );
+    }
 
     // 6. ส่งค่ากลับ
     return res.json({
@@ -3016,11 +3127,21 @@ app.delete('/api/student_posts/:id/join', async (req, res) => {
 
     const conn = await pool.getConnection();
     try {
-      // 1. ลบออกจากตาราง Joins
-      const [result] = await conn.query(
+      // 1. ลบออกจากตาราง Joins (สำหรับนักเรียน) และ Offers (สำหรับติวเตอร์)
+      console.log(`🗑️ Unjoining: Post=${postId}, User=${me}`);
+
+      const [resJoin] = await conn.query(
         'DELETE FROM student_post_joins WHERE student_post_id = ? AND user_id = ?',
         [postId, me]
       );
+
+      const [resOffer] = await conn.query(
+        'DELETE FROM student_post_offers WHERE student_post_id = ? AND tutor_id = ?',
+        [postId, me]
+      );
+
+      console.log("✅ Delete Result (Joins):", resJoin);
+      console.log("✅ Delete Result (Offers):", resOffer);
 
       // 2. ลบออกจากปฏิทินด้วย (ถ้ามี)
       await conn.query(
@@ -3283,6 +3404,325 @@ app.get('/api/tutors/:id/reviews', async (req, res) => {
     // If table doesn't exist, return empty
     console.warn("Reviews fetch error (might be missing table):", err.message);
     res.json([]);
+  }
+});
+
+// ✅ API: Create Review
+app.post('/api/reviews', async (req, res) => {
+  try {
+    const {
+      tutor_post_id, // Frontend passes postId as tutor_post_id (even if student post)
+      tutor_id,
+      student_id,
+      rating,
+      rating_punctuality,
+      rating_worth,
+      rating_teaching,
+      comment
+    } = req.body;
+
+    if (!tutor_id || !student_id || !rating) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+
+    // Convert to number
+    const inputPostId = Number(tutor_post_id || 0);
+    const sId = Number(student_id);
+    const tId = Number(tutor_id);
+
+    let finalPostType = 'unknown';
+
+    // 1. Try to detect if it's a Tutor Post or Student Post
+    // Check if it's a Tutor Post (Student joined it)
+    const [tutorPostJoin] = await pool.query(
+      `SELECT tutor_post_id FROM tutor_post_joins WHERE tutor_post_id = ? AND user_id = ? AND status='approved'`,
+      [inputPostId, sId]
+    );
+
+    if (tutorPostJoin.length > 0) {
+      finalPostType = 'tutor_post';
+    } else {
+      // Check if it's a Student Post (Student owns it, Tutor offered)
+      // Or Student joined another Student's post (Buddy)
+
+      // Case A: Student is Owner
+      const [studentPostOwner] = await pool.query(
+        `SELECT student_post_id FROM student_posts WHERE student_post_id = ? AND student_id = ?`,
+        [inputPostId, sId]
+      );
+      if (studentPostOwner.length > 0) {
+        finalPostType = 'student_post';
+      } else {
+        // Case B: Student is Buddy (Joiner)
+        const [studentPostJoin] = await pool.query(
+          `SELECT student_post_id FROM student_post_joins WHERE student_post_id = ? AND user_id = ? AND status='approved'`,
+          [inputPostId, sId]
+        );
+        if (studentPostJoin.length > 0) {
+          finalPostType = 'student_post';
+        }
+      }
+    }
+
+    if (finalPostType === 'unknown') {
+      // If ambiguous, check if ID exists in tutor_posts at all
+      const [tp] = await pool.query('SELECT tutor_post_id FROM tutor_posts WHERE tutor_post_id = ?', [inputPostId]);
+      if (tp.length > 0) finalPostType = 'tutor_post';
+      else finalPostType = 'student_post'; // Assumption / Fallback
+    }
+
+    // 2. Check if already reviewed
+    const [existing] = await pool.query(
+      `SELECT review_id FROM reviews WHERE student_id = ? AND post_id = ? AND post_type = ?`,
+      [sId, inputPostId, finalPostType]
+    );
+
+    if (existing.length > 0) {
+      return res.json({ success: true, message: 'Reviewed already' }); // Idempotent success
+    }
+
+    // 3. Insert Review
+    await pool.query(
+      `INSERT INTO reviews 
+       (tutor_id, student_id, rating, comment, created_at, post_id, post_type, rating_punctuality, rating_worth, rating_teaching)
+       VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
+      [tId, sId, rating, comment || '', inputPostId, finalPostType, rating_punctuality || 5, rating_worth || 5, rating_teaching || 5]
+    );
+
+    // 4. Notify Tutor
+    // Get student name for message
+    const [student] = await pool.query('SELECT name, lastname FROM register WHERE user_id = ?', [sId]);
+    const sName = student[0] ? `${student[0].name} ${student[0].lastname}` : 'นักเรียน';
+
+    await pool.query(
+      `INSERT INTO notifications (user_id, actor_id, type, message, related_id, created_at)
+       VALUES (?, ?, 'review_received', ?, ?, NOW())`,
+      [tId, sId, `ได้รับรีวิวใหม่จาก ${sName}`, inputPostId]
+    );
+
+    res.json({ success: true, message: 'Review submitted successfully' });
+
+  } catch (err) {
+    console.error("❌ Submit Review Error:", err);
+    res.status(500).json({ success: false, message: 'Server Error: ' + err.message });
+  }
+});
+
+// ✅ API: Edit Student Post
+app.put('/api/student_posts/:id', async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const {
+      subject, description, preferred_days, preferred_time,
+      grade_level, location, group_size, budget, contact_info
+    } = req.body;
+
+    // Validate ownership? We assume frontend checks or we can check here.
+    // For now simple update.
+
+    await pool.query(
+      `UPDATE student_posts SET 
+        subject=?, description=?, preferred_days=?, preferred_time=?, 
+        grade_level=?, location=?, group_size=?, budget=?, contact_info=?
+       WHERE student_post_id=?`,
+      [
+        subject, description, preferred_days, preferred_time,
+        grade_level, location, group_size, budget, contact_info,
+        postId
+      ]
+    );
+
+    res.json({ success: true, message: 'Updated successfully' });
+  } catch (err) {
+    console.error("Update Student Post Error:", err);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+});
+
+// ✅ API: Edit Tutor Post
+app.put('/api/tutor-posts/:id', async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const {
+      subject, description, teaching_days, teaching_time,
+      target_student_level, location, price, group_size, contact_info
+    } = req.body;
+
+    await pool.query(
+      `UPDATE tutor_posts SET 
+        subject=?, description=?, teaching_days=?, teaching_time=?, 
+        target_student_level=?, location=?, price=?, group_size=?, contact_info=?
+       WHERE tutor_post_id=?`,
+      [
+        subject, description, teaching_days, teaching_time,
+        target_student_level, location, price, group_size, contact_info,
+        postId
+      ]
+    );
+
+    res.json({ success: true, message: 'Updated successfully' });
+  } catch (err) {
+    console.error("Update Tutor Post Error:", err);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+});
+
+// ✅ API: Submit Report
+app.post('/api/reports', async (req, res) => {
+  try {
+    const { reporter_id, post_id, post_type, reason } = req.body;
+    await pool.query(
+      `INSERT INTO reports (reporter_id, post_id, post_type, reason, created_at) VALUES (?, ?, ?, ?, NOW())`,
+      [reporter_id, post_id, post_type, reason]
+    );
+    res.json({ success: true, message: 'Report submitted successfully' });
+  } catch (err) {
+    console.error("Report Error:", err);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+});
+
+// ✅ API: Admin - Get All Reports
+app.get('/api/admin/reports', async (req, res) => {
+  try {
+    const { user_id } = req.query; // Security check
+    const [u] = await pool.query('SELECT role FROM register WHERE user_id = ?', [user_id]);
+    if (!u.length || u[0].role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const [rows] = await pool.query(`
+      SELECT 
+        r.report_id, r.reporter_id, r.post_id, r.reason, r.status, r.created_at,
+        u.name as reporter_name, u.lastname as reporter_lastname,
+        
+        /* ✅ Smart Type Detection: Priority to existing type, fallback to auto-detect */
+        CASE 
+           WHEN r.post_type IN ('student_post', 'student') THEN 'student'
+           WHEN r.post_type IN ('tutor_post', 'tutor') THEN 'tutor'
+           WHEN sp.student_post_id IS NOT NULL THEN 'student'
+           WHEN tp.tutor_post_id IS NOT NULL THEN 'tutor'
+           ELSE r.post_type
+        END as post_type,
+
+        CASE 
+          WHEN r.post_type IN ('student_post', 'student') THEN COALESCE(sp.subject, 'โพสต์ถูกลบไปแล้ว')
+          WHEN r.post_type IN ('tutor_post', 'tutor') THEN COALESCE(tp.subject, 'โพสต์ถูกลบไปแล้ว')
+          WHEN sp.student_post_id IS NOT NULL THEN CONCAT('(กู้คืนอัตโนมัติ) ', sp.subject)
+          WHEN tp.tutor_post_id IS NOT NULL THEN CONCAT('(กู้คืนอัตโนมัติ) ', tp.subject)
+          ELSE CONCAT('ไม่พบข้อมูลโพสต์ (Type: ', COALESCE(r.post_type, 'ว่าง'), ')')
+        END as post_title,
+        
+        CASE 
+          WHEN r.post_type IN ('student_post', 'student') THEN COALESCE(sp.description, '-')
+          WHEN r.post_type IN ('tutor_post', 'tutor') THEN COALESCE(tp.description, '-')
+          WHEN sp.student_post_id IS NOT NULL THEN sp.description
+          WHEN tp.tutor_post_id IS NOT NULL THEN tp.description
+          ELSE '' 
+        END as post_content
+
+      FROM reports r
+      LEFT JOIN register u ON r.reporter_id = u.user_id
+      -- ✅ Unconditional Join to find post even if type is wrong
+      LEFT JOIN student_posts sp ON r.post_id = sp.student_post_id 
+      LEFT JOIN tutor_posts tp ON r.post_id = tp.tutor_post_id
+      ORDER BY r.created_at DESC
+    `);
+    console.log("Admin Reports Data (Smart Fix):", rows);
+    res.json(rows);
+  } catch (err) {
+    console.error("Admin Reports Error:", err);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+});
+
+// ✅ API: Admin - Update Report Status
+app.patch('/api/admin/reports/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const reportId = req.params.id;
+    console.log(`[Admin] Updating report ${reportId} to status: ${status}`);
+
+    // 1. Get reporter ID before update
+    const [rows] = await pool.query('SELECT reporter_id, post_id FROM reports WHERE report_id = ?', [reportId]);
+    console.log(`[Admin] Fetch report result:`, rows);
+
+    // 2. Update status
+    await pool.query('UPDATE reports SET status = ? WHERE report_id = ?', [status, reportId]);
+
+    // 3. Notify Reporter (If status is resolved or ignored/cancelled)
+    if (rows.length > 0 && (status === 'resolved' || status === 'ignored')) {
+      const reporterId = rows[0].reporter_id;
+      console.log(`[Admin] Notifying reporter ${reporterId}`);
+
+      const msg = status === 'resolved'
+        ? "ขอบคุณสำหรับการรายงานของคุณ ทางเราได้ตรวจสอบและดำเนินการเรียบร้อยแล้วครับ"
+        : "ขอบคุณสำหรับการรายงานของคุณ ทางเราตรวจสอบแล้วไม่พบการกระทำผิดกฎ จึงขอยกเลิกการรายงานครับ";
+
+      await pool.query(
+        `INSERT INTO notifications (user_id, type, message, related_id, created_at, is_read, actor_id) 
+          VALUES (?, 'system_alert', ?, ?, NOW(), 0, NULL)`,
+        [reporterId, msg, rows[0].post_id]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Update Report Status Error:", err);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+});
+
+// ✅ API: Admin - Delete Post (and resolve reports)
+app.delete('/api/admin/posts', async (req, res) => {
+  try {
+    const id = req.body.id || req.body.post_id;
+    const type = req.body.type || req.body.post_type; // 'student' or 'tutor'
+
+    if (!id || !type) {
+      return res.status(400).json({ success: false, message: 'Missing id or type' });
+    }
+
+    console.log(`[Admin] Deleting post ${id} (${type})`);
+
+    // 1. Get all reporters for this post to notify them
+    // Note: Matches logic in reports (post_type might be 'student_post' or 'student')
+    // Also handle cases where post_type might be empty or null due to frontend bugs
+    const [reporters] = await pool.query(
+      `SELECT DISTINCT reporter_id FROM reports
+         WHERE post_id = ? AND (post_type = ? OR post_type = ? OR post_type = '' OR post_type IS NULL)`,
+      [id, type, type + '_post']
+    );
+    console.log(`[Admin] Found reporters to notify:`, reporters);
+
+    // 2. Soft Delete Post (Set is_active = 0) to avoid FK constraints
+    if (type === 'student' || type === 'student_post') {
+      await pool.query('UPDATE student_posts SET is_active = 0 WHERE student_post_id = ?', [id]);
+    } else {
+      await pool.query('UPDATE tutor_posts SET is_active = 0 WHERE tutor_post_id = ?', [id]);
+    }
+
+    // 3. Mark reports as resolved
+    await pool.query(
+      `UPDATE reports SET status = 'resolved'
+         WHERE post_id = ? AND (post_type = ? OR post_type = ? OR post_type = '' OR post_type IS NULL)`,
+      [id, type, type + '_post']
+    );
+
+    // 4. Notify Reporters
+    for (const r of reporters) {
+      console.log(`[Admin] Sending notification to reporter ${r.reporter_id}`);
+      await pool.query(
+        `INSERT INTO notifications (user_id, type, message, related_id, created_at, is_read, actor_id)
+             VALUES (?, 'system_alert', ?, ?, NOW(), 0, NULL)`,
+        [r.reporter_id, "ขอบคุณสำหรับการรายงานของคุณ โพสต์ดังกล่าวได้ถูกลบออกจากระบบแล้วครับ", id]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Admin Delete Post Error:", err);
+    res.status(500).json({ success: false, message: 'Server Error' });
   }
 });
 

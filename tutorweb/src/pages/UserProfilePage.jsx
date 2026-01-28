@@ -349,7 +349,7 @@ function UserProfilePage({ userId, onBack }) {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <p className="text-sm text-gray-600 italic">"{r.comment}"</p>
+                                            <p className="text-sm text-gray-600">"{r.comment}"</p>
                                         </div>
                                     ))
                                 )}
