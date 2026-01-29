@@ -2128,12 +2128,13 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         au.name AS actor_firstname, 
         au.lastname AS actor_lastname,
         COALESCE(spro.profile_picture_url, tpro.profile_picture_url) AS actor_avatar,
+        spo.status AS offer_status, -- [NEW] สถานะ Offer (ถ้ามี)
         
         -- ข้อมูลวิชา (Subject) จากโพสต์ที่เกี่ยวข้อง
-        CASE 
+        CASE
             WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'review_request', 'system_alert') THEN COALESCE(sp.subject, tp.subject)
             WHEN n.type IN ('tutor_join_request') THEN tp.subject
-            ELSE NULL 
+            ELSE NULL
         END AS post_subject
 
       FROM notifications n
@@ -2145,6 +2146,9 @@ app.get('/api/notifications/:user_id', async (req, res) => {
       -- Join เพื่อเอาชื่อวิชา (Subject)
       LEFT JOIN student_posts sp ON n.related_id = sp.student_post_id
       LEFT JOIN tutor_posts tp ON n.related_id = tp.tutor_post_id
+
+      -- [NEW] Join เพื่อเอาสถานะ Offer (สำหรับ type='offer')
+      LEFT JOIN student_post_offers spo ON n.related_id = spo.student_post_id AND n.actor_id = spo.tutor_id AND n.type = 'offer'
       
       WHERE n.user_id = ?
       ORDER BY n.created_at DESC, n.notification_id DESC

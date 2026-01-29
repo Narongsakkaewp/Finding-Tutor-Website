@@ -1,19 +1,19 @@
+// src/pages/Favorite.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Heart, Users, BookOpen, Search, Filter, Trash2,
-  Sparkles, MapPin, DollarSign, User
+  Sparkles, MapPin, DollarSign, User, X, Calendar, Phone, GraduationCap
 } from "lucide-react";
 
-// ✅ 1. ตรวจสอบ URL ให้ถูกต้อง
 const API_BASE = "http://localhost:5000";
 
 // --------------------------- Utilities ---------------------------
-const formatPrice = (n) => new Intl.NumberFormat("th-TH").format(n);
+const formatPrice = (n) => new Intl.NumberFormat("th-TH").format(n || 0);
 const formatDate = (dateString) =>
-  new Date(dateString).toLocaleString("th-TH", {
+  dateString ? new Date(dateString).toLocaleString("th-TH", {
     dateStyle: "medium",
     timeStyle: "short",
-  });
+  }) : "-";
 
 function getMe() {
   try {
@@ -22,6 +22,26 @@ function getMe() {
   } catch {
     return {};
   }
+}
+
+// --------------------------- Components: Modal ---------------------------
+function Modal({ open, onClose, title, children }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-scale-in" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b bg-white/95 backdrop-blur">
+          <h3 className="text-lg font-bold text-gray-800">{title}</h3>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // --------------------------- Hooks ---------------------------
@@ -40,21 +60,29 @@ function useFavorites() {
       const json = await res.json();
 
       if (json.success) {
+        console.log("Favorites fetched:", json.items); // Debugging
         const student = [];
         const tutor = [];
+
+        // ✅ Map ข้อมูลให้พร้อมใช้งาน (รวมถึง contact_info, price/budget ที่มาจาก Backend ใหม่)
         json.items.forEach((it) => {
           const item = {
+            ...it, // เก็บทุกฟิลด์จาก DB (สำคัญมาก!)
             uniqueId: `${it.post_type}-${it.post_id}`,
-            post_type: it.post_type,
-            post_id: it.post_id,
             title: it.subject || "(ไม่มีหัวข้อ)",
             body: it.description || "",
             authorName: it.author || "ไม่ระบุชื่อ",
             likedAt: it.created_at,
+            // Map ค่าให้เป็นชื่อกลาง เพื่อความง่ายในการแสดงผล
+            priceDisplay: it.post_type === 'tutor' ? it.price : it.budget,
+            location: it.location || "ไม่ระบุ",
+            grade: it.grade_level || it.target_student_level || "-"
           };
+
           if (it.post_type === "student") student.push(item);
           else tutor.push(item);
         });
+
         setData({ student, tutor });
       }
     } catch (err) {
@@ -110,8 +138,8 @@ function TabButton({ active, children, onClick, icon: Icon }) {
     <button
       onClick={onClick}
       className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-200 ${active
-          ? "bg-blue-600 text-white shadow-md shadow-blue-200"
-          : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+        ? "bg-blue-600 text-white shadow-md shadow-blue-200"
+        : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
         }`}
     >
       {Icon && <Icon size={18} />}
@@ -120,10 +148,13 @@ function TabButton({ active, children, onClick, icon: Icon }) {
   );
 }
 
-function PostCardSimple({ item, onUnfav }) {
+function PostCardSimple({ item, onUnfav, onClick }) {
   const isTutor = item.post_type === "tutor";
   return (
-    <div className="group relative flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition-all duration-200 h-full">
+    <div
+      onClick={onClick} // ✅ กดการ์ดเพื่อเปิด Modal
+      className="group relative flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-200 h-full cursor-pointer"
+    >
       <div>
         <div className="flex items-start justify-between gap-3 mb-3">
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${isTutor ? "bg-green-200 text-green-700" : "bg-rose-200 text-rose-700"
@@ -133,22 +164,24 @@ function PostCardSimple({ item, onUnfav }) {
           </span>
           <span className="text-xs text-gray-400">{formatDate(item.likedAt)}</span>
         </div>
-        <h3 className="font-bold text-gray-800 text-lg line-clamp-1 mb-2">{item.title}</h3>
+        <h3 className="font-bold text-gray-800 text-lg line-clamp-1 mb-2 group-hover:text-blue-600 transition-colors">{item.title}</h3>
         <p className="text-sm text-gray-600 line-clamp-2 mb-4 leading-relaxed">
           {item.body || "ไม่มีรายละเอียดเพิ่มเติม"}
         </p>
       </div>
       <div className="flex items-center justify-between border-t pt-4 mt-auto">
         <div className="flex items-center gap-2 text-sm text-gray-500">
-          <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">
-            <User size={14} />
+          <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+            <img src={item.profile_picture_url || "/blank_avatar.jpg"} className="w-full h-full object-cover" alt="" />
           </div>
           <span className="truncate max-w-[120px]">{item.authorName}</span>
         </div>
-        {/* ปุ่มลบ (ถังขยะ) */}
         <button
-          onClick={() => onUnfav(item)}
-          className="text-red-500 hover:bg-red-50 p-2 rounded-full transition cursor-pointer"
+          onClick={(e) => {
+            e.stopPropagation();
+            onUnfav(item);
+          }}
+          className="text-red-500 hover:bg-red-50 p-2 rounded-full transition cursor-pointer z-10"
           title="ลบออกจากรายการโปรด"
         >
           <Trash2 size={16} />
@@ -158,16 +191,13 @@ function PostCardSimple({ item, onUnfav }) {
   );
 }
 
-// ✅ 3. RecommendCard: แก้ไขให้แสดงผลได้ทั้ง นักเรียน และ ติวเตอร์
 function RecommendCard({ post, reasonSubjects }) {
   const isMatch = reasonSubjects.includes(post.subject);
-  // เช็คประเภทโพสต์ (Backend ส่งมาเป็น 'student' หรือ 'tutor')
   const isTutor = post.post_type === 'tutor';
 
   return (
     <div className={`flex flex-col min-w-[280px] md:min-w-[300px] rounded-2xl border bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-300 ${isMatch ? 'border-yellow-400 ring-1 ring-yellow-100' : 'border-gray-100'}`}>
 
-      {/* Badge ประเภท และ แนะนำ */}
       <div className="flex justify-between items-start mb-3">
         {isMatch ? (
           <span className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-md font-medium">
@@ -182,7 +212,7 @@ function RecommendCard({ post, reasonSubjects }) {
 
       <div className="flex items-center gap-3 mb-4">
         <img
-          src={post.profile_picture_url || "/default-avatar.png"}
+          src={post.profile_picture_url || "/blank_avatar.jpg"}
           alt={post.name}
           className="w-12 h-12 rounded-full object-cover border border-gray-200"
         />
@@ -200,7 +230,6 @@ function RecommendCard({ post, reasonSubjects }) {
         </div>
         <div className="flex items-center gap-1 font-semibold text-blue-600">
           <DollarSign size={12} />
-          {/* ✅ แสดงราคา หรือ งบประมาณ ตามประเภทโพสต์ */}
           {isTutor ? `${formatPrice(post.price || 0)}/ชม.` : `งบ ${formatPrice(post.budget || 0)}`}
         </div>
       </div>
@@ -215,6 +244,7 @@ export default function Favorite() {
 
   const [tab, setTab] = useState("tutor");
   const [q, setQ] = useState("");
+  const [previewPost, setPreviewPost] = useState(null); // ✅ State สำหรับ Modal
 
   const list = useMemo(() => {
     const source = tab === "student" ? data.student : data.tutor;
@@ -226,35 +256,29 @@ export default function Favorite() {
     );
   }, [tab, data, q]);
 
-  // ✅ 2. แก้ไข handleUnfav ให้ลบจริงใน Database
   const handleUnfav = async (item) => {
-    // 2.1 Optimistic Update: ลบจากหน้าจอทันทีเพื่อให้ลื่นไหล
+    // Optimistic UI Update
     setData(prev => ({
       student: prev.student.filter(x => x.uniqueId !== item.uniqueId),
       tutor: prev.tutor.filter(x => x.uniqueId !== item.uniqueId)
     }));
 
     try {
-      // 2.2 ยิง API ไปลบที่ Backend (สำคัญมาก: ชื่อตัวแปรต้องตรง)
       console.log("Removing favorite:", item);
-
       const res = await fetch(`${API_BASE}/api/favorites/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: me.user_id, // ✅ ต้องเป็น user_id (snake_case)
-          post_id: item.post_id, // ✅ ต้องเป็น post_id
-          post_type: item.post_type // ✅ ต้องระบุ type ('student' หรือ 'tutor')
+          user_id: me.user_id,
+          post_id: item.post_id,
+          post_type: item.post_type
         }),
       });
 
       const result = await res.json();
       if (!result.success) {
         console.error("Failed to remove favorite:", result);
-        // (Optional) ถ้าลบไม่สำเร็จ อาจจะโหลดข้อมูลใหม่มาแสดง
-        // window.location.reload(); 
       }
-
     } catch (e) {
       console.error("Unfav error:", e);
       alert("เกิดข้อผิดพลาดในการลบรายการโปรด");
@@ -305,7 +329,12 @@ export default function Favorite() {
         {list.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {list.map(item => (
-              <PostCardSimple key={item.uniqueId} item={item} onUnfav={handleUnfav} />
+              <PostCardSimple
+                key={item.uniqueId}
+                item={item}
+                onUnfav={handleUnfav}
+                onClick={() => setPreviewPost(item)} // ✅ เปิด Modal เมื่อคลิก
+              />
             ))}
           </div>
         ) : (
@@ -334,7 +363,6 @@ export default function Favorite() {
             <div className="flex overflow-x-auto gap-4 pb-6 scrollbar-hide snap-x">
               {recs.map((post) => (
                 <RecommendCard
-                  // ใช้ key ที่ไม่ซ้ำกันแน่นอน
                   key={`${post.post_type}-${post.tutor_post_id || post.student_post_id}`}
                   post={post}
                   reasonSubjects={subjects}
@@ -344,6 +372,90 @@ export default function Favorite() {
           </div>
         </div>
       )}
+
+      {/* ✅ Modal แสดงรายละเอียด (ใช้ดีไซน์เดียวกับ HomeTutor เป๊ะ) */}
+      <Modal open={!!previewPost} onClose={() => setPreviewPost(null)} title={previewPost?.post_type === 'tutor' ? "รายละเอียดติวเตอร์" : "รายละเอียดประกาศนักเรียน"}>
+        {previewPost && (
+          <div className="space-y-6">
+            {/* Header: รูปและชื่อ */}
+            <div className="flex items-start gap-4">
+              <img
+                src={previewPost.profile_picture_url || "/blank_avatar.jpg"}
+                className="w-16 h-16 rounded-full object-cover border"
+                alt=""
+              />
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">
+                  {previewPost.authorName}
+                </h3>
+                <div className="text-sm text-gray-500">
+                  ลงประกาศเมื่อ: {formatDate(previewPost.likedAt)}
+                </div>
+                {previewPost.post_type === 'student' && <span className="inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-800">กำลังหาครู</span>}
+                {previewPost.post_type === 'tutor' && <span className="inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">รับสอนพิเศษ</span>}
+              </div>
+            </div>
+
+            {/* Subject & Description */}
+            <div className="bg-gray-50 p-5 rounded-2xl space-y-3 border border-gray-100">
+              <h4 className="text-lg font-bold text-indigo-700">{previewPost.title}</h4>
+              <p className="text-gray-700 leading-relaxed whitespace-pre-line">{previewPost.body || "-"}</p>
+            </div>
+
+            {/* Grid Details */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 bg-white border rounded-xl">
+                <div className="text-xs text-gray-500 font-bold uppercase">สถานที่</div>
+                <div className="font-semibold text-gray-800 flex items-center gap-2">
+                  <MapPin size={16} /> {previewPost.location || "-"}
+                </div>
+              </div>
+              <div className="p-3 bg-white border rounded-xl">
+                <div className="text-xs text-gray-500 font-bold uppercase">
+                  {previewPost.post_type === 'tutor' ? 'ราคา/ชั่วโมง' : 'งบประมาณ'}
+                </div>
+                <div className="font-semibold text-emerald-600 flex items-center gap-2">
+                  <DollarSign size={16} />
+                  {formatPrice(previewPost.priceDisplay || 0)} ฿
+                </div>
+              </div>
+              <div className="p-3 bg-white border rounded-xl">
+                <div className="text-xs text-gray-500 font-bold uppercase">วัน/เวลา</div>
+                <div className="font-semibold text-blue-600 flex items-center gap-2">
+                  <Calendar size={16} />
+                  {previewPost.preferred_days || "-"}
+                  {previewPost.preferred_time ? ` ${previewPost.preferred_time}` : ""}
+                </div>
+              </div>
+              <div className="p-3 bg-white border rounded-xl">
+                <div className="text-xs text-gray-500 font-bold uppercase">ระดับชั้น</div>
+                <div className="font-semibold text-gray-800 flex items-center gap-2">
+                  <GraduationCap size={16} /> {previewPost.grade || "-"}
+                </div>
+              </div>
+            </div>
+
+            {/* 🔥 Contact Info (แสดงเบอร์โทร/ไลน์) */}
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-bold text-gray-900 mb-3">ข้อมูลติดต่อ</h4>
+              <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-4">
+                <div className="bg-green-100 p-3 rounded-full text-green-600">
+                  <Phone size={24} />
+                </div>
+                <div>
+                  <p className="text-green-800 font-bold text-lg select-all">
+                    {previewPost.contact_info || "ไม่ระบุข้อมูลติดต่อ"}
+                  </p>
+                  <p className="text-xs text-green-600">
+                    ช่องทางติดต่อ (Line ID / เบอร์โทร)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+      </Modal>
 
     </div>
   );

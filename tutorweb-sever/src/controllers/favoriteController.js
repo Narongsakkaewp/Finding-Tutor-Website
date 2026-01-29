@@ -1,10 +1,11 @@
 // src/controllers/favoriteController.js
 const pool = require('../../db'); // ✅ Path นี้ถูกแล้ว ถ้าไฟล์อยู่ที่ src/controllers/
+console.log("FavoriteController loaded/updated at " + new Date().toISOString());
 
 // 1. กดถูกใจ / ยกเลิกถูกใจ (Toggle Like)
 exports.toggleLike = async (req, res) => {
     const { user_id, post_id, post_type } = req.body;
-    
+
     // Validation
     if (!user_id || !post_id || !['student', 'tutor'].includes(post_type)) {
         return res.status(400).json({ success: false, message: 'Invalid data' });
@@ -16,7 +17,7 @@ exports.toggleLike = async (req, res) => {
 
         // 1. เช็คว่าเคยไลค์ไหม
         const [have] = await conn.query(
-            'SELECT fav_id FROM posts_favorites WHERE user_id = ? AND post_id = ? AND post_type = ?', 
+            'SELECT fav_id FROM posts_favorites WHERE user_id = ? AND post_id = ? AND post_type = ?',
             [user_id, post_id, post_type]
         );
 
@@ -24,14 +25,14 @@ exports.toggleLike = async (req, res) => {
         if (have.length > 0) {
             // Un-like: ลบออก
             await conn.query(
-                'DELETE FROM posts_favorites WHERE user_id = ? AND post_id = ? AND post_type = ?', 
+                'DELETE FROM posts_favorites WHERE user_id = ? AND post_id = ? AND post_type = ?',
                 [user_id, post_id, post_type]
             );
             action = 'unliked'; // หรือ 'removed' ตาม Frontend เช็ค
         } else {
             // Like: เพิ่มใหม่
             await conn.query(
-                'INSERT INTO posts_favorites (user_id, post_id, post_type, created_at) VALUES (?, ?, ?, NOW())', 
+                'INSERT INTO posts_favorites (user_id, post_id, post_type, created_at) VALUES (?, ?, ?, NOW())',
                 [user_id, post_id, post_type]
             );
             action = 'liked'; // หรือ 'added'
@@ -52,7 +53,7 @@ exports.toggleLike = async (req, res) => {
         }
 
         await conn.commit();
-        
+
         // ส่งค่า fav_count กลับไปด้วย เพื่อให้หน้าเว็บอัปเดตเลข
         return res.json({ success: true, action, fav_count });
 
@@ -69,18 +70,36 @@ exports.toggleLike = async (req, res) => {
 exports.getMyFavorites = async (req, res) => {
     const { user_id } = req.params;
     try {
-        // ⚠️ แก้ sp.details -> sp.description ให้ตรงกับ Database จริง
         const [rows] = await pool.query(`
             SELECT 
-                f.post_type, f.post_id, f.created_at,
-                CASE WHEN f.post_type='student' THEN sp.subject ELSE tp.subject END AS subject,
-                CASE WHEN f.post_type='student' THEN sp.description ELSE tp.description END AS description, 
-                CASE WHEN f.post_type='student' THEN r.name ELSE t.name END AS author
+                f.post_type, 
+                f.post_id, 
+                f.created_at,
+                
+                -- ✅ ดึงข้อมูลโพสต์ (รวมทั้งของ Student และ Tutor)
+                COALESCE(sp.subject, tp.subject) AS subject,
+                COALESCE(sp.description, tp.description) AS description,
+                COALESCE(sp.location, tp.location) AS location,
+                COALESCE(sp.contact_info, tp.contact_info) AS contact_info, -- 🔥 เพิ่มอันนี้ครับ
+                COALESCE(sp.grade_level, tp.target_student_level) AS grade_level,
+                COALESCE(sp.preferred_days, tp.teaching_days) AS preferred_days,
+                COALESCE(sp.preferred_time, tp.teaching_time) AS preferred_time,
+                sp.budget, 
+                tp.price,
+
+                COALESCE(r_s.name, r_t.name) AS author, -- (Frontend คุณใช้ชื่อตัวแปร author)
+                COALESCE(spro.profile_picture_url, tpro.profile_picture_url) AS profile_picture_url
+
             FROM posts_favorites f
             LEFT JOIN student_posts sp ON f.post_type='student' AND f.post_id = sp.student_post_id
-            LEFT JOIN tutor_posts tp   ON f.post_type='tutor' AND f.post_id = tp.tutor_post_id
-            LEFT JOIN register r ON sp.student_id = r.user_id
-            LEFT JOIN register t ON tp.tutor_id = t.user_id
+            LEFT JOIN register r_s ON sp.student_id = r_s.user_id
+            LEFT JOIN student_profiles spro ON sp.student_id = spro.user_id
+            
+            -- 🔵 จอยฝั่งติวเตอร์
+            LEFT JOIN tutor_posts tp ON f.post_type='tutor' AND f.post_id = tp.tutor_post_id
+            LEFT JOIN register r_t ON tp.tutor_id = r_t.user_id
+            LEFT JOIN tutor_profiles tpro ON tp.tutor_id = tpro.user_id
+
             WHERE f.user_id = ?
             ORDER BY f.created_at DESC
         `, [user_id]);
@@ -106,7 +125,7 @@ exports.getRecommendedFeed = async (req, res) => {
         `, [studentId]);
 
         const interests = favSubjects.map(row => row.subject).filter(s => s);
-        
+
         // 2. Query Tutor Posts (ดึง price)
         let tutorSql = `
             SELECT tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description, 
