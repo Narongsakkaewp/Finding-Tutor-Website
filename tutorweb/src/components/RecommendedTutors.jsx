@@ -69,7 +69,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
                 dbTutorId: tutor.tutor_id || tutor.owner_id,
                 name: `${tutor.first_name || tutor.name || ""} ${tutor.last_name || tutor.lastname || ""}`.trim(),
                 nickname: tutor.nickname,
-                image: tutor.profile_picture_url || "/default-avatar.png",
+                image: tutor.profile_picture_url || "../blank_avatar.jpg",
                 profile_bio: tutor.profile_bio, // Personal Bio
                 education: tutor.education,
                 teaching_experience: tutor.teaching_experience,
@@ -87,7 +87,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
           >
             <div className="flex items-start gap-3">
               <img
-                src={tutor.profile_picture_url || "/default-avatar.png"}
+                src={tutor.profile_picture_url || "../blank_avatar.jpg"}
                 alt="tutor"
                 className="w-12 h-12 rounded-full object-cover border"
               />

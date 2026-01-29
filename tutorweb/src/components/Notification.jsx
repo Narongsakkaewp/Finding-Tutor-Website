@@ -463,7 +463,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
             </button>
             <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
               <img
-                src={tutor.profile_picture_url || "/default-avatar.png"}
+                src={tutor.profile_picture_url || "/../blank_avatar.jpg"}
                 alt="tutor"
                 className="w-24 h-24 rounded-full border-4 border-white object-cover shadow-md"
               />

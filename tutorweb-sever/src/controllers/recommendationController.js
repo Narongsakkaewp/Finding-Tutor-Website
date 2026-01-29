@@ -307,7 +307,7 @@ exports.getRecommendedCourses = async (req, res) => {
         const [posts] = await pool.query(sql, params);
         const formatted = posts.map(p => ({
             id: p.student_post_id,
-            user: { first_name: p.first_name, last_name: p.last_name, profile_image: p.profile_picture_url || "/default-avatar.png" },
+            user: { first_name: p.first_name, last_name: p.last_name, profile_image: p.profile_picture_url || "/../blank_avatar.jpg" },
             subject: p.subject, description: p.description, location: p.location, budget: p.budget,
             preferred_days: p.preferred_days, preferred_time: p.preferred_time,
             join_count: Number(p.join_count || 0), has_tutor: Number(p.has_tutor) > 0,

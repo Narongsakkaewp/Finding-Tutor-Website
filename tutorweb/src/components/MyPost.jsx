@@ -54,7 +54,7 @@ const normalizeStudentPost = (p = {}) => ({
   user: p.user || {
     first_name: p.first_name || p.name || "",
     last_name: p.last_name || "",
-    profile_image: p.profile_picture_url || "/default-avatar.png",
+    profile_image: p.profile_picture_url || "/../blank_avatar.jpg",
     email: p.email || "",
     phone: p.phone || ""
   },
@@ -97,7 +97,7 @@ const normalizeTutorPost = (p = {}) => {
     user: p.user || {
       first_name: first,
       last_name: last,
-      profile_image: p.profile_image || p.authorId?.avatarUrl || "/default-avatar.png",
+      profile_image: p.profile_image || p.authorId?.avatarUrl || "/../blank_avatar.jpg",
       email: p.email || "",
       phone: p.phone || ""
     },
@@ -706,7 +706,7 @@ function MyPost({ setPostsCache, onViewProfile }) {
             <div className="bg-white rounded-xl shadow p-4 mb-6">
               <div className="flex items-center gap-3">
                 <img
-                  src={user?.profile_picture_url || user?.profile_image || "/default-avatar.png"}
+                  src={user?.profile_picture_url || user?.profile_image || "/../blank_avatar.jpg"}
                   alt="avatar"
                   className="w-10 h-10 rounded-full object-cover shrink-0"
                 />

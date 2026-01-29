@@ -125,7 +125,7 @@ function UserProfilePage({ userId, onBack }) {
                 <div className="flex flex-col md:flex-row gap-8 items-start mb-8">
                     <div className="flex-shrink-0 mx-auto md:mx-0 relative">
                         <img 
-                            src={user.profile_picture_url || "/default-avatar.png"} 
+                            src={user.profile_picture_url || "/../blank_avatar.jpg"} 
                             className="w-32 h-32 md:w-40 md:h-40 rounded-full object-cover border-4 border-white shadow-lg"
                             alt="Profile"
                         />
@@ -265,7 +265,7 @@ function UserProfilePage({ userId, onBack }) {
                                                 <div className="flex items-center justify-between mb-3">
                                                     <div className="flex items-center gap-3">
                                                         <img 
-                                                            src={user.profile_picture_url || "/default-avatar.png"} 
+                                                            src={user.profile_picture_url || "/../blank_avatar.jpg"} 
                                                             alt="avatar" 
                                                             className="w-10 h-10 rounded-full object-cover border border-gray-100" 
                                                         />
@@ -341,7 +341,7 @@ function UserProfilePage({ userId, onBack }) {
                                     reviews.map((r, i) => (
                                         <div key={i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
                                             <div className="flex items-center gap-3 mb-3">
-                                                <img src={r.reviewer?.avatar || "/default-avatar.png"} className="w-8 h-8 rounded-full bg-gray-200 object-cover" alt="" />
+                                                <img src={r.reviewer?.avatar || "/../blank_avatar.jpg"} className="w-8 h-8 rounded-full bg-gray-200 object-cover" alt="" />
                                                 <div>
                                                     <div className="font-bold text-sm text-gray-900">{r.reviewer?.name || "ผู้ใช้งาน"}</div>
                                                     <div className="flex text-yellow-400">

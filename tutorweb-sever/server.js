@@ -372,7 +372,7 @@ app.get('/api/student-posts/:id', async (req, res) => {
       user: {
         first_name: post.name,
         last_name: post.lastname,
-        profile_image: post.profile_picture_url || '/default-avatar.png'
+        profile_image: post.profile_picture_url || '/../blank_avatar.jpg'
       }
     };
 
@@ -433,7 +433,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
         _id: r.student_post_id,
         authorId: {
           name: fullName || `นักเรียน #${r.student_id}`,
-          avatarUrl: r.profile_picture_url || '/default-avatar.png' /* ส่งรูปไปด้วย */
+          avatarUrl: r.profile_picture_url || '/../blank_avatar.jpg' /* ส่งรูปไปด้วย */
         },
         content: r.description,
         meta: {
@@ -536,7 +536,7 @@ app.get('/api/tutors', async (req, res) => {
         name: `${r.name || ''} ${r.lastname || ''}`.trim(),
         nickname: r.nickname,
         subject: r.can_teach_subjects || 'ไม่ระบุ',
-        image: r.profile_picture_url || '/default-avatar.png',
+        image: r.profile_picture_url || '/../blank_avatar.jpg',
         city: r.address,
         price: Number(r.hourly_rate || 0),
         about_me: r.about_me || '',
@@ -1029,7 +1029,7 @@ app.get('/api/student_posts', async (req, res) => {
       user: {
         first_name: r.name || '',
         last_name: r.lastname || '',
-        profile_image: r.profile_picture_url || '/default-avatar.png',
+        profile_image: r.profile_picture_url || '/../blank_avatar.jpg',
         email: r.email || '',
         phone: r.phone || '',
         id: r.student_id,
@@ -2750,7 +2750,7 @@ app.get('/api/tutors/:tutorId/reviews', async (req, res) => {
       createdAt: row.created_at,
       reviewer: {
         name: `${row.student_name} ${row.student_lastname || ''}`.trim(),
-        avatar: row.profile_picture_url || '/default-avatar.png'
+        avatar: row.profile_picture_url || '/../blank_avatar.jpg'
       }
     }));
 
@@ -3345,7 +3345,7 @@ app.get('/api/users/:id', async (req, res) => {
       role: userType,
       userType: userType,
       // map profile fields
-      profile_image: profileData.profile_picture_url || user.profile_picture_url || '/default-avatar.png',
+      profile_image: profileData.profile_picture_url || user.profile_picture_url || '/../blank_avatar.jpg',
       phone: profileData.phone || user.phone || '',
       bio: profileData.about_me || profileData.bio || '',
       created_at: user.created_at || new Date().toISOString()
@@ -3399,7 +3399,7 @@ app.get('/api/tutors/:id/reviews', async (req, res) => {
       reviewer: {
         id: row.reviewer_id,
         name: `${row.name} ${row.lastname}`.trim(),
-        avatar: '/default-avatar.png' // join profile if needed
+        avatar: '/../blank_avatar.jpg' // join profile if needed
       }
     }));
 

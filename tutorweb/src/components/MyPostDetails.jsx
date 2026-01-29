@@ -3,6 +3,29 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 
 const API_BASE = "http://localhost:5000";
 
+const ProfileImage = ({ src, alt, className }) => {
+  const [imageSrc, setImageSrc] = useState(src);
+
+  useEffect(() => {
+    setImageSrc(src);
+  }, [src]);
+
+  return (
+    <img
+      src={imageSrc || (process.env.PUBLIC_URL + "/blank_avatar.jpg")}
+      alt={alt}
+      className={className}
+      onError={(e) => {
+        // Prevent infinite loop if fallback also fails
+        const fallback = process.env.PUBLIC_URL + "/blank_avatar.jpg";
+        if (imageSrc !== fallback) {
+          setImageSrc(fallback);
+        }
+      }}
+    />
+  );
+};
+
 /* ---------- normalizer ---------- */
 const normalizePost = (p = {}) => ({
   id: p.id ?? p._id ?? p.student_post_id,
@@ -21,7 +44,7 @@ const normalizePost = (p = {}) => ({
   user: p.user || {
     first_name: p.first_name || p.name || "",
     last_name: p.last_name || "",
-    profile_image: p.profile_image || "/blank_avatar.jpg",
+    profile_image: p.profile_image || (process.env.PUBLIC_URL + "/blank_avatar.jpg"),
   },
 });
 
@@ -50,7 +73,7 @@ function mapTutorToUnified(t = {}) {
     user: t.user || {
       first_name: t.name || t.first_name || "",
       last_name: t.lastname || t.last_name || "",
-      profile_image: t.profile_picture_url || t.profile_image || "/blank_avatar.jpg",
+      profile_image: t.profile_picture_url || t.profile_image || (process.env.PUBLIC_URL + "/blank_avatar.jpg"),
     },
   };
 }
@@ -207,7 +230,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
   }, [post]);
 
   const ownerAvatar = useMemo(() => {
-    return post?.user?.profile_image || post?.authorId?.avatarUrl || "/blank_avatar.jpg";
+    return post?.user?.profile_image || post?.authorId?.avatarUrl || (process.env.PUBLIC_URL + "/blank_avatar.jpg");
   }, [post]);
 
   // ✅ ใช้ค่าที่ "รวมรูปแบบแล้ว" ชุดเดียว (กันแสดงไม่ครบ)
@@ -255,12 +278,17 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
         <div className="bg-white border rounded-2xl p-5 shadow-sm">
           {/* ข้อมูลโพสต์ */}
           <div className="flex items-center gap-3 mb-3">
-            <img
+            <ProfileImage
+              src={ownerAvatar}
+              alt="avatar"
+              className="w-12 h-12 rounded-full"
+            />
+            {/* <img
               src={ownerAvatar}
               onError={(e) => { e.target.onerror = null; e.target.src = "/blank_avatar.jpg"; }}
               alt="avatar"
               className="w-12 h-12 rounded-full"
-            />
+            /> */}
             <div>
               <div className="font-semibold">{ownerName}</div>
               <div className="text-xs text-gray-500">
