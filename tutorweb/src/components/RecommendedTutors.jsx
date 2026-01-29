@@ -30,13 +30,14 @@ export default function RecommendedTutors({ userId, onOpen }) {
       <div className="flex items-center gap-2 mb-4">
         <Star className="text-yellow-500 fill-yellow-500" size={24} />
         <h2 className="text-xl font-bold text-gray-800">
-          ติวเตอร์แนะนำสำหรับคุณ
+          แนะนำสำหรับคุณ
         </h2>
       </div>
 
       {recs.based_on && (
         <p className="text-sm text-gray-600 mb-4 bg-white inline-block px-3 py-1 rounded-full border">
-          💡 อ้างอิงจากความสนใจวิชา: <span className="font-bold text-indigo-600">{recs.based_on}</span>
+          💡 อ้างอิงจากความสนใจวิชาที่คุณสนใจ 
+          {/* <span className="font-bold text-indigo-600">{recs.based_on}</span> */}
         </p>
       )}
 

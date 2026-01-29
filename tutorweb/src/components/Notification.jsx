@@ -156,6 +156,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
           notification_id: item.notification_id,
           post_id: item.related_id,
           actor_id: item.actor_id,
+          offer_status: item.offer_status, // ✅ Pass status from API
           tutor
         });
       } else {
@@ -215,7 +216,18 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
       if (!res.ok) throw new Error(data.message || "Failed");
 
       alert(action === 'approve' ? "ตอบรับข้อเสนอเรียบร้อย! ข้อมูลจะถูกบันทึกลงปฏิทินของคุณ" : "ปฏิเสธข้อเสนอเรียบร้อย");
+
+      // ✅ Update Local State immediately to reflect change without reload
+      setOfferModal(prev => ({ ...prev, offer_status: action === 'approve' ? 'approved' : 'rejected' }));
+
+      // Close modal after short delay or let user see status change?
+      // For now, let's keep it open to show status, or close. 
+      // User requested "Cannot click again", so showing status is better.
+      // But previous code closed it: setOfferModal(null);
+      // Let's keep it consistent: Close it, but if they reopen, show status.
       setOfferModal(null);
+
+      // Update notifications list to reflect read status if needed (already done)
     } catch (e) {
       alert("เกิดข้อผิดพลาด: " + e.message);
     } finally {
@@ -437,7 +449,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
   // --- Modal สำหรับ Offer ---
   const OfferModal = () => {
     if (!offerModal) return null;
-    const { tutor } = offerModal;
+    const { tutor, offer_status } = offerModal; // ✅ Destructure status
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -481,21 +493,34 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
               </div>
             </div>
 
+            {/* ✅ Show Buttons or Status */} 
             <div className="flex gap-3 mt-6">
-              <button
-                disabled={offerLoading}
-                onClick={() => handleCreateRequest('reject')}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 transition-colors"
-              >
-                ปฏิเสธ
-              </button>
-              <button
-                disabled={offerLoading}
-                onClick={() => handleCreateRequest('approve')}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all hover:shadow-indigo-300"
-              >
-                {offerLoading ? "กำลังบันทึก..." : "ตกลง"}
-              </button>
+              {offer_status === 'approved' ? (
+                <div className="w-full py-2.5 rounded-xl bg-green-50 text-green-700 font-bold border border-green-200">
+                  คุณตอบรับข้อเสนอนี้แล้ว
+                </div>
+              ) : offer_status === 'rejected' ? (
+                <div className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-500 font-bold border border-gray-200">
+                  ❌ คุณปฏิเสธข้อเสนอนี้แล้ว
+                </div>
+              ) : (
+                <>
+                  <button
+                    disabled={offerLoading}
+                    onClick={() => handleCreateRequest('reject')}
+                    className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 transition-colors"
+                  >
+                    ปฏิเสธ
+                  </button>
+                  <button
+                    disabled={offerLoading}
+                    onClick={() => handleCreateRequest('approve')}
+                    className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all hover:shadow-indigo-300"
+                  >
+                    {offerLoading ? "กำลังบันทึก..." : "ตกลง"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

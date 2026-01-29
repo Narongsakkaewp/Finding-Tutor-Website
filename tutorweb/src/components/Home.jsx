@@ -839,47 +839,79 @@ function HomeTutor() {
       </Modal>
 
       {/* ✅ Modal แสดงรายละเอียดโพสต์นักเรียน */}
-      <Modal open={!!previewPost} onClose={() => setPreviewPost(null)} title="รายละเอียดประกาศนักเรียน">
+      <Modal open={!!previewPost} onClose={() => setPreviewPost(null)} title="รายละเอียด">
         {previewPost && (
           <div className="space-y-6">
+            {/* Header: รูปและชื่อ */}
             <div className="flex items-start gap-4">
-              <img src={previewPost.user?.profile_image || previewPost.profile_picture_url || "/default-avatar.png"} className="w-16 h-16 rounded-full object-cover border" alt="" />
+              <img
+                src={previewPost.user?.profile_image || previewPost.profile_picture_url || "/default-avatar.png"}
+                className="w-16 h-16 rounded-full object-cover border"
+                alt=""
+              />
               <div>
-                <h3 className="text-xl font-bold text-gray-900">{previewPost.user?.first_name || (previewPost.name ? `${previewPost.name} ${previewPost.lastname || ""}` : "นักเรียน")}</h3>
-                <div className="text-sm text-gray-500">ลงประกาศเมื่อ: {new Date(previewPost.createdAt || previewPost.created_at).toLocaleDateString("th-TH")}</div>
+                <h3 className="text-xl font-bold text-gray-900">
+                  {previewPost.user?.first_name || (previewPost.name ? `${previewPost.name} ${previewPost.lastname || ""}` : "นักเรียน")}
+                </h3>
+                <div className="text-sm text-gray-500">
+                  ลงประกาศเมื่อ: {new Date(previewPost.createdAt || previewPost.created_at).toLocaleDateString("th-TH")}
+                </div>
                 <Badge text="กำลังหาครู" color="rose" />
               </div>
             </div>
 
+            {/* Subject & Description */}
             <div className="bg-gray-50 p-5 rounded-2xl space-y-3 border border-gray-100">
               <h4 className="text-lg font-bold text-indigo-700">{previewPost.subject}</h4>
               <p className="text-gray-700 leading-relaxed whitespace-pre-line">{previewPost.description || "-"}</p>
             </div>
 
+            {/* Grid Details */}
             <div className="grid grid-cols-2 gap-4">
               <div className="p-3 bg-white border rounded-xl">
                 <div className="text-xs text-gray-500 font-bold uppercase">สถานที่</div>
-                <div className="font-semibold text-gray-800 flex items-center gap-2"><MapPin size={16} /> {previewPost.location || "-"}</div>
+                <div className="font-semibold text-gray-800 flex items-center gap-2">
+                  <MapPin size={16} /> {previewPost.location || "-"}
+                </div>
               </div>
               <div className="p-3 bg-white border rounded-xl">
                 <div className="text-xs text-gray-500 font-bold uppercase">งบประมาณ</div>
-                <div className="font-semibold text-emerald-600 flex items-center gap-2"><DollarSign size={16} /> {previewPost.budget ? `${previewPost.budget} ฿` : "-"}</div>
+                <div className="font-semibold text-emerald-600 flex items-center gap-2">
+                  <DollarSign size={16} /> {previewPost.budget ? `${previewPost.budget} ฿` : "-"}
+                </div>
               </div>
               <div className="p-3 bg-white border rounded-xl">
                 <div className="text-xs text-gray-500 font-bold uppercase">วัน/เวลา</div>
-                <div className="font-semibold text-blue-600 flex items-center gap-2"><Calendar size={16} /> {previewPost.preferred_days || "-"} {previewPost.preferred_time}</div>
+                <div className="font-semibold text-blue-600 flex items-center gap-2">
+                  <Calendar size={16} /> {previewPost.preferred_days || "-"} {previewPost.preferred_time}
+                </div>
               </div>
               <div className="p-3 bg-white border rounded-xl">
                 <div className="text-xs text-gray-500 font-bold uppercase">ระดับชั้น</div>
-                <div className="font-semibold text-gray-800 flex items-center gap-2"><GraduationCap size={16} /> {previewPost.grade_level || "-"}</div>
+                <div className="font-semibold text-gray-800 flex items-center gap-2">
+                  <GraduationCap size={16} /> {previewPost.grade_level || "-"}
+                </div>
               </div>
             </div>
 
+            {/* 🔥 ส่วนที่แก้ไข: แสดงข้อมูลติดต่อแทนปุ่มกด */}
             <div className="pt-4 border-t">
-              <button className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg transition-all" onClick={() => alert("ระบบแชทกำลังพัฒนา")}>
-                <MessageSquarePlus className="inline-block mr-2" /> ติดต่อสอบถาม
-              </button>
+              <h4 className="text-sm font-bold text-gray-900 mb-3">ข้อมูลติดต่อจากนักเรียน</h4>
+              <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-4">
+                <div className="bg-green-100 p-3 rounded-full text-green-600">
+                  <Phone size={24} />
+                </div>
+                <div>
+                  <p className="text-green-800 font-bold text-lg">
+                    {previewPost.contact_info || "ไม่ระบุข้อมูลติดต่อ"}
+                  </p>
+                  <p className="text-xs text-green-600">
+                    ช่องทางติดต่อ (Line ID / เบอร์โทร)
+                  </p>
+                </div>
+              </div>
             </div>
+
           </div>
         )}
       </Modal>

@@ -21,7 +21,7 @@ const normalizePost = (p = {}) => ({
   user: p.user || {
     first_name: p.first_name || p.name || "",
     last_name: p.last_name || "",
-    profile_image: p.profile_image || "/default-avatar.png",
+    profile_image: p.profile_image || "/blank_avatar.jpg",
   },
 });
 
@@ -50,7 +50,7 @@ function mapTutorToUnified(t = {}) {
     user: t.user || {
       first_name: t.name || t.first_name || "",
       last_name: t.lastname || t.last_name || "",
-      profile_image: t.profile_picture_url || t.profile_image || "/default-avatar.png",
+      profile_image: t.profile_picture_url || t.profile_image || "/blank_avatar.jpg",
     },
   };
 }
@@ -207,7 +207,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
   }, [post]);
 
   const ownerAvatar = useMemo(() => {
-    return post?.user?.profile_image || post?.authorId?.avatarUrl || "/default-avatar.png";
+    return post?.user?.profile_image || post?.authorId?.avatarUrl || "/blank_avatar.jpg";
   }, [post]);
 
   // ✅ ใช้ค่าที่ "รวมรูปแบบแล้ว" ชุดเดียว (กันแสดงไม่ครบ)
@@ -257,6 +257,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           <div className="flex items-center gap-3 mb-3">
             <img
               src={ownerAvatar}
+              onError={(e) => { e.target.onerror = null; e.target.src = "/blank_avatar.jpg"; }}
               alt="avatar"
               className="w-12 h-12 rounded-full"
             />
