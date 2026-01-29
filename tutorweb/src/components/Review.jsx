@@ -98,7 +98,7 @@ const Review = ({ postId, tutorId, studentId, onClose, initialSubject, initialTu
           {/* Info Section */}
           <div className="flex flex-col items-center mb-6">
             <img
-              src={initialTutorImage || "/default-avatar.png"}
+              src={initialTutorImage || "/../blank_avatar.jpg"}
               alt={tutorName}
               className="w-20 h-20 rounded-full object-cover border-4 border-indigo-50 mb-3"
             />

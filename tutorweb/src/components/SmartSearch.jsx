@@ -182,7 +182,7 @@ export default function SmartSearch({ userId, onSearch }) {
                       className="px-5 py-3 hover:bg-indigo-50/50 cursor-pointer flex items-center gap-4 transition-colors border-b border-gray-50/50 last:border-0"
                       onClick={() => handleSelectResult(t, 'tutor')}
                     >
-                      <img src={t.profile_picture_url || "/default-avatar.png"} className="w-10 h-10 rounded-full object-cover shadow-sm border border-white" alt="" />
+                      <img src={t.profile_picture_url || "/../blank_avatar.jpg"} className="w-10 h-10 rounded-full object-cover shadow-sm border border-white" alt="" />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-bold text-gray-800 highlight-text truncate">{t.nickname || t.name}</div>
                         <div className="text-xs text-indigo-500 font-medium truncate">{t.can_teach_subjects}</div>

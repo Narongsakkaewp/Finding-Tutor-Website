@@ -151,7 +151,7 @@ function StudentPostsList({ searchKey }) {
         return (
           <div key={p.id || p.student_post_id} className="group bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all flex flex-col h-full">
             <div className="flex items-center gap-3 mb-3">
-              <img src={p.user?.profile_image || p.authorId?.avatarUrl || "/default-avatar.png"} className="w-10 h-10 rounded-full object-cover border" alt="" />
+              <img src={p.user?.profile_image || p.authorId?.avatarUrl || "/../blank_avatar.jpg"} className="w-10 h-10 rounded-full object-cover border" alt="" />
               <div>
                 <div className="text-sm font-bold text-gray-900 line-clamp-1">{p.user?.first_name || p.authorId?.name || "นักเรียน"}</div>
                 <div className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleDateString("th-TH")}</div>

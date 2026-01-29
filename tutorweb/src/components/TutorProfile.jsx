@@ -61,7 +61,7 @@ function ReviewCard({ review }) {
         <div className="border-b last:border-b-0 py-4">
             <div className="flex items-start gap-3">
                 <img
-                    src={review.reviewer?.avatar || "/default-avatar.png"}
+                    src={review.reviewer?.avatar || "/../blank_avatar.jpg"}
                     alt="student"
                     className="w-10 h-10 rounded-full object-cover border border-gray-200"
                 />
@@ -308,7 +308,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                 setProfile({
                     ...profileData,
                     fullName: fullNameOf(profileData),
-                    avatarUrl: profileData.profile_picture_url || "/default-avatar.png",
+                    avatarUrl: profileData.profile_picture_url || "/../blank_avatar.jpg",
                     bio: profileData.about_me || "ยังไม่มีข้อมูลแนะนำตัว",
                     educationDisplay: profileData.education?.[0]?.institution || "ยังไม่ระบุสถานศึกษา",
                     address: profileData.address || null,

@@ -212,7 +212,7 @@ function PostList({ type = "student", searchKey, tutorId, onOpen }) {
     <div className={`grid grid-cols-1 ${type === 'tutor_profile' ? '' : 'sm:grid-cols-2 lg:grid-cols-3'} gap-4`}>
       {posts.map(p => {
         const isStudent = (type === "student" || type === "tutor_recommendation" || type === "recommended_courses"); // ✅ Fix logic
-        const userImg = p.user?.profile_image || p.authorId?.avatarUrl || p.profile_picture_url || "/default-avatar.png";
+        const userImg = p.user?.profile_image || p.authorId?.avatarUrl || p.profile_picture_url || "../blank_avatar.jpg";
         const userName = p.user?.first_name || p.authorId?.name || (p.name ? `${p.name} ${p.lastname || ""}` : "User");
         const date = p.createdAt || p.created_at;
         const subject = p.subject;
@@ -544,7 +544,7 @@ function HomeStudent() {
               </h4>
 
               <div className="flex items-start gap-4">
-                <img src={preview.image || preview.authorId?.avatarUrl || "/default-avatar.png"} alt={preview.name || preview.authorId?.name} className="w-20 h-20 rounded-full object-cover border shadow-sm" />
+                <img src={preview.image || preview.authorId?.avatarUrl || "/../blank_avatar.jpg"} alt={preview.name || preview.authorId?.name} className="w-20 h-20 rounded-full object-cover border shadow-sm" />
                 <div>
                   <h5 className="text-xl font-bold text-gray-900">{preview.name || preview.authorId?.name} {preview.nickname ? `(${preview.nickname})` : ""}</h5>
                   {/* แสดงรีวิวถ้ามี */}
@@ -664,7 +664,7 @@ function HomeStudent() {
         {preview && previewType === "student_post" && (
           <div className="space-y-6">
             <div className="flex items-start gap-4">
-              <img src={preview.user?.profile_image || preview.authorId?.avatarUrl || preview.profile_picture_url || "/default-avatar.png"} className="w-16 h-16 rounded-full object-cover border" alt="" />
+              <img src={preview.user?.profile_image || preview.authorId?.avatarUrl || preview.profile_picture_url || "/../blank_avatar.jpg"} className="w-16 h-16 rounded-full object-cover border" alt="" />
               <div>
                 <h3 className="text-xl font-bold text-gray-900">{preview.user?.first_name || preview.authorId?.name || (preview.name ? `${preview.name} ${preview.lastname || ""}` : "นักเรียน")}</h3>
                 <div className="text-sm text-gray-500">ลงประกาศเมื่อ: {new Date(preview.createdAt || preview.created_at).toLocaleDateString("th-TH")}</div>
@@ -845,7 +845,7 @@ function HomeTutor() {
             {/* Header: รูปและชื่อ */}
             <div className="flex items-start gap-4">
               <img
-                src={previewPost.user?.profile_image || previewPost.profile_picture_url || "/default-avatar.png"}
+                src={previewPost.user?.profile_image || previewPost.profile_picture_url || "/../blank_avatar.jpg"}
                 className="w-16 h-16 rounded-full object-cover border"
                 alt=""
               />
@@ -964,7 +964,7 @@ function TutorReviewsList({ tutorId, API_BASE }) {
     <div className="space-y-4">
       {reviews.map(r => (
         <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex gap-4">
-          <img src={r.reviewer?.avatar || "/default-avatar.png"} alt="reviewer" className="w-10 h-10 rounded-full object-cover bg-gray-100" />
+          <img src={r.reviewer?.avatar || "/../blank_avatar.jpg"} alt="reviewer" className="w-10 h-10 rounded-full object-cover bg-gray-100" />
           <div className="flex-1">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-gray-900 text-sm">{r.reviewer?.name || "ไม่ระบุชื่อ"}</h4>

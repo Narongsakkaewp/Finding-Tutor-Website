@@ -24,6 +24,30 @@ function getMe() {
   }
 }
 
+// --------------------------- Components: ProfileImage ---------------------------
+const ProfileImage = ({ src, alt, className }) => {
+  // Always start with the original source (or blank if null)
+  const [imageSrc, setImageSrc] = useState(src);
+
+  useEffect(() => {
+    setImageSrc(src);
+  }, [src]);
+
+  return (
+    <img
+      src={imageSrc || (process.env.PUBLIC_URL + "/blank_avatar.jpg")}
+      alt={alt}
+      className={className}
+      onError={(e) => {
+        const fallback = process.env.PUBLIC_URL + "/blank_avatar.jpg";
+        if (imageSrc !== fallback) {
+          setImageSrc(fallback);
+        }
+      }}
+    />
+  );
+};
+
 // --------------------------- Components: Modal ---------------------------
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
@@ -172,7 +196,7 @@ function PostCardSimple({ item, onUnfav, onClick }) {
       <div className="flex items-center justify-between border-t pt-4 mt-auto">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
-            <img src={item.profile_picture_url || "/blank_avatar.jpg"} className="w-full h-full object-cover" alt="" />
+            <ProfileImage src={item.profile_picture_url} className="w-full h-full object-cover" alt="" />
           </div>
           <span className="truncate max-w-[120px]">{item.authorName}</span>
         </div>
@@ -211,8 +235,8 @@ function RecommendCard({ post, reasonSubjects }) {
       </div>
 
       <div className="flex items-center gap-3 mb-4">
-        <img
-          src={post.profile_picture_url || "/blank_avatar.jpg"}
+        <ProfileImage
+          src={post.profile_picture_url}
           alt={post.name}
           className="w-12 h-12 rounded-full object-cover border border-gray-200"
         />
@@ -379,8 +403,8 @@ export default function Favorite() {
           <div className="space-y-6">
             {/* Header: รูปและชื่อ */}
             <div className="flex items-start gap-4">
-              <img
-                src={previewPost.profile_picture_url || "/blank_avatar.jpg"}
+              <ProfileImage
+                src={previewPost.profile_picture_url}
                 className="w-16 h-16 rounded-full object-cover border"
                 alt=""
               />

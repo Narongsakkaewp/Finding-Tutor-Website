@@ -249,7 +249,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
 
         // 1. Profile
         let prof = {
-          avatarUrl: currentUser?.profile_picture_url || "/default-avatar.png",
+          avatarUrl: currentUser?.profile_picture_url || "/../blank_avatar.jpg",
           fullName: fullNameOf(currentUser) || currentUser?.email || "ผู้ใช้",
           nickname: currentUser?.nickname || "",
           gradeLevel: currentUser?.grade_level || "นักเรียน",
@@ -499,7 +499,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           <div className="flex flex-col md:flex-row md:items-center gap-6">
             <div className="flex items-start gap-5 flex-grow">
               <img
-                src={profile.avatarUrl || "/default-avatar.png"}
+                src={profile.avatarUrl || "/../blank_avatar.jpg"}
                 alt={profile.fullName}
                 className="h-28 w-28 rounded-2xl object-cover ring-4 ring-white shadow-md flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
                 onClick={() => setIsAvatarModalOpen(true)}
@@ -642,7 +642,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                         />
 
                         <div className="flex items-center gap-3">
-                          <img src={profile.avatarUrl || "/default-avatar.png"} alt="avatar" className="w-9 h-9 rounded-full object-cover" />
+                          <img src={profile.avatarUrl || "/../blank_avatar.jpg"} alt="avatar" className="w-9 h-9 rounded-full object-cover" />
                           <div>
                             <div className="text-sm font-semibold">{profile.fullName}</div>
                             <div className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleString("th-TH")}</div>
@@ -681,7 +681,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                   <ul className="space-y-3">
                     {recommendedTutors.map((tutor) => (
                       <li key={tutor.tutor_post_id} className="flex items-start gap-3 p-3 border rounded-xl hover:bg-gray-50 cursor-pointer transition-all hover:shadow-sm" onClick={() => window.location.href = `/post/${tutor.tutor_post_id}`}>
-                        <img src={tutor.profile_picture_url || '/default-avatar.png'} alt={tutor.subject} className="w-10 h-10 rounded-full object-cover border flex-shrink-0" />
+                        <img src={tutor.profile_picture_url || '/../blank_avatar.jpg'} alt={tutor.subject} className="w-10 h-10 rounded-full object-cover border flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-bold text-gray-800 truncate">{tutor.subject}</div>
                           <div className="text-xs text-gray-500 flex items-center gap-1">
@@ -706,7 +706,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                   <ul className="space-y-3">
                     {buddies.map((friend) => (
                       <li key={friend.user_id} className="flex items-center gap-3 p-3 border rounded-xl hover:bg-orange-50 cursor-pointer transition-all">
-                        <img src={friend.profile_picture_url || '/default-avatar.png'} alt={friend.name} className="w-10 h-10 rounded-full object-cover border" />
+                        <img src={friend.profile_picture_url || '/../blank_avatar.jpg'} alt={friend.name} className="w-10 h-10 rounded-full object-cover border" />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-bold text-gray-800">{friend.name} {friend.lastname}</div>
                           <div className="text-xs text-gray-500 truncate">
