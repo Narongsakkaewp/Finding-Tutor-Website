@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-// import Review from "../components/Review"; // Removed unused import
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive, Sparkles, User, Users, Save, Flag } from "lucide-react";
+import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive, Sparkles, User, Users, Flag, History, BookOpen, UserCheck, Clock, Calendar } from "lucide-react";
 import LongdoLocationPicker from './LongdoLocationPicker';
 import ReportModal from "./ReportModal";
 
@@ -52,13 +51,20 @@ function Stat({ label, value }) {
   );
 }
 
-function Card({ title, children, icon: Icon, className = "" }) {
+function Card({ title, children, icon: Icon, className = "", rightAction }) {
   return (
-    <section className={`bg-white rounded-2xl shadow-sm border p-4 md:p-5 flex flex-col ${className}`}>
+    <section className={`bg-white rounded-[2.5rem] border border-gray-100 p-6 shadow-sm ${className}`}>
       {title && (
-        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
-          {Icon && <Icon className="text-indigo-500" size={20} />}
-          <h3 className="text-lg font-bold text-gray-800">{title}</h3>
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            {Icon && (
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                <Icon size={20} />
+              </div>
+            )}
+            <h3 className="text-xl font-black text-gray-900 tracking-tight">{title}</h3>
+          </div>
+          {rightAction}
         </div>
       )}
       <div className="flex-1">{children}</div>
@@ -115,7 +121,6 @@ function PostActionMenu({ open, onClose, onEdit, onHide, onDelete, onReport, isO
   );
 }
 
-/* ===== กล่องยืนยันลบ ===== */
 function ConfirmDialog({ open, title = "ยืนยันการลบ", desc = "ลบโพสต์นี้ถาวรหรือไม่?", onConfirm, onCancel }) {
   if (!open) return null;
   return (
@@ -147,7 +152,6 @@ function AvatarModal({ src, alt, onClose }) {
   );
 }
 
-/* ✅ Modal สำหรับจัดการโพสต์ที่ซ่อนไว้ */
 function HiddenPostsModal({ open, onClose, posts, hiddenIds, onRestore, onRestoreAll }) {
   if (!open) return null;
   const hiddenPosts = posts.filter(p => hiddenIds.has(p._id ?? p.id));
@@ -211,16 +215,17 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dailyEvents, setDailyEvents] = useState([]);
 
-  // ✅ State สำหรับแก้ไขโพสต์
+  // ✅ Tabs State
+  const [activeTab, setActiveTab] = useState('posts'); // 'posts' | 'history'
+
   const [editPost, setEditPost] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [updating, setUpdating] = useState(false);
   const [reportingPost, setReportingPost] = useState(null);
 
-  // ✅ State สำหรับระบบแนะนำ
   const [recommendedTutors, setRecommendedTutors] = useState([]);
   const [recsBasedOn, setRecsBasedOn] = useState("");
-  const [buddies, setBuddies] = useState([]); // State สำหรับเก็บเพื่อน
+  const [buddies, setBuddies] = useState([]);
 
   const [openMenuFor, setOpenMenuFor] = useState(null);
   const [showHiddenModal, setShowHiddenModal] = useState(false);
@@ -298,7 +303,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
         const onlyMine = Array.isArray(data) ? data.filter((p) => Number(p.owner_id) === Number(me)) : [];
         if (!cancelled) setPosts(onlyMine.map(normalizePost));
 
-        // 3. Calendar Events
+        // 3. Calendar Events (Used for History)
         const evRes = await fetch(`http://localhost:5000/api/calendar/${me}`);
         if (evRes.ok) {
           const evData = await evRes.json();
@@ -319,7 +324,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
           }
         }
 
-        // ✅ 5. Fetch Study Buddies (ย้ายมาไว้ตรงนี้ เพื่อให้ใช้ 'me' ได้และทำงานถูกต้อง)
+        // 5. Fetch Study Buddies
         const budRes = await fetch(`http://localhost:5000/api/recommendations/friends?user_id=${me}`);
         if (budRes.ok) {
           const budData = await budRes.json();
@@ -343,7 +348,22 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
     setDailyEvents(matches);
   }, [selectedDate, events]);
 
-  // Handlers
+  // ✅ Process History from Events
+  const studyHistory = useMemo(() => {
+    return events.filter(ev =>
+      // กรองเฉพาะ Event ที่เราไป Join คนอื่น หรือ Tutor มา Join เรา (ที่สถานะ Approved แล้ว)
+      ev.source === 'student_post_joined' ||
+      ev.source === 'tutor_post_joined' ||
+      ev.source === 'tutor_offer_accepted'
+    ).map(ev => ({
+      ...ev,
+      // แปลง Source เป็นข้อความที่อ่านง่าย
+      typeLabel: ev.source === 'tutor_post_joined' ? 'เรียนกับติวเตอร์' :
+        ev.source === 'student_post_joined' ? 'เข้ากลุ่มติว' : 'ติวเตอร์มาสอน',
+      icon: ev.source.includes('tutor') ? GraduationCap : Users
+    }));
+  }, [events]);
+
   const handleToggleMenu = (id) => setOpenMenuFor((prev) => (prev === id ? null : id));
 
   const handleHidePost = (id) => {
@@ -377,19 +397,11 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
       description: post.content,
       preferred_days: post.meta?.preferred_days || "",
       preferred_time: post.meta?.preferred_time || "",
-      grade_level: profile?.gradeLevel || "", // Default if not in meta, but usually strictly needed. post.grade_level isn't in normalizePost? 
-      // Checked normalizePost: grade_level is NOT mapped. Let's check API. 
-      // Actually API student_posts returns grade_level. normalizePost needs update or we access p.grade_level if raw p available?
-      // normalizePost maps to meta... wait, normalizePost in Profile.jsx vs MyPost.jsx.
-      // Profile.jsx normalizePost: meta: { preferred_days, ... }. 
-      // It seems grade_level is missing in normalizePost here.
-      // Let's rely on what we have or add it. For now, assume we can get it or default it.
-      // Let's use specific field from post object if available before normalization, but here we only have normalized `post`.
-      // We might need to fetch or just let them select again.
+      grade_level: profile?.gradeLevel || "",
       location: post.meta?.location || "",
       group_size: post.meta?.group_size || "",
       budget: post.meta?.budget || "",
-      contact_info: profile?.phone || profile?.email || "", // Default
+      contact_info: profile?.phone || profile?.email || "",
     });
     setOpenMenuFor(null);
   };
@@ -470,137 +482,359 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
     const id = confirm.id;
     setConfirm({ open: false, id: null });
     const before = [...posts];
-    const after = posts.filter((p) => (p._id ?? p.id) !== id);
-    setPosts(after);
+    setPosts(prev => prev.filter(p => (p._id ?? p.id) !== id));
+
     try {
       const res = await fetch(`http://localhost:5000/api/student_posts/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: currentUser?.user_id })
       });
-      if (!res.ok) throw new Error("Failed to delete");
-    } catch (e) {
-      console.error(e);
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.message || "ลบไม่สำเร็จ");
+      }
+    } catch (err) {
+      alert(err.message);
       setPosts(before);
-      alert("เกิดข้อผิดพลาดในการลบโพสต์");
     }
   };
 
-  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-600">กำลังโหลดโปรไฟล์...</div>;
-  if (!profile) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-600">ไม่พบข้อมูลผู้ใช้</div>;
+  if (loading || !profile) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
-  const hiddenCount = posts.filter(p => hiddenPostIds.has(p._id ?? p.id)).length;
+  const hiddenCount = hiddenPostIds.size;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
+    <div className="min-h-screen bg-white">
+      {/* --- Premium Header Section (Synced with Tutor Design) --- */}
+      <div className="relative overflow-hidden bg-white border-b">
+        {/* Decorative Background Elements */}
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-indigo-50/50 to-transparent pointer-events-none" />
+        <div className="absolute -top-24 -left-20 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Header Profile */}
-        <div className="bg-white rounded-3xl shadow-sm border p-6">
-          <div className="flex flex-col md:flex-row md:items-center gap-6">
-            <div className="flex items-start gap-5 flex-grow">
-              <img
-                src={profile.avatarUrl || "/../blank_avatar.jpg"}
-                alt={profile.fullName}
-                className="h-28 w-28 rounded-2xl object-cover ring-4 ring-white shadow-md flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
-                onClick={() => setIsAvatarModalOpen(true)}
-              />
-              <div className="flex-grow">
-                <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
-                  {profile.fullName}
-                  {profile.nickname && <span className="text-gray-500 font-medium ml-2">({profile.nickname})</span>}
-                </h1>
-                <p className="text-gray-600 mt-1">
-                  {profile.gradeLevel || "นักเรียน"} {profile.school && ` • ${profile.school}`}
-                </p>
-                {/* Education */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-8 relative z-10">
+          <div className="flex flex-col lg:flex-row gap-8 items-start">
+            {/* Avatar Section */}
+            <div className="relative shrink-0 group">
+              <div className="absolute -inset-1.5 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-[2.5rem] blur opacity-25 group-hover:opacity-40 transition duration-500" />
+              <div className="relative">
+                <img
+                  src={profile.avatarUrl || "/../blank_avatar.jpg"}
+                  alt={profile.fullName}
+                  className="h-40 w-40 rounded-[2.2rem] object-cover ring-4 ring-white shadow-2xl cursor-pointer hover:scale-[1.02] transition-all duration-300"
+                  onClick={() => setIsAvatarModalOpen(true)}
+                />
+              </div>
+            </div>
+
+            {/* Info Section */}
+            <div className="flex-grow space-y-6">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h1 className="text-4xl font-black text-gray-900 tracking-tight">
+                    {profile.fullName}
+                    {profile.nickname && (
+                      <span className="text-gray-900 font-medium ml-3 text-2xl">
+                        ({profile.nickname})
+                      </span>
+                    )}
+                  </h1>
+                </div>
+
                 {profile.education && profile.education.length > 0 && (
-                  <div className="mt-3 border-t pt-3">
-                    <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-1">
-                      <GraduationCap size={16} /> การศึกษาปัจจุบัน:
-                    </h4>
-                    <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                      {profile.education.map((edu, index) => (
-                        <li key={index} className="mt-1">
-                          <span className="font-semibold">{edu.degree} ที่ {edu.institution}</span>
-                          {edu.faculty && <div className="pl-5 text-gray-500">คณะ {edu.faculty}</div>}
-                          {edu.major && <div className="pl-5 text-gray-500">สาขา {edu.major}</div>}
-                        </li>
-                      ))}
-                    </ul>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {profile.education.map((edu, idx) => (
+                      <div key={idx} className="flex items-center gap-2 px-3 py-1 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-600">
+                        <GraduationCap size={14} className="text-indigo-500" />
+                        <span className="font-medium text-gray-700">{edu.institution}</span>
+                        <span className="text-gray-400">•</span>
+                        <span>{edu.degree}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
-                <div>
-                  <h4 className="flex items-center mt-3 border-t pt-3 gap-2 text-sm font-semibold text-gray-700 mb-1">
-                    <AppWindow size={16} /> เกี่ยวกับฉัน:
-                  </h4>
-                  {profile.bio && <p className="pl-5 text-sm text-gray-700 whitespace-pre-line">{profile.bio}</p>}
+              </div>
+
+              <div className="max-w-2xl">
+                <p className="text-gray-600 leading-relaxed text-lg">
+                  "{profile.bio || "สวัสดีครับ ผมกำลังมองหาติวเตอร์ที่ช่วยเสริมทักษะในวิชาต่างๆ สนใจติวทักมาคุยกันได้เลยครับ!"}"
+                </p>
+              </div>
+
+              {/* Contact Chips */}
+              <div className="flex flex-wrap gap-3">
+                <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-colors group cursor-pointer">
+                  <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                    <MapPin size={16} />
+                  </div>
+                  <span className="text-sm font-medium text-gray-600">{profile.city || "ยังไม่ได้ระบุที่อยู่"}</span>
                 </div>
-                {/* Contact Info */}
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                  <a href={profile.city ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.city)}` : "#"} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 border rounded-lg p-2 bg-gray-50 transition-colors ${profile.city ? "hover:bg-gray-100 cursor-pointer" : "cursor-default"}`} onClick={(e) => !profile.city && e.preventDefault()}>
-                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><MapPin size={16} className="text-gray-600" /></div>
-                    <span className="text-gray-700 truncate">{profile.city || "ยังไม่ระบุที่อยู่"}</span>
-                  </a>
-                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50 hover:bg-gray-100">
-                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><Phone size={16} className="text-gray-600" /></div>
-                    <a href={`tel:${profile.phone}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">{profile.phone || "ยังไม่ระบุเบอร์"}</a>
+                <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-colors group cursor-pointer">
+                  <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                    <Phone size={16} />
                   </div>
-                  <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50 hover:bg-gray-100">
-                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><Mail size={16} className="text-gray-600" /></div>
-                    <a href={`mailto:${profile.email}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">{profile.email || "ยังไม่ระบุอีเมล"}</a>
+                  <span className="text-sm font-medium text-gray-600">{profile.phone || "0xx-xxx-xxxx"}</span>
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-colors group cursor-pointer">
+                  <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                    <Mail size={16} />
                   </div>
+                  <span className="text-sm font-medium text-gray-600">{profile.email || "contact@student.com"}</span>
                 </div>
               </div>
             </div>
-            <div className="md:ml-auto flex flex-col items-stretch md:items-end gap-3 self-start">
-              <button onClick={onEditProfile} className="flex w-full justify-center md:w-auto items-center gap-2 px-4 py-2 bg-blue-300 hover:bg-blue-200 text-gray-800 rounded-lg text-sm font-medium">
-                <Edit size={16} /> แก้ไขโปรไฟล์
+
+            {/* Action Buttons */}
+            <div className="flex flex-col gap-3 min-w-[200px] w-full lg:w-auto">
+              <button
+                onClick={onEditProfile}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200"
+              >
+                <Edit size={18} />
+                แก้ไขโปรไฟล์
               </button>
-              <div className="grid grid-cols-3 md:grid-cols-1 gap-3">
-                <Stat label="โพสต์ทั้งหมด" value={String(posts.length)} />
+              <div className="grid grid-cols-1 gap-2">
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3 text-center">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">โพสต์ทั้งหมด</div>
+                  <div className="text-xl font-black text-gray-900">{posts.length}</div>
+                </div>
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Content */}
-        <div className="mt-6 grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+      {/* --- Main Content Area --- */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+          {/* --- Main Content --- */}
+          <div className="lg:col-span-8 space-y-8">
+            {/* Tab Switcher */}
+            <div className="flex p-1.5 bg-white border border-gray-200 rounded-[2rem] shadow-sm max-w-md">
+              <button
+                onClick={() => setActiveTab('posts')}
+                className={`flex items-center justify-center gap-2 flex-1 py-3 px-6 rounded-[1.6rem] text-sm font-bold transition-all duration-300 ${activeTab === 'posts' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              >
+                <BookOpen size={18} />
+                โพสต์ของฉัน ({posts.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`flex items-center justify-center gap-2 flex-1 py-3 px-6 rounded-[1.6rem] text-sm font-bold transition-all duration-300 ${activeTab === 'history' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              >
+                <History size={18} />
+                ประวัติการเรียน
+              </button>
+            </div>
 
-            {/* ✅ Calendar Section */}
+            {/* Content Area */}
+            <div className="space-y-6">
+              {activeTab === 'posts' ? (
+                <Card title="โพสต์ของฉัน">
+                  {hiddenCount > 0 && (
+                    <div className="mb-4 flex justify-end">
+                      <button onClick={() => setShowHiddenModal(true)} className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 transition shadow-sm">
+                        <Archive size={14} /> รายการที่ซ่อนไว้ ({hiddenCount})
+                      </button>
+                    </div>
+                  )}
+
+                  {!posts.length ? <Empty line="ยังไม่มีโพสต์หาติวเตอร์ในขณะนี้" /> : (
+                    <div className="space-y-4">
+                      {posts.filter((p) => !hiddenPostIds.has(p._id ?? p.id)).map((p) => {
+                        const id = p._id ?? p.id;
+                        return (
+                          <div key={id} className="bg-white border border-gray-100 rounded-[2rem] p-8 relative overflow-hidden shadow-sm">
+                            {/* Decorative Highlight */}
+                            <div className="absolute top-0 left-0 w-1.5 h-full" />
+
+                            {/* Post Header */}
+                            <div className="flex items-center justify-between mb-6">
+                              <div className="flex items-center gap-4">
+                                <div className="relative">
+                                  <img src={profile.avatarUrl || "/../blank_avatar.jpg"} alt="avatar" className="w-12 h-12 rounded-xl object-cover ring-2 ring-indigo-50" />
+                                </div>
+                                <div>
+                                  <div className="text-lg font-black text-gray-900 tracking-tight">{profile.fullName}</div>
+                                  <div className="flex items-center gap-2 text-[11px] text-gray-400 font-bold">
+                                    <Clock size={12} />
+                                    {new Date(p.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} น.
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="relative">
+                                <button
+                                  onClick={() => handleToggleMenu(id)}
+                                  className="p-2 rounded-xl text-gray-400 hover:bg-gray-50"
+                                >
+                                  <MoreVertical size={20} />
+                                </button>
+                                <PostActionMenu
+                                  open={openMenuFor === id}
+                                  onClose={() => setOpenMenuFor(null)}
+                                  onEdit={() => handleEditClick(p)}
+                                  onHide={() => handleHidePost(id)}
+                                  onDelete={() => handleAskDelete(id)}
+                                  onReport={() => handleReportClick(p)}
+                                  isOwner={true}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Post Body */}
+                            <div className="space-y-4">
+                              <div className="inline-flex px-4 py-2 bg-indigo-50 text-indigo-700 rounded-2xl text-sm font-bold">
+                                วิชา: {p.subject}
+                              </div>
+                              <p className="text-gray-600 leading-relaxed max-w-2xl text-[15px]">
+                                {p.content}
+                              </p>
+
+                              {/* Post Meta Grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
+                                <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-2xl border border-transparent">
+                                  <div className="text-indigo-500"><Calendar size={18} /></div>
+                                  <span className="text-xs font-bold text-gray-700">{p.meta?.preferred_days || "-"}</span>
+                                </div>
+                                <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-2xl border border-transparent">
+                                  <div className="text-purple-500"><Clock size={18} /></div>
+                                  <span className="text-xs font-bold text-gray-700">{p.meta?.preferred_time || "-"}</span>
+                                </div>
+                                <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-2xl border border-transparent">
+                                  <div className="text-blue-500"><MapPin size={18} /></div>
+                                  <span className="text-xs font-bold text-gray-700 truncate">{p.meta?.location || "ออนไลน์"}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Post Footer */}
+                            <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">งบประมาณ</div>
+                                <div className="flex items-baseline gap-1">
+                                  <span className="text-xl font-black text-indigo-600">฿{p.meta?.budget || "0"}</span>
+                                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">/ชม.</span>
+                                </div>
+                              </div>
+                              <button className="px-5 py-2 bg-[#111827] text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">
+                                ดูรายละเอียด
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Card>
+              ) : (
+                <Card title="ประวัติการเรียน (ที่เสร็จสิ้น/ยอมรับแล้ว)">
+                  {studyHistory.length === 0 ? (
+                    <Empty line="ยังไม่มีประวัติการเรียนในขณะนี้" />
+                  ) : (
+                    <div className="space-y-6">
+                      {studyHistory.map((item, idx) => (
+                        <div key={idx} className="group bg-white border border-gray-100 rounded-3xl p-6 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all duration-300">
+                          <div className="flex flex-col md:flex-row gap-6">
+                            <div className="w-16 h-16 shrink-0 rounded-[1.4rem] bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300 shadow-sm">
+                              <item.icon size={28} />
+                            </div>
+
+                            <div className="flex-grow">
+                              <div className="flex flex-wrap justify-between items-start gap-4 mb-4">
+                                <div>
+                                  <h4 className="text-xl font-black text-gray-900 mb-1">{item.title}</h4>
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-black rounded-lg uppercase tracking-wider">
+                                      {item.typeLabel}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">
+                                      {item.created_at ? new Date(item.created_at).toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : ""}
+                                    </span>
+                                  </div>
+                                </div>
+                                <button className="px-5 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-black hover:bg-indigo-600 hover:text-white transition-all">
+                                  รายละเอียด
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-gray-50 rounded-xl text-gray-400 group-hover:text-indigo-500 transition-colors"><BookOpen size={16} /></div>
+                                  <div>
+                                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">วิชา</div>
+                                    <div className="text-sm font-bold text-gray-700">{item.subject}</div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-gray-50 rounded-xl text-gray-400 group-hover:text-purple-500 transition-colors"><MapPin size={16} /></div>
+                                  <div>
+                                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">สถานที่</div>
+                                    <div className="text-sm font-bold text-gray-700">{item.location || "ไม่ระบุ (ออนไลน์)"}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )}
+            </div>
+          </div>
+
+          {/* --- Sidebar (Right) --- */}
+          <div className="lg:col-span-4 space-y-8">
+            {/* 1. Calendar */}
             <Card title="ตารางเวลาของฉัน">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+              <div className="space-y-6">
                 <div className="flex justify-center">
                   <ReactCalendar
-                    className="border rounded-xl p-4 bg-white shadow-sm w-full max-w-sm"
+                    className="border-0 rounded-2xl p-4 bg-gray-50/50 w-full"
                     locale="en-US"
                     value={selectedDate}
                     onClickDay={(value) => setSelectedDate(value)}
                     tileClassName={({ date, view }) => {
                       if (view === "month" && events.some(ev => ev.event_date && toLocalYMD(new Date(ev.event_date)) === toLocalYMD(date))) {
-                        return "bg-blue-200 text-blue-800 font-semibold rounded-lg";
+                        return "calendar-dot-highlight";
                       }
                       return null;
                     }}
                   />
                 </div>
-                <div className="bg-gray-50 rounded-xl p-4 border">
-                  <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-                    <AppWindow size={18} />
-                    การติววันที่ {selectedDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                <div className="bg-indigo-50/50 rounded-2xl p-5 border border-indigo-100">
+                  <h4 className="font-bold text-indigo-900 mb-3 flex items-center gap-2 text-sm">
+                    <Clock size={18} />
+                    ตารางสำหรับวันที่ {selectedDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
                   </h4>
                   {!dailyEvents.length ? (
-                    <div className="text-center py-8 text-gray-400 text-sm">
-                      ไม่มีการติวในวันนี้
+                    <div className="text-center py-6 text-indigo-300 text-xs">
+                      ไม่มีนัดติวในวันนี้
                     </div>
                   ) : (
-                    <ul className="space-y-2">
-                      {dailyEvents.map((ev) => (
-                        <li key={ev.event_id} className="border rounded-lg p-3 bg-white shadow-sm hover:shadow-md transition">
-                          <div className="font-semibold text-gray-800">{ev.title}</div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            📘 {ev.subject} — ⏰ {ev.event_time?.slice(0, 5)}<br />
-                            📍 {ev.location || "ไม่ระบุสถานที่"}
+                    <ul className="space-y-3">
+                      {dailyEvents.map((ev, index) => (
+                        <li key={ev.event_id || index} className="group bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-100 transition-all cursor-pointer">
+                          <div className="flex items-center gap-3">
+                            <div className="w-1 bg-indigo-500 rounded-full h-8" />
+                            <div className="flex-grow">
+                              <div className="text-sm font-black text-gray-900 group-hover:text-indigo-600 transition-colors">{ev.title}</div>
+                              <div className="flex items-center gap-3 mt-1">
+                                <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1">
+                                  <Clock size={10} /> {ev.event_time?.slice(0, 5)}
+                                </span>
+                                <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1">
+                                  <BookOpen size={10} /> {ev.subject}
+                                </span>
+                              </div>
+                            </div>
                           </div>
                         </li>
                       ))}
@@ -610,124 +844,72 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               </div>
             </Card>
 
-            <Card title="โพสต์ของฉัน">
-              {hiddenCount > 0 && (
-                <div className="mb-3 flex justify-end">
-                  <button
-                    onClick={() => setShowHiddenModal(true)}
-                    className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 transition"
-                  >
-                    <Archive size={14} /> รายการที่ซ่อนไว้ ({hiddenCount})
-                  </button>
+            {/* 2. Recommended Tutors */}
+            <Card title="ติวเตอร์แนะนำ" icon={Sparkles}>
+              {recsBasedOn && (
+                <div className="mb-4 px-3 py-1.5 bg-yellow-50 text-yellow-800 text-[10px] items-center gap-1.5 rounded-lg border border-yellow-100 inline-flex font-bold">
+                  💡 จาก: {recsBasedOn}
                 </div>
               )}
 
-              {!posts.length ? <Empty line="ยังไม่มีโพสต์" /> : (
-                <div className="space-y-4">
-                  {posts.filter((p) => !hiddenPostIds.has(p._id ?? p.id)).map((p) => {
-                    const id = p._id ?? p.id;
-                    return (
-                      <div key={id} className="relative border rounded-xl p-4 bg-white shadow-sm transition hover:shadow-md">
-                        <button onClick={() => handleToggleMenu(id)} className="absolute right-2 top-2 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-                          <MoreVertical size={18} />
-                        </button>
-                        <PostActionMenu
-                          open={openMenuFor === id}
-                          onClose={() => setOpenMenuFor(null)}
-                          onEdit={() => handleEditClick(p)}
-                          onHide={() => handleHidePost(id)}
-                          onDelete={() => handleAskDelete(id)}
-                          onReport={() => handleReportClick(p)}
-                          isOwner={true}
-                        />
-
-                        <div className="flex items-center gap-3">
-                          <img src={profile.avatarUrl || "/../blank_avatar.jpg"} alt="avatar" className="w-9 h-9 rounded-full object-cover" />
-                          <div>
-                            <div className="text-sm font-semibold">{profile.fullName}</div>
-                            <div className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleString("th-TH")}</div>
-                          </div>
+              <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2 space-y-3">
+                {!recommendedTutors.length ? <Empty line="ยังไม่มีติวเตอร์ที่เหมาะสม" /> : (
+                  recommendedTutors.map((tutor) => (
+                    <div key={tutor.tutor_post_id} className="group flex flex-col gap-3 p-4 bg-white border border-gray-100 rounded-2xl hover:border-indigo-100 cursor-pointer transition-all shadow-sm hover:shadow-md" onClick={() => window.location.href = `/post/${tutor.tutor_post_id}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <img src={tutor.profile_picture_url || '/../blank_avatar.jpg'} alt={tutor.subject} className="w-10 h-10 rounded-xl object-cover border border-gray-50" />
                         </div>
-                        <div className="mt-2 text-gray-800 whitespace-pre-line">{p.content}</div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 mt-3">
-                          <div>📘 {p.subject || "-"}</div>
-                          <div>📅 {p.meta?.preferred_days || "-"}</div>
-                          <div>⏰ {p.meta?.preferred_time || "-"}</div>
-                          <div>📍 {p.meta?.location || "-"}</div>
-                          <div>👥 {p.meta?.group_size || "-"}</div>
-                          <div>💸 {p.meta?.budget ? `฿${p.meta.budget}` : "-"}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-black text-gray-900 truncate uppercase group-hover:text-indigo-600 transition-colors">{tutor.subject}</div>
+                          <div className="text-[10px] text-gray-400 font-bold uppercase truncate">{tutor.name} {tutor.lastname || ''}</div>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
-          </div>
-
-          <div className="space-y-6 sticky top-6 self-start">
-
-            {/* ✅ ติวเตอร์แนะนำสำหรับคุณ (แก้ให้มี Scrollbar) */}
-            <Card title="ติวเตอร์แนะนำสำหรับคุณ" icon={Sparkles}>
-              {recsBasedOn && (
-                <div className="mb-3 px-3 py-1 bg-yellow-50 text-yellow-800 text-xs rounded-full border border-yellow-100 inline-block">
-                  💡 อ้างอิงจาก: {recsBasedOn}
-                </div>
-              )}
-
-              {/* 👇 เพิ่ม div ครอบตรงนี้ เพื่อจำกัดความสูงและใส่ Scrollbar 👇 */}
-              <div className="max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                {!recommendedTutors.length ? <Empty line="ยังไม่มีข้อมูลแนะนำ" /> : (
-                  <ul className="space-y-3">
-                    {recommendedTutors.map((tutor) => (
-                      <li key={tutor.tutor_post_id} className="flex items-start gap-3 p-3 border rounded-xl hover:bg-gray-50 cursor-pointer transition-all hover:shadow-sm" onClick={() => window.location.href = `/post/${tutor.tutor_post_id}`}>
-                        <img src={tutor.profile_picture_url || '/../blank_avatar.jpg'} alt={tutor.subject} className="w-10 h-10 rounded-full object-cover border flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-bold text-gray-800 truncate">{tutor.subject}</div>
-                          <div className="text-xs text-gray-500 flex items-center gap-1">
-                            <User size={10} /> {tutor.name} {tutor.lastname || ''}
-                          </div>
-                          <div className="mt-1 flex items-center gap-2">
-                            <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium whitespace-nowrap">฿{tutor.price}</span>
-                            {tutor.relevance_score && <span className="text-[10px] text-indigo-400 font-medium">Match {tutor.relevance_score}%</span>}
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
+                        <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg font-black italic">฿{tutor.price} <span className="text-[9px] font-normal not-italic">/ชม.</span></span>
+                        {tutor.relevance_score && <span className="text-[9px] text-indigo-400 font-bold uppercase tracking-tight">Match {tutor.relevance_score}%</span>}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </Card>
 
-            {/* ✅ Study Buddies Section */}
-            <Card title="เพื่อนติวที่น่าสนใจ" icon={Users}>
-              <div className="max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                {!buddies.length ? <Empty line="ยังไม่พบเพื่อนติวที่ตรงกัน" /> : (
-                  <ul className="space-y-3">
-                    {buddies.map((friend) => (
-                      <li key={friend.user_id} className="flex items-center gap-3 p-3 border rounded-xl hover:bg-orange-50 cursor-pointer transition-all">
-                        <img src={friend.profile_picture_url || '/../blank_avatar.jpg'} alt={friend.name} className="w-10 h-10 rounded-full object-cover border" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-bold text-gray-800">{friend.name} {friend.lastname}</div>
-                          <div className="text-xs text-gray-500 truncate">
-                            {friend.looking_for ? `กำลังหา: ${friend.looking_for}` : "กำลังมองหาเพื่อนติว"}
-                          </div>
-                          {friend.match_score > 0 && (
-                            <span className="text-[10px] text-orange-500 font-medium">
-                              Match {friend.match_score}% {friend.address ? `• ${friend.address}` : ""}
-                            </span>
-                          )}
+            {/* 3. Study Buddies */}
+            <Card title="เพื่อนติวที่แนะนำ" icon={Users}>
+              <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2 space-y-3">
+                {!buddies.length ? <Empty line="ยังไม่พบเพื่อนที่ถูกใจ" /> : (
+                  buddies.map((friend) => (
+                    <div key={friend.user_id} className="group p-4 bg-white border border-gray-100 rounded-2xl hover:border-orange-100 cursor-pointer transition-all shadow-sm hover:shadow-md">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <img src={friend.profile_picture_url || '/../blank_avatar.jpg'} alt={friend.name} className="w-10 h-10 rounded-xl object-cover border border-gray-50" />
                         </div>
-                        <button className="px-3 py-1 bg-orange-100 text-orange-600 rounded-lg text-xs font-bold hover:bg-orange-200">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-black text-gray-900 truncate uppercase group-hover:text-orange-600 transition-colors">{friend.name} {friend.lastname}</div>
+                          <div className="text-[10px] text-gray-400 font-bold truncate">
+                            {friend.looking_for || "กำลังมองหาเพื่อนติว"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-50">
+                        {friend.match_score > 0 && (
+                          <div className="flex items-center gap-1">
+                            <Sparkles size={10} className="text-orange-400" />
+                            <span className="text-[10px] text-orange-500 font-black uppercase tracking-tight">
+                              Match {friend.match_score}%
+                            </span>
+                          </div>
+                        )}
+                        <button className="px-4 py-1.5 bg-orange-50 text-orange-600 rounded-xl text-[10px] font-black hover:bg-orange-600 hover:text-white transition-all uppercase">
                           ติดต่อ
                         </button>
-                      </li>
-                    ))}
-                  </ul>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </Card>
-
           </div>
         </div>
       </div>

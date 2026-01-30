@@ -23,7 +23,7 @@ function UserProfilePage({ userId, onBack }) {
             // 1. ดึงข้อมูลพื้นฐาน
             let res = await fetch(`${API_BASE}/api/profile/${userId}`);
             if (!res.ok) throw new Error("ไม่พบข้อมูลผู้ใช้นี้");
-            
+
             let userData = await res.json();
 
             const realRole = (userData.type || userData.role || '').toLowerCase();
@@ -42,10 +42,10 @@ function UserProfilePage({ userId, onBack }) {
             userData.displayName = `${userData.name || userData.first_name} ${userData.lastname || userData.last_name}`;
 
             if (typeof userData.education === 'string') {
-                try { userData.education = JSON.parse(userData.education); } catch {}
+                try { userData.education = JSON.parse(userData.education); } catch { }
             }
             if (typeof userData.teaching_experience === 'string') {
-                try { userData.teaching_experience = JSON.parse(userData.teaching_experience); } catch {}
+                try { userData.teaching_experience = JSON.parse(userData.teaching_experience); } catch { }
             }
 
             setUser(userData);
@@ -57,7 +57,7 @@ function UserProfilePage({ userId, onBack }) {
 
             const list1 = (Array.isArray(postsS) ? postsS : []).map(p => ({ ...p, post_type: 'student', createdAt: p.createdAt || p.created_at }));
             const list2 = (Array.isArray(postsT) ? postsT : []).map(p => ({ ...p, post_type: 'tutor', createdAt: p.createdAt || p.created_at }));
-            
+
             setUserPosts([...list1, ...list2].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
 
         } catch (err) {
@@ -90,7 +90,7 @@ function UserProfilePage({ userId, onBack }) {
     const latestEducation = useMemo(() => {
         if (!user) return "-"; // เพิ่มกัน Error
         const isTutor = user.role === 'tutor';
-        
+
         if (!isTutor || !Array.isArray(user.education) || user.education.length === 0) return "-";
 
         // Clone อาร์เรย์มา Sort
@@ -120,12 +120,12 @@ function UserProfilePage({ userId, onBack }) {
             </div>
 
             <div className="max-w-5xl mx-auto px-4 mt-8">
-                
+
                 {/* 1. Header Profile */}
                 <div className="flex flex-col md:flex-row gap-8 items-start mb-8">
                     <div className="flex-shrink-0 mx-auto md:mx-0 relative">
-                        <img 
-                            src={user.profile_picture_url || "/../blank_avatar.jpg"} 
+                        <img
+                            src={user.profile_picture_url || "/../blank_avatar.jpg"}
                             className="w-32 h-32 md:w-40 md:h-40 rounded-full object-cover border-4 border-white shadow-lg"
                             alt="Profile"
                         />
@@ -140,10 +140,10 @@ function UserProfilePage({ userId, onBack }) {
                                 {user.displayName}
                                 {user.nickname && <span className="text-xl text-gray-500 font-medium">({user.nickname})</span>}
                             </h1>
-                            
+
                             {isTutor && (
                                 <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-yellow-50 border border-yellow-100 text-yellow-700 font-bold text-sm">
-                                    <Star size={16} className="fill-yellow-500 text-yellow-500" /> 
+                                    <Star size={16} className="fill-yellow-500 text-yellow-500" />
                                     {user.rating || "0.0"} ({reviews.length} รีวิว)
                                 </div>
                             )}
@@ -161,12 +161,12 @@ function UserProfilePage({ userId, onBack }) {
 
                 {/* 2. Contact Grid (Interactive Links) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 text-sm">
-                    
+
                     {/* Link: ที่อยู่ */}
-                    <a 
-                        href={user.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(user.address)}` : "#"} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
+                    <a
+                        href={user.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(user.address)}` : "#"}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className={`flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl transition-all ${user.address ? "hover:border-indigo-300 hover:shadow-md cursor-pointer" : "cursor-default opacity-80"}`}
                         onClick={(e) => !user.address && e.preventDefault()}
                     >
@@ -180,8 +180,8 @@ function UserProfilePage({ userId, onBack }) {
                     </a>
 
                     {/* Link: เบอร์โทร */}
-                    <a 
-                        href={user.phone ? `tel:${user.phone}` : "#"} 
+                    <a
+                        href={user.phone ? `tel:${user.phone}` : "#"}
                         className={`flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl transition-all ${user.phone ? "hover:border-green-300 hover:shadow-md cursor-pointer" : "cursor-default opacity-80"}`}
                         onClick={(e) => !user.phone && e.preventDefault()}
                     >
@@ -195,8 +195,8 @@ function UserProfilePage({ userId, onBack }) {
                     </a>
 
                     {/* Link: อีเมล */}
-                    <a 
-                        href={user.email ? `mailto:${user.email}` : "#"} 
+                    <a
+                        href={user.email ? `mailto:${user.email}` : "#"}
                         className={`flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl transition-all ${user.email ? "hover:border-blue-300 hover:shadow-md cursor-pointer" : "cursor-default opacity-80"}`}
                         onClick={(e) => !user.email && e.preventDefault()}
                     >
@@ -233,9 +233,8 @@ function UserProfilePage({ userId, onBack }) {
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
-                                className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${
-                                    activeTab === tab ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                                }`}
+                                className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${activeTab === tab ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                                    }`}
                             >
                                 {tab === 'posts' && `โพสต์ประกาศ (${userPosts.length})`}
                                 {tab === 'reviews' && `รีวิว (${reviews.length})`}
@@ -245,7 +244,7 @@ function UserProfilePage({ userId, onBack }) {
                     </div>
 
                     <div className="p-6 md:p-8 bg-gray-50/30">
-                        
+
                         {/* TAB: POSTS */}
                         {activeTab === 'posts' && (
                             <div className="space-y-4">
@@ -264,10 +263,10 @@ function UserProfilePage({ userId, onBack }) {
                                             <div key={p.id || p._id || p.student_post_id} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-all">
                                                 <div className="flex items-center justify-between mb-3">
                                                     <div className="flex items-center gap-3">
-                                                        <img 
-                                                            src={user.profile_picture_url || "/../blank_avatar.jpg"} 
-                                                            alt="avatar" 
-                                                            className="w-10 h-10 rounded-full object-cover border border-gray-100" 
+                                                        <img
+                                                            src={user.profile_picture_url || "/../blank_avatar.jpg"}
+                                                            alt="avatar"
+                                                            className="w-10 h-10 rounded-full object-cover border border-gray-100"
                                                         />
                                                         <div>
                                                             <div className="font-bold text-gray-900 text-sm flex items-center gap-2">
@@ -334,22 +333,46 @@ function UserProfilePage({ userId, onBack }) {
 
                         {/* TAB: REVIEWS */}
                         {activeTab === 'reviews' && (
-                            <div className="grid md:grid-cols-2 gap-4">
+                            <div className="grid md:grid-cols-2 gap-5">
                                 {reviews.length === 0 ? (
-                                    <div className="col-span-full text-center py-20 text-gray-400">ยังไม่มีรีวิว</div>
+                                    <div className="col-span-full flex flex-col items-center justify-center py-16 text-gray-400 bg-white/50 rounded-3xl border-2 border-dashed border-gray-200">
+                                        <div className="bg-gray-100 p-4 rounded-full mb-3"><Star size={32} className="text-gray-300" /></div>
+                                        <p>ยังไม่มีรีวิวในขณะนี้</p>
+                                    </div>
                                 ) : (
                                     reviews.map((r, i) => (
-                                        <div key={i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-                                            <div className="flex items-center gap-3 mb-3">
-                                                <img src={r.reviewer?.avatar || "/../blank_avatar.jpg"} className="w-8 h-8 rounded-full bg-gray-200 object-cover" alt="" />
-                                                <div>
-                                                    <div className="font-bold text-sm text-gray-900">{r.reviewer?.name || "ผู้ใช้งาน"}</div>
-                                                    <div className="flex text-yellow-400">
-                                                        {[...Array(5)].map((_, i) => <Star key={i} size={12} className={i < r.rating ? "fill-current" : "text-gray-200"} />)}
+                                        <div key={i} className="relative bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 group overflow-hidden">
+                                            {/* Decorative Quote Icon */}
+                                            <div className="absolute top-2 right-4 text-9xl text-gray-50 opacity-[0.03] font-serif select-none pointer-events-none">"</div>
+
+                                            <div className="relative z-10">
+                                                <div className="flex justify-between items-start mb-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="relative">
+                                                            <img src={r.reviewer?.avatar || "/default-avatar.png"} className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-md" alt="" />
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-bold text-gray-900 text-sm">{r.reviewer?.name || "ผู้ใช้งาน"}</div>
+                                                            <div className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</div>
+                                                        </div>
                                                     </div>
+
+                                                    {/* Subject Badge แบบใหม่ */}
+                                                    {r.subject && (
+                                                        <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-gradient-to-r from-blue-50 to-indigo-50 text-indigo-600 border border-indigo-100">
+                                                            {r.subject}
+                                                        </span>
+                                                    )}
                                                 </div>
+
+                                                <div className="flex items-center gap-1 mb-3">
+                                                    {[...Array(5)].map((_, i) => (
+                                                        <Star key={i} size={14} className={`${i < r.rating ? "fill-amber-400 text-amber-400" : "fill-gray-100 text-gray-200"}`} />
+                                                    ))}
+                                                </div>
+
+                                                <p className="text-sm text-gray-600 leading-relaxed font-medium">"{r.comment}"</p>
                                             </div>
-                                            <p className="text-sm text-gray-600">"{r.comment}"</p>
                                         </div>
                                     ))
                                 )}

@@ -1083,18 +1083,20 @@ function MyPost({ setPostsCache, onViewProfile }) {
                           ) : (
                             // 2. ถ้ายังไม่เคยกด
                             <button
-                              disabled={busy || isExpired || (isFull && !isTutor)}
+                              disabled={busy || isExpired || (isFull && !isTutor) || (isTutor && post.has_tutor)}
                               onClick={() => handleJoin(post)}
                               className={`px-4 py-2 rounded-xl text-white ${isExpired ? "bg-gray-400 cursor-not-allowed" :
                                 (isFull && !isTutor) ? "bg-gray-400 cursor-not-allowed" :
-                                  isTutor ? "bg-indigo-600 hover:bg-indigo-700" : // สีครามสำหรับติวเตอร์
-                                    "bg-purple-600 hover:bg-purple-700"
+                                  (isTutor && post.has_tutor) ? "bg-indigo-300 cursor-not-allowed" : // สีจางๆ เมื่อมีติวเตอร์แล้ว
+                                    isTutor ? "bg-indigo-600 hover:bg-indigo-700" : // สีครามสำหรับติวเตอร์
+                                      "bg-purple-600 hover:bg-purple-700"
                                 }`}
                             >
                               {isExpired ? "หมดเวลา" :
                                 (isFull && !isTutor) ? "เต็มแล้ว" :
-                                  busy ? "..." :
-                                    (isTutor ? "ต้องการสอน" : "Join")}
+                                  (isTutor && post.has_tutor) ? "ได้ติวเตอร์แล้ว" :
+                                    busy ? "..." :
+                                      (isTutor ? "ต้องการสอน" : "Join")}
                             </button>
                           )
                         )

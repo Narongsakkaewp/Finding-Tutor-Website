@@ -30,11 +30,11 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user?.user_id,          
+          userId: user?.user_id,
           userName: (user?.name || "") + " " + (user?.lastname || ""),
-          userType: userType,            
-          reason: finalReason,           
-          detail: otherReason || "-"     
+          userType: userType,
+          reason: finalReason,
+          detail: otherReason || "-"
         })
       });
 
@@ -42,7 +42,7 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
       if (!res.ok) throw new Error(data.message);
 
       alert("ลบบัญชีเรียบร้อยแล้ว ขอบคุณที่เคยใช้งานบริการของเราครับ");
-      onLogout(); 
+      onLogout();
 
     } catch (err) {
       alert("เกิดข้อผิดพลาด: " + err.message);
@@ -53,9 +53,9 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      
+
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-        
+
         {/* Header สีแดง */}
         <div className="bg-rose-50 px-6 py-4 border-b border-rose-100 flex justify-between items-center">
           <div className="flex items-center gap-3 text-rose-700">
@@ -70,13 +70,13 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
             // --- Step 1: ถามเหตุผล ---
             <div className="space-y-4">
               <p className="text-gray-600 font-medium">เราเสียใจที่คุณจะไป 😢 ช่วยบอกเหตุผลให้เราทราบเพื่อนำไปปรับปรุงได้ไหมครับ?</p>
-              
+
               <div className="space-y-2">
                 {reasons.map((r) => (
                   <label key={r} className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${reason === r ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-gray-200 hover:bg-gray-50'}`}>
-                    <input 
-                      type="radio" 
-                      name="reason" 
+                    <input
+                      type="radio"
+                      name="reason"
                       className="accent-rose-600 w-4 h-4 mr-3"
                       value={r}
                       checked={reason === r}
@@ -88,7 +88,7 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
               </div>
 
               {reason === "อื่นๆ" && (
-                <textarea 
+                <textarea
                   className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-rose-200 text-sm"
                   placeholder="โปรดระบุสาเหตุ..."
                   rows="2"
@@ -99,9 +99,9 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
 
               <div className="pt-4 flex justify-end gap-3">
                 <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-xl">ยกเลิก</button>
-                <button 
+                <button
                   disabled={!reason}
-                  onClick={() => setStep(2)} 
+                  onClick={() => setStep(2)}
                   className="px-6 py-2 bg-rose-600 text-white font-bold rounded-xl shadow-lg hover:bg-rose-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all"
                 >
                   ต่อไป
@@ -118,15 +118,15 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
               <p className="text-sm text-gray-500 bg-gray-50 p-4 rounded-xl border border-gray-100">
                 การดำเนินการนี้ไม่สามารถย้อนกลับได้ ข้อมูลโปรไฟล์, โพสต์, และประวัติการใช้งานทั้งหมดของคุณจะถูกลบถาวร
               </p>
-              
+
               <div className="pt-4 flex justify-center gap-3 w-full">
-                <button 
-                  onClick={() => setStep(1)} 
+                <button
+                  onClick={() => setStep(1)}
                   className="flex-1 px-4 py-3 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium"
                 >
                   ย้อนกลับ
                 </button>
-                <button 
+                <button
                   onClick={handleDelete}
                   disabled={loading}
                   className="flex-[2] px-4 py-3 bg-rose-600 text-white font-bold rounded-xl shadow-lg hover:bg-rose-700 transition-all flex items-center justify-center gap-2"

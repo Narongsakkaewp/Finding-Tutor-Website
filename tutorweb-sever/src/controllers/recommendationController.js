@@ -63,7 +63,7 @@ const calculateSmartScore = (keyword, targetSubject, targetPrice, targetLocation
         // 1. Subject Score (เน้นความแม่นยำ)
         if (cleanKeyword === cleanTarget) {
             score += WEIGHTS.SUBJECT_EXACT + 20; // ตรงเป๊ะ 100%
-        } 
+        }
         else if (new RegExp(`(?:^|\\s)${escapedKw}(?:$|\\s)`, 'i').test(cleanTarget)) {
             score += WEIGHTS.SUBJECT_EXACT; // ตรงแบบเต็มคำ (Word Boundary)
         }
@@ -112,16 +112,30 @@ exports.getRecommendations = async (req, res) => {
         const [candidates] = await pool.query(`
             SELECT tp.*, r.name, r.lastname, r.email, 
                    tpro.profile_picture_url, tpro.phone, tpro.nickname, 
-                   tpro.education, tpro.teaching_experience, tpro.about_me AS profile_bio
+                   tpro.education, tpro.teaching_experience, tpro.about_me AS profile_bio,
+                   COALESCE(rv.avg_rating, 0) AS avg_rating,
+                   COALESCE(rv.review_count, 0) AS review_count
             FROM tutor_posts tp
             LEFT JOIN register r ON tp.tutor_id = r.user_id
             LEFT JOIN tutor_profiles tpro ON tp.tutor_id = tpro.user_id
+            LEFT JOIN (
+                SELECT tutor_id, AVG(rating) as avg_rating, COUNT(*) as review_count
+                FROM reviews
+                GROUP BY tutor_id
+            ) rv ON tp.tutor_id = rv.tutor_id
             ORDER BY tp.created_at DESC LIMIT 100
         `);
 
         // ถ้าเป็น Guest หรือไม่มี UserID ให้ส่งกลับเลยแบบเรียงตามเวลา
         if (!userId || userId === '0') {
-            return res.json({ items: candidates.slice(0, 24), based_on: "" });
+            return res.json({
+                items: candidates.slice(0, 24).map(c => ({
+                    ...c,
+                    rating: Number(c.avg_rating || 0),
+                    reviews: Number(c.review_count || 0)
+                })),
+                based_on: ""
+            });
         }
 
         // 2. รวบรวมความสนใจ (Interests)
@@ -136,7 +150,14 @@ exports.getRecommendations = async (req, res) => {
 
         // ถ้าไม่มีความสนใจเลย -> ส่งแบบล่าสุดกลับไป
         if (allInterests.length === 0) {
-            return res.json({ items: candidates.slice(0, 12), based_on: "โพสต์ล่าสุด" });
+            return res.json({
+                items: candidates.slice(0, 12).map(c => ({
+                    ...c,
+                    rating: Number(c.avg_rating || 0),
+                    reviews: Number(c.review_count || 0)
+                })),
+                based_on: "โพสต์ล่าสุด"
+            });
         }
 
         // 3. ให้คะแนน (Scoring)
@@ -155,24 +176,30 @@ exports.getRecommendations = async (req, res) => {
                 }
             });
 
-            return { ...tutor, relevance_score: maxScore, matched_topic: bestMatchReason };
+            return {
+                ...tutor,
+                relevance_score: maxScore,
+                matched_topic: bestMatchReason,
+                rating: Number(tutor.avg_rating || 0),
+                reviews: Number(tutor.review_count || 0)
+            };
         });
 
         // 4. แยกกลุ่ม "ตรงใจ" (Recommended)
         // กรองเอาเฉพาะที่มีคะแนน > 0 (หรือกำหนด Threshold ต่ำๆ เช่น 10 เพื่อความเข้มข้น)
         let recommended = scoredTutors
-            .filter(t => t.relevance_score > 10) 
+            .filter(t => t.relevance_score > 10)
             .sort((a, b) => b.relevance_score - a.relevance_score);
 
         const topMatch = recommended.length > 0 ? recommended[0].matched_topic : null;
 
         // 🔥 5. ระบบเติมเต็ม (Smart Fill): ถ้าได้ผลลัพธ์น้อยกว่า 6 ให้หาอย่างอื่นมาเติม
-        const MIN_DISPLAY = 6; 
-        
+        const MIN_DISPLAY = 6;
+
         if (recommended.length < MIN_DISPLAY) {
             // หา ID ที่มีอยู่แล้ว เพื่อไม่ให้ซ้ำ
             const existingIds = recommended.map(t => t.tutor_post_id);
-            
+
             // ดึงโพสต์ที่เหลือ (ที่คะแนนน้อย หรือเป็น 0) มาเติม
             const fillers = candidates
                 .filter(t => !existingIds.includes(t.tutor_post_id)) // ต้องไม่ซ้ำกับที่มีแล้ว
@@ -210,25 +237,25 @@ exports.getStudentRequestsForTutor = async (req, res) => {
         let tutorRate = 0;
         let tutorAddr = "";
 
-        const [profile] = await pool.query('SELECT can_teach_subjects, hourly_rate, address FROM tutor_profiles WHERE user_id = ?', [userId]);
+        const [profile] = await pool.query('SELECT can_teach_subjects, address FROM tutor_profiles WHERE user_id = ?', [userId]);
         if (profile.length) {
-            tutorRate = Number(profile[0].hourly_rate) || 0;
+            tutorRate = 0; // Removed hourly_rate from profile
             tutorAddr = profile[0].address || "";
             if (profile[0].can_teach_subjects) {
-                tutorSkills.push(...profile[0].can_teach_subjects.split(',').map(s=>s.trim()));
+                tutorSkills.push(...profile[0].can_teach_subjects.split(',').map(s => s.trim()));
             }
         }
 
         const [myPosts] = await pool.query('SELECT subject FROM tutor_posts WHERE tutor_id = ? ORDER BY created_at DESC LIMIT 5', [userId]);
         myPosts.forEach(p => tutorSkills.push(p.subject));
-        
+
         // ตัดคำซ้ำ
         tutorSkills = [...new Set(tutorSkills.filter(s => s))];
 
         if (tutorSkills.length === 0) {
             // Fallback
-             const [latest] = await pool.query(`SELECT sp.*, r.name, r.lastname, spro.profile_picture_url FROM student_posts sp LEFT JOIN register r ON sp.student_id = r.user_id LEFT JOIN student_profiles spro ON sp.student_id = spro.user_id ORDER BY sp.created_at DESC LIMIT 30`);
-             return res.json({ items: latest, based_on: "โพสต์ล่าสุด (กรุณากรอกวิชาที่สอน)" });
+            const [latest] = await pool.query(`SELECT sp.*, r.name, r.lastname, spro.profile_picture_url FROM student_posts sp LEFT JOIN register r ON sp.student_id = r.user_id LEFT JOIN student_profiles spro ON sp.student_id = spro.user_id ORDER BY sp.created_at DESC LIMIT 30`);
+            return res.json({ items: latest, based_on: "โพสต์ล่าสุด (กรุณากรอกวิชาที่สอน)" });
         }
 
         // 2. ดึง Student Posts มาเทียบ
@@ -243,12 +270,12 @@ exports.getStudentRequestsForTutor = async (req, res) => {
         // 3. Scoring (ใช้ Smart Logic แบบเดียวกัน)
         const scoredPosts = candidates.map(post => {
             let maxScore = 0;
-            
+
             tutorSkills.forEach(skill => {
                 // ใช้ฟังก์ชัน calculateSmartScore ตัวเดียวกับข้างบน เพื่อความฉลาดเท่ากัน
                 // Note: สลับตำแหน่ง price/budget เล็กน้อยตามบริบท
                 let score = calculateSmartScore(skill, post.subject, post.budget, post.location, tutorRate, tutorAddr);
-                
+
                 if (score > maxScore) maxScore = score;
             });
 
@@ -281,7 +308,7 @@ exports.getStudentRequestsForTutor = async (req, res) => {
 
 exports.getRecommendedCourses = async (req, res) => {
     // ... (ใช้โค้ดเดิมจาก Turn 18 ได้เลยครับ ส่วนนี้ไม่มีปัญหาเรื่อง Time Decay) ...
-     try {
+    try {
         const userId = req.query.user_id;
         const pool = req.db;
         let gradeLevel = "";

@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
-import { Edit, Star, MapPin, Phone, Trash2, EyeOff, Mail, GraduationCap, AppWindow, X, Archive, MoreVertical, Eye, Save, Flag } from "lucide-react";
+import { Edit, Star, MapPin, Phone, Trash2, EyeOff, Mail, GraduationCap, AppWindow, X, Archive, MoreVertical, Eye, Save, Flag, History, BookOpen, Clock, Calendar, Briefcase, Award, ChevronDown, ChevronUp } from "lucide-react";
 import LongdoLocationPicker from './LongdoLocationPicker';
 import ReportModal from "./ReportModal";
 
@@ -31,6 +31,14 @@ const toLocalYMD = (date) => {
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
 };
+
+const postGradeLevelOptions = [
+  { value: "ประถมศึกษา", label: "ประถมศึกษา" },
+  { value: "มัธยมต้น", label: "มัธยมศึกษาตอนต้น (ม.1-ม.3)" },
+  { value: "มัธยมปลาย", label: "มัธยมศึกษาตอนปลาย (ม.4-ม.6)" },
+  { value: "ปริญญาตรี", label: "ปริญญาตรี" },
+  { value: "บุคคลทั่วไป", label: "บุคคลทั่วไป" },
+];
 
 /* ---------- Subcomponents ---------- */
 
@@ -243,6 +251,31 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
     const [updating, setUpdating] = useState(false);
     const [reportingPost, setReportingPost] = useState(null);
 
+    // ✅ Tabs State
+    const [activeTab, setActiveTab] = useState('posts'); // 'posts' | 'history'
+
+    // ✅ Interactive Chips State
+    const [expandedEdu, setExpandedEdu] = useState(new Set());
+    const [expandedExp, setExpandedExp] = useState(new Set());
+
+    const toggleEdu = (idx) => {
+        setExpandedEdu(prev => {
+            const next = new Set(prev);
+            if (next.has(idx)) next.delete(idx);
+            else next.add(idx);
+            return next;
+        });
+    };
+
+    const toggleExp = (idx) => {
+        setExpandedExp(prev => {
+            const next = new Set(prev);
+            if (next.has(idx)) next.delete(idx);
+            else next.add(idx);
+            return next;
+        });
+    };
+
     // โหลด Hidden Posts จาก localStorage
     const [hiddenPostIds, setHiddenPostIds] = useState(() => {
         try {
@@ -336,6 +369,22 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
         });
         setDailyEvents(matches);
     }, [selectedDate, events]);
+
+    // ✅ Process Teaching History from Events
+    const teachingHistory = useMemo(() => {
+        return events.filter(ev =>
+            ev.source === 'tutor_offer_accepted' ||
+            ev.source === 'tutor_teaching_self_post' ||
+            (ev.source === 'calendar' && (ev.title?.startsWith('สอน') || ev.title?.startsWith('ติว')))
+        ).map(ev => {
+            const isSelfPost = ev.source === 'tutor_teaching_self_post' || (ev.source === 'calendar' && ev.title?.toLowerCase().includes('สอนพิเศษ (ของคุณ)'));
+            return {
+                ...ev,
+                typeLabel: isSelfPost ? 'สอนพิเศษ (ประกาศของคุณ)' : 'สอนพิเศษ (ยื่นข้อเสนอ)',
+                icon: isSelfPost ? BookOpen : GraduationCap
+            };
+        });
+    }, [events]);
 
     const handleToggleReviews = () => {
         if (visibleReviews < reviews.length) {
@@ -465,6 +514,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
         setConfirm({ open: false, id: null });
 
         const before = [...tutorPosts];
+        // อัปเดต UI ก่อนเพื่อความลื่นไหล (Optimistic Update)
         const after = tutorPosts.filter((p) => p._id !== id);
         setTutorPosts(after);
 
@@ -472,15 +522,19 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
             const res = await fetch(`http://localhost:5000/api/tutor-posts/${id}`, {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
+                // 🔥 แก้ตรงนี้: ส่ง user_id ไปด้วย เพื่อให้หลังบ้านยอมให้ลบ
+                body: JSON.stringify({ user_id: currentUser.user_id })
             });
 
             if (!res.ok) {
-                throw new Error("Failed to delete");
+                // ถ้าลบไม่สำเร็จ ให้เอาข้อมูลเดิมกลับมา และแจ้งเตือน
+                const errorData = await res.json();
+                throw new Error(errorData.message || "Failed to delete");
             }
         } catch (e) {
             console.error(e);
-            setTutorPosts(before);
-            alert("เกิดข้อผิดพลาดในการลบโพสต์");
+            setTutorPosts(before); // คืนค่าเดิมถ้า Error
+            alert(`เกิดข้อผิดพลาด: ${e.message}`);
         }
     };
 
@@ -489,325 +543,594 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
 
     const hiddenCount = tutorPosts.filter(p => hiddenPostIds.has(p._id)).length;
 
-    return (<div className="min-h-screen bg-gray-50">
-        <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
-            {/* Header Profile */}
-            <div className="bg-white rounded-3xl shadow-sm border p-6">
-                <div className="flex flex-col md:flex-row md:items-center gap-6">
-                    <div className="flex items-start gap-5 flex-grow">
-                        <img src={profile.avatarUrl} alt={profile.fullName} className="h-28 w-28 rounded-2xl object-cover ring-4 ring-white shadow-md cursor-pointer hover:opacity-80 transition" onClick={() => setIsAvatarModalOpen(true)} />
-                        <div>
-                            <h1 className="flex items-center text-2xl md:text-3xl font-bold tracking-tight">
-                                {profile.fullName}
-                                {profile.nickname && <span className="text-gray-500 font-medium ml-2">({profile.nickname})</span>}
-                            </h1>
-                            <p className="text-gray-600 mt-1">
-                                {profile.education && profile.education.length > 0 && (
-                                    <div className="mt-3 border-t pt-3">
-                                        <h4 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
-                                            <GraduationCap size={16} /> ประวัติการศึกษา:
-                                        </h4>
-                                        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                                            {profile.education.map((edu, index) => (
-                                                <li key={index}>{edu.degree || 'N/A'} ที่ {edu.institution || 'N/A'} {edu.major && ` (สาขา ${edu.major})`}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                            </p>
-                            <div className="mt-3 border-t pt-3">
-                                <h4 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2"><AppWindow size={16} /> เกี่ยวกับฉัน:</h4>
-                                <p className="text-sm text-gray-700 whitespace-pre-line pl-6">{profile.bio}</p>
-                            </div>
-                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                                <a href={profile.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.address)}` : "#"} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 border rounded-lg p-2 bg-gray-50 transition-colors ${profile.address ? "hover:bg-gray-100 cursor-pointer" : "cursor-default"}`} onClick={(e) => !profile.address && e.preventDefault()}>
-                                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><MapPin size={16} className="text-gray-600" /></div>
-                                    <span className="text-gray-700 truncate">{profile.address || "ยังไม่ระบุที่อยู่"}</span>
-                                </a>
-                                <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50 hover:bg-gray-100">
-                                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><Phone size={16} className="text-gray-600" /></div>
-                                    <a href={`tel:${profile.phone}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">{profile.phone || "ยังไม่ระบุเบอร์"}</a>
-                                </div>
-                                <div className="flex items-center gap-2 border rounded-lg p-2 bg-gray-50 hover:bg-gray-100">
-                                    <div className="flex-shrink-0 bg-gray-200 rounded p-1.5"><Mail size={16} className="text-gray-600" /></div>
-                                    <a href={`mailto:${profile.email}`} className="text-gray-700 truncate hover:text-blue-600 hover:underline">{profile.email || "ยังไม่ระบุอีเมล"}</a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="md:ml-auto flex flex-col gap-3 items-end self-end md:self-start">
-                        <button onClick={onEditProfile} className="flex w-full justify-center items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium">
-                            แก้ไขโปรไฟล์
-                        </button>
-                        <div className="rounded-xl border bg-white px-3 py-2 text-center w-full">
-                            <div className="text-xs text-gray-500">โพสต์ทั้งหมด</div>
-                            <div className="text-lg font-semibold">{String(tutorPosts.length)}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    return (
+        <div className="min-h-screen bg-[#F8FAFC]">
+            {/* --- Premium Header Section --- */}
+            <div className="relative overflow-hidden bg-white border-b">
+                {/* Decorative Background Elements */}
+                <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-indigo-50/50 to-transparent pointer-events-none" />
+                <div className="absolute -top-24 -left-20 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-
-                {/* 1. ตารางสอน */}
-                <div className="lg:col-span-2 w-full">
-                    <Card title="ตารางสอนของฉัน">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                            <div className="flex justify-center">
-                                <ReactCalendar
-                                    className="border rounded-xl p-4 bg-white shadow-sm w-full max-w-sm"
-                                    locale="en-US"
-                                    value={selectedDate}
-                                    onClickDay={(value) => setSelectedDate(value)}
-                                    tileClassName={({ date, view }) => {
-                                        if (view === "month") {
-                                            const tileDateStr = toLocalYMD(date);
-                                            if (events.some((ev) => {
-                                                if (!ev.event_date) return false;
-                                                const d = new Date(ev.event_date);
-                                                return toLocalYMD(d) === tileDateStr;
-                                            })) {
-                                                return "bg-blue-200 text-blue-800 font-semibold rounded-lg";
-                                            }
-                                        }
-                                        return null;
-                                    }}
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-8 relative z-10">
+                    <div className="flex flex-col lg:flex-row gap-8 items-start">
+                        {/* Avatar Section */}
+                        <div className="relative shrink-0 group">
+                            <div className="absolute -inset-1.5 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-[2.5rem] blur opacity-25 group-hover:opacity-40 transition duration-500" />
+                            <div className="relative">
+                                <img
+                                    src={profile.avatarUrl}
+                                    alt={profile.fullName}
+                                    className="h-40 w-40 rounded-[2.2rem] object-cover ring-4 ring-white shadow-2xl cursor-pointer hover:scale-[1.02] transition-all duration-300"
+                                    onClick={() => setIsAvatarModalOpen(true)}
                                 />
                             </div>
-                            {/* ✅ ปรับ UI ส่วนนี้ให้เหมือนของนักเรียน (กล่องสีเทา + Header) */}
-                            <div className="bg-gray-50 rounded-xl p-4 border h-full">
-                                <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-                                    <AppWindow size={18} />
-                                    ตารางสอนวันที่ {selectedDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                                </h4>
-                                {!dailyEvents.length ? (
-                                    <div className="text-center py-8 text-gray-400 text-sm">
-                                        ไม่มีการติวในวันนี้
-                                    </div>
-                                ) : (
-                                    <ul className="space-y-2">
-                                        {dailyEvents.map((ev, index) => (
-                                            <li key={ev.event_id || index} className="border rounded-lg p-3 bg-white shadow-sm hover:shadow-md transition">
-                                                <div className="font-semibold text-gray-800">{ev.title}</div>
-                                                <div className="text-sm text-gray-600 mt-1">
-                                                    📘 {ev.subject} — ⏰ {ev.event_time?.slice(0, 5)}<br />
-                                                    📍 {ev.location || "ไม่ระบุสถานที่"}
+                        </div>
+
+                        {/* Info Section */}
+                        <div className="flex-grow space-y-6">
+                            <div className="space-y-2">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <h1 className="text-4xl font-black text-gray-900 tracking-tight">
+                                        {profile.fullName}
+                                        {profile.nickname && (
+                                            <span className="text-gray-900 font-medium ml-3 text-2xl">
+                                                ({profile.nickname})
+                                            </span>
+                                        )}
+                                    </h1>
+                                </div>
+
+                                {profile.education && profile.education.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 pt-1">
+                                        {profile.education.map((edu, idx) => {
+                                            const isExpanded = expandedEdu.has(idx);
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => toggleEdu(idx)}
+                                                    className={`flex flex-col gap-1 px-3 py-1.5 rounded-xl border transition-all duration-300 cursor-pointer ${isExpanded ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-gray-50 border-gray-100 hover:border-indigo-100 text-gray-600'}`}
+                                                >
+                                                    <div className="flex items-center gap-2 text-sm">
+                                                        <Award size={14} className={isExpanded ? 'text-indigo-600' : 'text-indigo-500'} />
+                                                        <span className={`font-black tracking-tight ${isExpanded ? 'text-indigo-900' : 'text-gray-700'}`}>{edu.institution}</span>
+                                                        <span className="text-gray-400">•</span>
+                                                        <span className={isExpanded ? 'text-indigo-700' : ''}>{edu.degree}</span>
+                                                        {isExpanded ? <ChevronUp size={12} className="ml-1 text-indigo-400" /> : <ChevronDown size={12} className="ml-1 text-gray-400" />}
+                                                    </div>
+                                                    {isExpanded && (
+                                                        <div className="animate-in fade-in slide-in-from-top-1 duration-200 pl-6 pb-1">
+                                                            {(edu.major || edu.faculty) && (
+                                                                <div className="text-[12px] text-blue-800 font-bold">
+                                                                    {edu.faculty && `${edu.faculty}`}
+                                                                    {edu.faculty && edu.major && " • "}
+                                                                    {edu.major && `${edu.major}`}
+                                                                </div>
+                                                            )}
+                                                            {edu.year && (
+                                                                <div className="text-[12px] font-medium text-blue-800 mt-0.5">
+                                                                    Graduation Year: {edu.year}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            </li>
-                                        ))}
-                                    </ul>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {profile.teaching_experience && profile.teaching_experience.length > 0 && (
+                                    <div className="flex flex-wrap gap-2">
+                                        {profile.teaching_experience.map((exp, idx) => {
+                                            const isExpanded = expandedExp.has(idx);
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => toggleExp(idx)}
+                                                    className={`flex flex-col gap-1 px-3 py-1.5 rounded-xl border transition-all duration-300 cursor-pointer ${isExpanded ? 'bg-purple-50 border-purple-200 shadow-sm' : 'bg-purple-50/40 border-purple-100/50 hover:border-purple-200 text-gray-600'}`}
+                                                >
+                                                    <div className="flex items-center gap-2 text-sm">
+                                                        <Briefcase size={14} className={isExpanded ? 'text-purple-600' : 'text-purple-500'} />
+                                                        <span className={`font-black tracking-tight ${isExpanded ? 'text-purple-900' : 'text-gray-700'}`}>{exp.title}</span>
+                                                        {exp.duration && (
+                                                            <>
+                                                                <span className="text-gray-400">•</span>
+                                                                <span className={`text-xs font-black ${isExpanded ? 'text-purple-700' : 'text-purple-500/80'}`}>{exp.duration}</span>
+                                                            </>
+                                                        )}
+                                                        {isExpanded ? <ChevronUp size={12} className="ml-1 text-purple-400" /> : <ChevronDown size={12} className="ml-1 text-purple-300" />}
+                                                    </div>
+                                                    {isExpanded && exp.description && (
+                                                        <div className="animate-in fade-in slide-in-from-top-1 duration-200 pl-6 pb-1 max-w-md">
+                                                            <p className="text-xs text-purple-700/80 leading-relaxed font-medium">
+                                                                {exp.description}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 )}
                             </div>
-                        </div>
-                    </Card>
-                </div>
 
-                {/* 2. รีวิว */}
-                <div className="lg:col-span-1 lg:row-span-2 w-full">
-                    <Card title="รีวิวจากนักเรียน">
-                        <div className="flex items-center gap-3 mb-4 border-b pb-4">
-                            <h4 className="text-4xl font-extrabold text-gray-900">{averageRating.toFixed(1)}</h4>
-                            <div className="flex flex-1 items-center justify-between">
-                                <div className="flex text-yellow-400 gap-0.5">
-                                    {[...Array(5)].map((_, i) => (
-                                        <Star key={`avg-${i}`} size={18} className={i < Math.round(averageRating) ? "fill-current" : "text-gray-300"} />
-                                    ))}
-                                </div>
-                                <span className="text-xs text-gray-500 font-medium">(ทั้งหมด {reviews.length} รีวิว)</span>
+                            <div className="max-w-2xl">
+                                <p className="text-gray-600 leading-relaxed text-lg">
+                                    "{profile.bio}"
+                                </p>
                             </div>
-                        </div>
 
-                        {/* Detailed Ratings Breakdown */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 bg-gray-50 p-3 rounded-xl">
-                            <div className="text-center">
-                                <div className="text-xs text-gray-500 mb-1">ความตรงต่อเวลา</div>
-                                <div className="flex items-center justify-center gap-1 text-yellow-600 font-bold">
-                                    <Star size={14} className="fill-yellow-500 text-yellow-500" /> {avgPunctuality.toFixed(1)}
+                            {/* Contact Chips */}
+                            <div className="flex flex-wrap gap-3">
+                                <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-colors group cursor-pointer">
+                                    <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                        <MapPin size={16} />
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-600">{profile.address || "กรุงเทพมหานคร"}</span>
                                 </div>
-                            </div>
-                            <div className="text-center border-l border-gray-200">
-                                <div className="text-xs text-gray-500 mb-1">ความคุ้มค่า</div>
-                                <div className="flex items-center justify-center gap-1 text-yellow-600 font-bold">
-                                    <Star size={14} className="fill-yellow-500 text-yellow-500" /> {avgWorth.toFixed(1)}
+                                <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-colors group cursor-pointer">
+                                    <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                                        <Phone size={16} />
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-600">{profile.phone || "0xx-xxx-xxxx"}</span>
                                 </div>
-                            </div>
-                            <div className="text-center border-l border-gray-200">
-                                <div className="text-xs text-gray-500 mb-1">เนื้อหาที่สอน</div>
-                                <div className="flex items-center justify-center gap-1 text-yellow-600 font-bold">
-                                    <Star size={14} className="fill-yellow-500 text-yellow-500" /> {avgTeaching.toFixed(1)}
+                                <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-colors group cursor-pointer">
+                                    <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                        <Mail size={16} />
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-600">{profile.email || "contact@tutor.com"}</span>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-                            {reviews.length > 0 ? (
-                                <>
-                                    {reviews.slice(0, visibleReviews).map((review) => (
-                                        <ReviewCard key={review.id} review={review} />
-                                    ))}
-                                    {reviews.length > 3 && (
-                                        <button
-                                            onClick={handleToggleReviews}
-                                            className="w-full py-3 mt-2 text-sm font-semibold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100"
-                                        >
-                                            {visibleReviews < reviews.length
-                                                ? `แสดงเพิ่มเติม (${Math.min(3, reviews.length - visibleReviews)} รายการ)`
-                                                : "แสดงน้อยลง"}
-                                        </button>
-                                    )}
-                                </>
-                            ) : (
-                                <div className="text-center py-8 text-gray-500">ยังไม่มีรีวิวในขณะนี้</div>
-                            )}
+                        {/* Action Buttons */}
+                        <div className="flex flex-col gap-3 min-w-[200px] w-full lg:w-auto">
+                            <button
+                                onClick={onEditProfile}
+                                className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200"
+                            >
+                                <Edit size={18} />
+                                แก้ไขโปรไฟล์
+                            </button>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3 text-center">
+                                    <div className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">โพสต์</div>
+                                    <div className="text-xl font-black text-gray-900">{tutorPosts.length}</div>
+                                </div>
+                                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3 text-center">
+                                    <div className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">เรตติ้ง</div>
+                                    <div className="text-xl font-black text-gray-900">{averageRating.toFixed(1)}</div>
+                                </div>
+                            </div>
                         </div>
-                    </Card>
-                </div>
-
-                {/* 3. โพสต์รับสอน */}
-                <div className="lg:col-span-2 w-full">
-                    <Card title="โพสต์รับสอนของฉัน">
-                        {/* ปุ่มเปิดรายการที่ซ่อน */}
-                        {hiddenCount > 0 && (
-                            <div className="mb-3 flex justify-end">
-                                <button
-                                    onClick={() => setShowHiddenModal(true)}
-                                    className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 transition"
-                                >
-                                    <Archive size={14} /> รายการที่ซ่อนไว้ ({hiddenCount})
-                                </button>
-                            </div>
-                        )}
-
-                        {tutorPosts.length > 0 ? (
-                            <div className="space-y-4">
-                                {tutorPosts.filter(p => !hiddenPostIds.has(p._id)).map((post) => {
-                                    const id = post._id;
-                                    return (
-                                        <div key={id} className="relative border rounded-xl p-4 bg-white shadow-sm hover:shadow-md transition">
-
-                                            <button onClick={() => handleToggleMenu(id)} className="absolute right-2 top-2 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-                                                <MoreVertical size={18} />
-                                            </button>
-                                            <PostActionMenu
-                                                open={openMenuFor === id}
-                                                onClose={() => setOpenMenuFor(null)}
-                                                onEdit={() => handleEditClick(post)}
-                                                onHide={() => handleHidePost(id)}
-                                                onDelete={() => handleAskDelete(id)}
-                                                onReport={() => handleReportClick(post)}
-                                                isOwner={true} // As per previous reasoning, TutorProfile is likely "My Profile".
-                                            />
-
-                                            <div className="flex items-center gap-3">
-                                                <img src={profile.avatarUrl} alt="avatar" className="w-9 h-9 rounded-full object-cover" />
-                                                <div>
-                                                    <div className="text-sm font-semibold">{profile.fullName}</div>
-                                                    <div className="text-xs text-gray-500">{new Date(post.createdAt).toLocaleString('th-TH')}</div>
-                                                </div>
-                                            </div>
-                                            <div className="mt-2 text-gray-800 whitespace-pre-line">{post.content}</div>
-                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 mt-3">
-                                                <div><span className="font-bold">📘 วิชา :</span> {post.subject || "-"}</div>
-                                                <div><span className="font-bold">📅 วันที่สอน :</span> {post.meta?.teaching_days || "-"}</div>
-                                                <div><span className="font-bold">⏰ เวลา :</span> {post.meta?.teaching_time || "-"}</div>
-                                                <div><span className="font-bold">📍 สถานที่ :</span> {post.meta?.location || "-"}</div>
-                                                <div><span className="font-bold">💸 ราคา :</span> {post.meta?.price ? `${post.meta.price} บาท/ชม.` : "-"}</div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : <Empty line="คุณยังไม่มีโพสต์รับสอน" />}
-                    </Card>
-                </div>
-
-            </div>
-        </div>
-
-        {/* Modals */}
-        {isAvatarModalOpen && <AvatarModal src={profile.avatarUrl} alt={profile.fullName} onClose={() => setIsAvatarModalOpen(false)} />}
-        <ConfirmDialog open={confirm.open} title="ยืนยันการลบโพสต์" desc="เมื่อยืนยันแล้วจะไม่สามารถกู้คืนโพสต์นี้ได้" onConfirm={doDeletePost} onCancel={cancelDelete} />
-
-        <HiddenPostsModal
-            open={showHiddenModal}
-            onClose={() => setShowHiddenModal(false)}
-            posts={tutorPosts}
-            hiddenIds={hiddenPostIds}
-            onRestore={handleRestorePost}
-            onRestoreAll={handleRestoreAll}
-        />
-
-        {/* Edit Modal */}
-        {editPost && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEditPost(null)} />
-                <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
-                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-xl font-bold text-gray-900">แก้ไขโพสต์รับสอน</h3>
-                        <button onClick={() => setEditPost(null)} className="p-1 rounded-full hover:bg-gray-100">
-                            <X size={20} className="text-gray-500" />
-                        </button>
                     </div>
+                </div>
+            </div>
 
-                    <form onSubmit={handleUpdatePost} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">วิชาที่สอน</label>
-                            <input type="text" name="subject" value={editForm.subject || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียดการสอน / แนะนำตัว</label>
-                            <textarea name="description" rows="3" value={editForm.description || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">วันที่สอน</label>
-                                <input type="text" name="teaching_days" placeholder="เช่น จันทร์-ศุกร์" value={editForm.teaching_days || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">เวลาที่สอน</label>
-                                <input type="text" name="teaching_time" placeholder="เช่น 09:00 - 12:00" value={editForm.teaching_time || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">ราคา (บาท/ชม.)</label>
-                            <input type="number" name="price" min="0" value={editForm.price || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">สถานที่สอน</label>
-                            <LongdoLocationPicker
-                                onLocationSelect={handleEditLocationSelect}
-                                defaultLocation={editForm.location}
-                                showMap={false}
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
-                            <input type="text" name="contact_info" value={editForm.contact_info || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
-                        </div>
-
-                        <div className="flex justify-end gap-3 pt-4 border-t">
-                            <button type="button" onClick={() => setEditPost(null)} className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium">ยกเลิก</button>
-                            <button disabled={updating} type="submit" className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium shadow-sm disabled:opacity-70">
-                                {updating ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+            {/* --- Main Content Area --- */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                    {/* Left Column: Posts & History */}
+                    <div className="lg:col-span-8 space-y-8">
+                        {/* Tab Switcher */}
+                        <div className="flex p-1.5 bg-white border border-gray-200 rounded-[2rem] shadow-sm max-w-md">
+                            <button
+                                onClick={() => setActiveTab('posts')}
+                                className={`flex items-center justify-center gap-2 flex-1 py-3 px-6 rounded-[1.6rem] text-sm font-bold transition-all duration-300 ${activeTab === 'posts' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                <BookOpen size={18} />
+                                โพสต์ของฉัน ({tutorPosts.length})
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('history')}
+                                className={`flex items-center justify-center gap-2 flex-1 py-3 px-6 rounded-[1.6rem] text-sm font-bold transition-all duration-300 ${activeTab === 'history' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                <History size={18} />
+                                ประวัติการสอน
                             </button>
                         </div>
-                    </form>
+
+                        {/* Content Tab */}
+                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 mt-2">
+                            {activeTab === 'posts' ? (
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="text-2xl font-black text-gray-900 tracking-tight">โพสต์ของฉัน</h2>
+                                        {hiddenCount > 0 && (
+                                            <button
+                                                onClick={() => setShowHiddenModal(true)}
+                                                className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors"
+                                            >
+                                                <Archive size={14} />
+                                                โพสต์ที่ซ่อนไว้ ({hiddenCount})
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {tutorPosts.length > 0 ? (
+                                        <div className="grid grid-cols-1 gap-6">
+                                            {tutorPosts.filter(p => !hiddenPostIds.has(p._id)).map((post) => (
+                                                <div key={post._id} className="bg-white border border-gray-100 rounded-[2rem] p-8 relative overflow-hidden shadow-sm">
+                                                    {/* Decorative Highlight */}
+                                                    <div className="absolute top-0 left-0 w-1.5" />
+
+                                                    <div className="flex items-center justify-between mb-6">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="relative">
+                                                                <img src={profile.avatarUrl} alt="avatar" className="w-12 h-12 rounded-xl object-cover ring-2 ring-indigo-50" />
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-lg font-black text-gray-900 tracking-tight">{profile.fullName}</div>
+                                                                <div className="flex items-center gap-2 text-[11px] text-gray-400 font-bold">
+                                                                    <Clock size={12} />
+                                                                    {new Date(post.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })} น.
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="relative">
+                                                            <button
+                                                                onClick={() => handleToggleMenu(post._id)}
+                                                                className="p-2 rounded-xl text-gray-400 hover:bg-gray-50"
+                                                            >
+                                                                <MoreVertical size={20} />
+                                                            </button>
+                                                            <PostActionMenu
+                                                                open={openMenuFor === post._id}
+                                                                onClose={() => setOpenMenuFor(null)}
+                                                                onEdit={() => handleEditClick(post)}
+                                                                onHide={() => handleHidePost(post._id)}
+                                                                onDelete={() => handleAskDelete(post._id)}
+                                                                onReport={() => handleReportClick(post)}
+                                                                isOwner={true}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-4">
+                                                        <div className="inline-flex px-4 py-2 bg-indigo-50 text-indigo-700 rounded-2xl text-sm font-bold">
+                                                            วิชา: {post.subject}
+                                                        </div>
+                                                        <p className="text-gray-600 leading-relaxed max-w-2xl text-[15px]">
+                                                            {post.content}
+                                                        </p>
+
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
+                                                            <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-2xl border border-transparent">
+                                                                <div className="text-indigo-500"><Calendar size={18} /></div>
+                                                                <span className="text-xs font-bold text-gray-700">{post.meta?.teaching_days || "-"}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-2xl border border-transparent">
+                                                                <div className="text-purple-500"><Clock size={18} /></div>
+                                                                <span className="text-xs font-bold text-gray-700">{post.meta?.teaching_time || "-"}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-2xl border border-transparent">
+                                                                <div className="text-blue-500"><MapPin size={18} /></div>
+                                                                <span className="text-xs font-bold text-gray-700 truncate">{post.meta?.location || "-"}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between">
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className="text-xl font-black text-indigo-600">฿{post.meta?.price || "0"}</span>
+                                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">/ชั่วโมง</span>
+                                                        </div>
+                                                        <button className="px-5 py-2 bg-[#111827] text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">
+                                                            ดูรายละเอียด
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-white border-2 border-dashed border-gray-100 rounded-[3rem] py-20">
+                                            <Empty line="คุณยังไม่มีโพสต์รับสอนในขณะนี้" />
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">ประวัติการสอน</h2>
+                                    {teachingHistory.length === 0 ? (
+                                        <div className="bg-white border-2 border-dashed border-gray-100 rounded-[3rem] py-20">
+                                            <Empty line="ยังไม่มีประวัติการสอนย้อนหลัง" />
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {teachingHistory.map((item, idx) => (
+                                                <div key={idx} className="group bg-white border border-gray-100 rounded-3xl p-6 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all duration-300">
+                                                    <div className="flex flex-col md:flex-row gap-6">
+                                                        <div className="w-16 h-16 shrink-0 rounded-[1.4rem] bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300 shadow-sm">
+                                                            <item.icon size={28} />
+                                                        </div>
+
+                                                        <div className="flex-grow">
+                                                            <div className="flex flex-wrap justify-between items-start gap-4 mb-4">
+                                                                <div>
+                                                                    <h4 className="text-xl font-black text-gray-900 mb-1">{item.title}</h4>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-black rounded-lg uppercase tracking-wider">
+                                                                            {item.typeLabel}
+                                                                        </span>
+                                                                        <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">
+                                                                            {item.created_at ? new Date(item.created_at).toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : ""}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                <button className="px-5 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-black hover:bg-indigo-600 hover:text-white transition-all">
+                                                                    รายละเอียด
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="p-2 bg-gray-50 rounded-xl text-gray-400 group-hover:text-indigo-500 transition-colors"><BookOpen size={16} /></div>
+                                                                    <div>
+                                                                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">วิชา</div>
+                                                                        <div className="text-sm font-bold text-gray-700">{item.subject}</div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="p-2 bg-gray-50 rounded-xl text-gray-400 group-hover:text-purple-500 transition-colors"><MapPin size={16} /></div>
+                                                                    <div>
+                                                                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">สถานที่</div>
+                                                                        <div className="text-sm font-bold text-gray-700">{item.location || "ไม่ระบุ (ออนไลน์)"}</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Right Column: Sidebar */}
+                    <div className="lg:col-span-4 space-y-8">
+                        {/* Calendar Card */}
+                        <div className="bg-white border border-gray-100 rounded-[2.5rem] p-6 shadow-sm sticky top-6">
+                            <div className="flex items-center justify-between mb-8">
+                                <h3 className="text-xl font-black text-gray-900 tracking-tight">ตารางสอน</h3>
+                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                                    <Calendar size={20} />
+                                </div>
+                            </div>
+
+                            <div className="space-y-8">
+                                <div className="calendar-container">
+                                    <ReactCalendar
+                                        className="border-none w-full !font-sans"
+                                        locale="en-US"
+                                        value={selectedDate}
+                                        onClickDay={(value) => setSelectedDate(value)}
+                                        tileClassName={({ date, view }) => {
+                                            if (view === "month") {
+                                                const tileDateStr = toLocalYMD(date);
+                                                if (events.some((ev) => {
+                                                    if (!ev.event_date) return false;
+                                                    const d = new Date(ev.event_date);
+                                                    return toLocalYMD(d) === tileDateStr;
+                                                })) {
+                                                    return "calendar-dot-highlight";
+                                                }
+                                            }
+                                            return null;
+                                        }}
+                                    />
+                                </div>
+
+                                <div className="bg-gray-50 rounded-[2rem] p-6">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center text-indigo-600 font-black shadow-sm">
+                                            {selectedDate.getDate()}
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">กำหนดการ</div>
+                                            <div className="text-sm font-black text-gray-900">
+                                                {selectedDate.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {!dailyEvents.length ? (
+                                        <div className="py-10 text-center space-y-2">
+                                            <div className="text-gray-300 flex justify-center"><Clock size={32} /></div>
+                                            <p className="text-xs font-bold text-gray-400 italic">ไม่มีกิจกรรมในวันนี้</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {dailyEvents.map((ev, index) => (
+                                                <div key={ev.event_id || index} className="group bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-100 transition-all cursor-pointer">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-1 bg-indigo-500 rounded-full h-8" />
+                                                        <div className="flex-grow">
+                                                            <div className="text-sm font-black text-gray-900 group-hover:text-indigo-600 transition-colors">{ev.title}</div>
+                                                            <div className="flex items-center gap-3 mt-1">
+                                                                <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1">
+                                                                    <Clock size={10} /> {ev.event_time?.slice(0, 5)}
+                                                                </span>
+                                                                <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1">
+                                                                    <MapPin size={10} /> {ev.location || "Online"}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Reviews Card */}
+                        <div className="bg-white border border-gray-100 rounded-[2.5rem] p-6 shadow-sm">
+                            <div className="flex items-center justify-between mb-8">
+                                <h3 className="text-xl font-black text-gray-900 tracking-tight">รีวิวสะสม</h3>
+                                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+                                    <Star size={20} />
+                                </div>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-6 p-6 bg-amber-50/50 rounded-[2rem] border border-amber-100/50">
+                                    <div className="text-center">
+                                        <div className="text-4xl font-black text-gray-900">{averageRating.toFixed(1)}</div>
+                                        <div className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mt-1">Rating</div>
+                                    </div>
+                                    <div className="flex-grow">
+                                        <div className="flex text-amber-400 mb-1">
+                                            {[...Array(5)].map((_, i) => (
+                                                <Star key={`avg-${i}`} size={16} className={i < Math.round(averageRating) ? "fill-current" : "text-gray-200"} />
+                                            ))}
+                                        </div>
+                                        <div className="text-xs text-gray-500 font-medium">จากนักเรียน {reviews.length} คน</div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {reviews.length > 0 ? (
+                                        <>
+                                            {reviews.slice(0, visibleReviews).map((review) => (
+                                                <ReviewCard key={review.id} review={review} />
+                                            ))}
+                                            {reviews.length > 3 && (
+                                                <button
+                                                    onClick={handleToggleReviews}
+                                                    className="w-full py-4 text-xs font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-600 hover:text-white rounded-[1.4rem] transition-all duration-300"
+                                                >
+                                                    {visibleReviews < reviews.length ? "แสดงรีวิวทั้งหมด" : "ย่อการแสดงผล"}
+                                                </button>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className="text-center py-12">
+                                            <p className="text-sm font-bold text-gray-400 italic">ยังไม่มีรีวิวจากนักเรียน</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        )}
 
-        <ReportModal
-            open={!!reportingPost}
-            onClose={() => setReportingPost(null)}
-            postId={reportingPost?._id || reportingPost?.tutor_post_id}
-            postType="tutor_post"
-        />
-    </div>
+            {/* Modals */}
+            {isAvatarModalOpen && <AvatarModal src={profile.avatarUrl} alt={profile.fullName} onClose={() => setIsAvatarModalOpen(false)} />}
+
+            <ConfirmDialog
+                open={confirm.open}
+                title="ยืนยันการลบโพสต์"
+                desc="เมื่อยืนยันแล้วจะไม่สามารถกู้คืนโพสต์นี้ได้"
+                onConfirm={doDeletePost}
+                onCancel={cancelDelete}
+            />
+
+            <HiddenPostsModal
+                open={showHiddenModal}
+                onClose={() => setShowHiddenModal(false)}
+                posts={tutorPosts}
+                hiddenIds={hiddenPostIds}
+                onRestore={handleRestorePost}
+                onRestoreAll={handleRestoreAll}
+            />
+
+            {/* Edit Modal */}
+            {editPost && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEditPost(null)} />
+                    <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-gray-900">แก้ไขโพสต์รับสอน</h3>
+                            <button onClick={() => setEditPost(null)} className="p-1 rounded-full hover:bg-gray-100">
+                                <X size={20} className="text-gray-500" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleUpdatePost} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">วิชาที่สอน</label>
+                                <input type="text" name="subject" value={editForm.subject || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียดการสอน / แนะนำตัว</label>
+                                <textarea name="description" rows="3" value={editForm.description || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">ระดับชั้นที่สอน</label>
+                                <select
+                                    name="target_student_level"
+                                    value={editForm.target_student_level || ""}
+                                    onChange={handleEditChange}
+                                    className="w-full border rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">-- ระบุระดับชั้น --</option>
+                                    {postGradeLevelOptions.map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">วันที่สอน</label>
+                                    <input type="date" name="teaching_days" value={editForm.teaching_days || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">เวลาที่สอน</label>
+                                    <input type="time" name="teaching_time" value={editForm.teaching_time || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">ราคา (บาท/ชม.)</label>
+                                    <input type="number" name="price" min="0" value={editForm.price || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">รับจำนวน (คน)</label>
+                                    <input type="number" name="group_size" min="1" placeholder="1 = ตัวต่อตัว" value={editForm.group_size || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">สถานที่สอน</label>
+                                <LongdoLocationPicker
+                                    onLocationSelect={handleEditLocationSelect}
+                                    defaultLocation={editForm.location}
+                                    showMap={false}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
+                                <input type="text" name="contact_info" value={editForm.contact_info || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4 border-t">
+                                <button type="button" onClick={() => setEditPost(null)} className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium">ยกเลิก</button>
+                                <button disabled={updating} type="submit" className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium shadow-sm disabled:opacity-70">
+                                    {updating ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            <ReportModal
+                open={!!reportingPost}
+                onClose={() => setReportingPost(null)}
+                postId={reportingPost?._id || reportingPost?.tutor_post_id}
+                postType="tutor_post"
+            />
+        </div>
     );
 }
 

@@ -4,8 +4,12 @@ import {
   MessageSquarePlus, CalendarCheck, Sparkles, GraduationCap, Clock,
   MonitorPlay, CheckCircle, Tag, DollarSign, User, Phone, Mail
 } from "lucide-react";
-import RecommendedTutors from "../components/RecommendedTutors";
-import SmartSearch from "../components/SmartSearch";
+import AdminDashboard from './AdminDashboard';
+import ManageMyPosts from './ManageMyPosts';
+import TutorPostForm from './TutorPostForm';
+import TutorSearchList from './TutorSearchList';
+import SmartSearch from './SmartSearch';
+import RecommendedTutors from './RecommendedTutors';
 
 /** ---------------- Config ---------------- */
 const API_BASE = "http://localhost:5000";
@@ -289,50 +293,7 @@ function TutorPostFeed({ searchKey, onOpen }) {
 }
 
 // ... (TutorPostForm) ...
-function TutorPostForm({ tutorId, onSuccess, onClose }) {
-  const [formData, setFormData] = useState({ subject: "", description: "", target_student_level: "", teaching_days: "", teaching_time: "", location: "", price: "", contact_info: "" });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const res = await fetch('/api/tutor-posts', {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, tutor_id: tutorId })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      onSuccess();
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      {error && <div className="p-3 bg-rose-50 text-rose-600 text-sm rounded-lg">{error}</div>}
-      <div><label className="block text-sm font-semibold text-gray-700 mb-1">วิชาที่เปิดสอน</label><input type="text" value={formData.subject} onChange={e => setFormData({ ...formData, subject: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-indigo-500 outline-none" required /></div>
-      <div className="grid md:grid-cols-2 gap-4">
-        <div><label className="block text-sm font-semibold text-gray-700 mb-1">ระดับชั้น</label><select value={formData.target_student_level} onChange={e => setFormData({ ...formData, target_student_level: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white outline-none" required><option value="" disabled>-- เลือก --</option><option value="ประถมศึกษา">ประถมศึกษา</option><option value="มัธยมต้น">มัธยมต้น</option><option value="มัธยมปลาย">มัธยมปลาย</option><option value="ปริญญาตรี">ปริญญาตรี</option><option value="บุคคลทั่วไป">บุคคลทั่วไป</option></select></div>
-        <div><label className="block text-sm font-semibold text-gray-700 mb-1">ค่าเรียน (บาท/ชม.)</label><input type="number" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none" required /></div>
-      </div>
-      <div><label className="block text-sm font-semibold text-gray-700 mb-1">รายละเอียด</label><textarea rows="4" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none" /></div>
-      <div className="p-4 bg-gray-50 rounded-xl space-y-4 border border-gray-100">
-        <h6 className="font-semibold text-gray-700 text-sm flex items-center gap-2"><CalendarCheck size={16} /> ข้อมูลการสอน</h6>
-        <div className="grid md:grid-cols-2 gap-4">
-          <input type="date" value={formData.teaching_days} onChange={e => setFormData({ ...formData, teaching_days: e.target.value })} className="w-full px-3 py-2 rounded-lg border outline-none" min={today} />
-          <input type="time" value={formData.teaching_time} onChange={e => setFormData({ ...formData, teaching_time: e.target.value })} className="w-full px-3 py-2 rounded-lg border outline-none" />
-          <input type="text" placeholder="สถานที่เรียน" value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value })} className="w-full px-3 py-2 rounded-lg border outline-none" />
-          <input type="text" placeholder="ติดต่อ (Line ID)" value={formData.contact_info} onChange={e => setFormData({ ...formData, contact_info: e.target.value })} className="w-full px-3 py-2 rounded-lg border outline-none" />
-        </div>
-      </div>
-      <div className="flex justify-end gap-3 pt-2">
-        <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl text-gray-600 hover:bg-gray-100 font-medium">ยกเลิก</button>
-        <button type="submit" disabled={loading} className="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700 shadow-lg disabled:opacity-50">{loading ? "กำลังบันทึก..." : "ลงประกาศ"}</button>
-      </div>
-    </form>
-  );
-}
+// (Moved to standalone TutorPostForm.jsx)
 
 /** ========== STUDENT HOME (Main Page) ========== */
 function HomeStudent() {
@@ -724,15 +685,46 @@ function HomeStudent() {
   );
 }
 
+/** ---------- DASHBOARD STATS ---------- */
+function DashboardStats() {
+  const stats = [
+    { label: "นักเรียนที่ออนลน์", value: "142", icon: Users, color: "text-blue-600", bg: "bg-blue-100" },
+    { label: "ประกาศสอนที่ว่าง", value: "24", icon: BookOpen, color: "text-indigo-600", bg: "bg-indigo-100" },
+    { label: "วิชายอดนิยม", value: "Math", icon: Sparkles, color: "text-yellow-600", bg: "bg-yellow-100" },
+    { label: "ติวเตอร์ทั้งหมด", value: "850+", icon: GraduationCap, color: "text-emerald-600", bg: "bg-emerald-100" },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+      {stats.map((s, i) => (
+        <div key={i} className="bg-white/60 backdrop-blur-md border border-white/40 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all group">
+          <div className="flex items-center gap-4">
+            <div className={`p-3 rounded-xl ${s.bg} ${s.color} group-hover:scale-110 transition-transform`}>
+              <s.icon size={24} />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-900 leading-tight">{s.value}</div>
+              <div className="text-xs text-gray-500 font-medium">{s.label}</div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** ========== TUTOR HOME ========== */
-function HomeTutor() {
+function HomeTutor({ setCurrentPage }) {
   const { user_id } = getUserContext();
   const [tutors, setTutors] = useState([]);
   const [loadingTutors, setLoadingTutors] = useState(true);
   const [isCreatePostModalOpen, setCreatePostModalOpen] = useState(false);
-  const [previewPost, setPreviewPost] = useState(null); // ✅ State สำหรับดูโพสต์นักเรียน
+  const [previewPost, setPreviewPost] = useState(null); // For student posts
+  const [previewTutor, setPreviewTutor] = useState(null); // For tutor profiles
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     const fetchTutors = async () => {
@@ -744,105 +736,96 @@ function HomeTutor() {
       } catch (e) { setTutors([]); } finally { setLoadingTutors(false); }
     };
     fetchTutors();
-  }, []);
+  }, [refreshKey]);
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8 pb-20">
 
-        {/* Tutor Hero */}
-        <div className="pt-8 md:pt-12 pb-10">
-          <div className="bg-gray-900 rounded-[2.5rem] shadow-xl p-8 md:p-12 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 -mr-20 -mt-20"></div>
-            <div className="relative z-10 grid md:grid-cols-2 gap-12 items-center">
-              <div>
-                <div className="inline-block px-3 py-1 bg-indigo-500/30 border border-indigo-400/30 rounded-full text-indigo-200 text-xs font-bold mb-4">สำหรับติวเตอร์</div>
+        {/* --- Tutor Hero: Compact & Functional --- */}
+        <div className="pt-8 pb-6">
+          <div className="relative bg-gradient-to-r from-gray-900 to-indigo-950 rounded-3xl shadow-lg p-8 md:px-12 md:py-10 text-white overflow-hidden">
+
+            <div className="absolute inset-0 pointer-events-none opacity-30">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500 rounded-full blur-3xl -mr-20 -mt-20"></div>
+            </div>
+
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 bg-indigo-500/20 border border-indigo-400/20 rounded-full px-3 py-1 text-xs font-bold text-indigo-200">
+                  <Sparkles size={14} className="text-yellow-400" />
+                  <span>ยินดีต้อนรับกลับมา ติวเตอร์</span>
+                </div>
                 <h1 className="text-4xl md:text-5xl font-bold mb-4 leading-tight">เปลี่ยนความรู้ <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 to-purple-300">เป็นรายได้เสริม</span></h1>
-                <p className="text-gray-400 text-lg mb-8 max-w-md">เชื่อมต่อกับนักเรียนที่กำลังมองหาคุณ จัดการตารางสอนง่ายๆ และสร้างรายได้จากสิ่งที่คุณถนัด</p>
-                <button onClick={() => setCreatePostModalOpen(true)} className="bg-white text-gray-900 px-8 py-3.5 rounded-xl font-bold hover:bg-gray-100 transition-colors inline-flex items-center gap-2 shadow-lg shadow-white/10"><MessageSquarePlus size={20} /> ลงประกาศรับสอน</button>
+                <p className="text-gray-400 text-sm md:text-base max-w-md">จัดการโพสต์ของคุณและค้นหานักเรียนใหม่อย่างรวดเร็วได้ทันที</p>
               </div>
-              {/* <div className="hidden md:block relative"><img src="https://images.unsplash.com/photo-1544717305-2782549b5136?q=80&w=1000&auto=format&fit=crop" className="rounded-2xl shadow-2xl border-4 border-gray-700/50 rotate-3 hover:rotate-0 transition-transform duration-500" alt="Tutor" /></div> */}
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => setCurrentPage('manage_posts')}
+                  className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-900/40"
+                >
+                  <BookOpen size={20} />
+                  จัดการประกาศของคุณ
+                </button>
+                <button
+                  onClick={() => setCreatePostModalOpen(true)}
+                  className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-6 py-3 rounded-xl font-bold hover:bg-white/20 transition-all flex items-center gap-2"
+                >
+                  <MessageSquarePlus size={20} />
+                  ลงประกาศใหม่
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* New Tutors Section */}
-        <section className="mt-10">
-          <SectionHeader title="ติวเตอร์ใหม่" subtitle="ติวเตอร์ที่เพิ่งเข้าร่วมแพลตฟอร์ม" icon={Users} />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {loadingTutors ? <p className="col-span-full text-center py-10 text-gray-400">กำลังโหลด...</p> : tutors.slice(0, 4).map(t => <TutorCard key={t.id} item={t} />)}
-          </div>
-        </section>
-
-        {/* Student Requests */}
-        {/* ✅ Search Selection */}
-        <section className="mt-10">
+        {/* --- Section: Student Requests --- */}
+        <section className="mt-12 scroll-mt-24" id="studentRequests">
           <SectionHeader
-            title="ค้นหาโพสต์นักเรียน"
-            subtitle="ค้นหางานสอนที่คุณต้องการ"
-            icon={Search}
+            title="นักเรียนที่กำลังรอคุณอยู่"
+            subtitle="ค้นหาและยื่นข้อเสนอให้กับประกาศที่ตรงกับวิชาที่คุณสอน"
+            icon={Users}
           />
+
           <div className="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm">
-            <div className="flex gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-3.5 text-gray-400 w-5 h-5" />
+            <div className="mb-8">
+              <div className="relative max-w-xl">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
                   type="text"
-                  placeholder="ค้นหาประกาศเพิ่ม (เช่น คณิต ม.5)"
-                  className="w-full bg-gray-50 border-0 rounded-xl pl-10 pr-5 py-3 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+                  placeholder="ค้นหาประกาศ (เช่น ฟิสิกส์ ม.6, ติวสอบเข้า...)"
+                  className="w-full bg-gray-50 border-0 rounded-2xl pl-12 pr-6 py-4 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-gray-700"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(searchInput)}
                 />
               </div>
-              <button
-                onClick={() => setSearchQuery(searchInput)}
-                className="bg-indigo-600 text-white px-6 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
-              >
-                ค้นหา
-              </button>
             </div>
-          </div>
-        </section>
 
-        {/* ✅ Search Results Section (Only when searching) */}
-        {searchQuery && (
-          <section className="mt-10 scroll-mt-20">
-            <SectionHeader
-              title={`ผลการค้นหา: "${searchQuery}"`}
-              subtitle="รายการที่คุณค้นหา"
-              icon={Search}
-            />
-            <div className="p-6 bg-indigo-50/50 border border-indigo-100 rounded-3xl">
+            <div className="min-h-[300px]">
               <StudentPosts subjectKey={searchQuery} onOpen={(post) => setPreviewPost(post)} />
             </div>
-          </section>
-        )}
-
-        {/* ✅ Recommended Section (Always Visible) */}
-        <section className="mt-16">
-          <SectionHeader
-            title="นักเรียนที่อาจเหมาะกับคุณ"
-            subtitle="ระบบได้คัดเลือกจากวิชาที่คุณสอนและประวัติการใช้งาน"
-            icon={Sparkles}
-          />
-          <div className="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm">
-            {/* Pass empty subjectKey to force recommendation mode */}
-            <StudentPosts subjectKey="" onOpen={(post) => setPreviewPost(post)} />
           </div>
         </section>
-
       </div>
 
       <Modal open={isCreatePostModalOpen} onClose={() => setCreatePostModalOpen(false)} title="ลงประกาศรับสอนพิเศษ">
-        <TutorPostForm tutorId={user_id} onClose={() => setCreatePostModalOpen(false)} onSuccess={() => { setCreatePostModalOpen(false); alert("ลงประกาศสำเร็จ!"); }} />
+        <TutorPostForm
+          tutorId={user_id}
+          onClose={() => setCreatePostModalOpen(false)}
+          onSuccess={() => {
+            setCreatePostModalOpen(false);
+            setRefreshKey(p => p + 1);
+            alert("ลงประกาศสำเร็จ!");
+          }}
+        />
       </Modal>
 
-      {/* ✅ Modal แสดงรายละเอียดโพสต์นักเรียน */}
-      <Modal open={!!previewPost} onClose={() => setPreviewPost(null)} title="รายละเอียด">
+      {/* Modal shows Student Post Details */}
+      <Modal open={!!previewPost} onClose={() => setPreviewPost(null)} title="รายละเอียดประกาศจากนักเรียน">
         {previewPost && (
           <div className="space-y-6">
-            {/* Header: รูปและชื่อ */}
             <div className="flex items-start gap-4">
               <img
                 src={previewPost.user?.profile_image || previewPost.profile_picture_url || "/../blank_avatar.jpg"}
@@ -860,13 +843,11 @@ function HomeTutor() {
               </div>
             </div>
 
-            {/* Subject & Description */}
             <div className="bg-gray-50 p-5 rounded-2xl space-y-3 border border-gray-100">
               <h4 className="text-lg font-bold text-indigo-700">{previewPost.subject}</h4>
               <p className="text-gray-700 leading-relaxed whitespace-pre-line">{previewPost.description || "-"}</p>
             </div>
 
-            {/* Grid Details */}
             <div className="grid grid-cols-2 gap-4">
               <div className="p-3 bg-white border rounded-xl">
                 <div className="text-xs text-gray-500 font-bold uppercase">สถานที่</div>
@@ -894,7 +875,6 @@ function HomeTutor() {
               </div>
             </div>
 
-            {/* 🔥 ส่วนที่แก้ไข: แสดงข้อมูลติดต่อแทนปุ่มกด */}
             <div className="pt-4 border-t">
               <h4 className="text-sm font-bold text-gray-900 mb-3">ข้อมูลติดต่อจากนักเรียน</h4>
               <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-4">
@@ -911,7 +891,29 @@ function HomeTutor() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+      </Modal>
 
+      {/* [NEW] Modal for Tutor Profile (shared logic from HomeStudent) */}
+      <Modal open={!!previewTutor} onClose={() => setPreviewTutor(null)} title="รายละเอียดติวเตอร์">
+        {previewTutor && (
+          <div className="space-y-8 divide-y divide-gray-100">
+            <div className="space-y-6">
+              <div className="flex items-start gap-4">
+                <img src={previewTutor.image || "/../blank_avatar.jpg"} alt={previewTutor.name} className="w-20 h-20 rounded-full object-cover border shadow-sm" />
+                <div>
+                  <h5 className="text-xl font-bold text-gray-900">{previewTutor.name} {previewTutor.nickname ? `(${previewTutor.nickname})` : ""}</h5>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="flex items-center gap-1 text-xs text-amber-500 font-bold"><Star size={12} className="fill-amber-500" /> {Number(previewTutor.rating || 0).toFixed(1)} ({previewTutor.reviews || 0} รีวิว)</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                <div className="font-bold text-sm text-indigo-900 mb-1">แนะนำตัว</div>
+                <p className="text-sm text-gray-700 lowercase">{previewTutor.about_me || previewTutor.subject || "ติวเตอร์มืออาชีพ"}</p>
+              </div>
+            </div>
           </div>
         )}
       </Modal>
@@ -920,7 +922,7 @@ function HomeTutor() {
 }
 
 /** ========== ROUTER ========== */
-function HomeRouter() {
+function HomeRouter({ setCurrentPage }) {
   const [{ role }, setCtx] = useState(getUserContext());
   useEffect(() => {
     const onStorage = () => setCtx(getUserContext());
@@ -928,7 +930,7 @@ function HomeRouter() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  if (role === "tutor") return <HomeTutor />;
+  if (role === "tutor") return <HomeTutor setCurrentPage={setCurrentPage} />;
   return <HomeStudent />;
 }
 

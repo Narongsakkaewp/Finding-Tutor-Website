@@ -36,8 +36,8 @@ export default function RecommendedTutors({ userId, onOpen }) {
 
       {recs.based_on && (
         <p className="text-sm text-gray-600 mb-4 bg-white inline-block px-3 py-1 rounded-full border">
-          💡 อ้างอิงจากความสนใจวิชาที่คุณสนใจ 
-          {/* <span className="font-bold text-indigo-600">{recs.based_on}</span> */}
+          💡 อ้างอิงจากความสนใจวิชาที่คุณสนใจ
+          <span className="font-bold text-indigo-600">{recs.based_on}</span>
         </p>
       )}
 

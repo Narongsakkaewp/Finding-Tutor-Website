@@ -151,7 +151,79 @@ exports.deleteSearchHistory = async (req, res) => {
         res.status(400).json({ error: 'Missing parameters (user_id required)' });
 
     } catch (err) {
+
         console.error("Delete history error:", err);
         res.status(500).json({ error: 'Delete failed' });
+    }
+};
+
+// API สำหรับดึง "วิชายอดฮิต" (จากโพสต์นักเรียน + คำค้นหา)
+exports.getPopularSubjects = async (req, res) => {
+    try {
+        const pool = req.db;
+
+        // 1. ดึงวิชาที่มีการโพสต์หาครูเยอะที่สุด
+        const [postSubjects] = await pool.query(`
+            SELECT subject, COUNT(*) as count 
+            FROM student_posts 
+            WHERE is_active = 1 
+            GROUP BY subject 
+            ORDER BY count DESC 
+            LIMIT 6
+        `);
+
+        // 2. ดึงคำค้นหายอดฮิต
+        const [searchKeywords] = await pool.query(`
+            SELECT keyword as subject, COUNT(*) as count 
+            FROM search_history 
+            GROUP BY keyword 
+            ORDER BY count DESC 
+            LIMIT 6
+        `);
+
+        // 3. รวมและจัดอันดับใหม่ (Simple Merge)
+        const combined = [...postSubjects, ...searchKeywords];
+        const uniqueSubjects = {};
+
+        combined.forEach(item => {
+            const subj = item.subject.trim();
+            if (!uniqueSubjects[subj]) {
+                uniqueSubjects[subj] = 0;
+            }
+            uniqueSubjects[subj] += item.count;
+        });
+
+        // Convert back to array & Sort
+        const sortedSubjects = Object.keys(uniqueSubjects)
+            .map(key => ({ title: key, count: uniqueSubjects[key] }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 8); // เอาแค่ 8 อันดับแรก
+
+        // ✅ Map ข้อมูลสำหรับแสดงผล (ใส่รูป/ไอคอนตาม Keyword)
+        // Helper เพื่อหาหมวดหมู่
+        const getCategory = (text) => {
+            const t = text.toLowerCase();
+            if (SUBJECT_KNOWLEDGE_BASE['math'].some(k => t.includes(k))) return { icon: 'Calculator', color: 'blue' };
+            if (SUBJECT_KNOWLEDGE_BASE['sci'].some(k => t.includes(k))) return { icon: 'FlaskConical', color: 'emerald' };
+            if (SUBJECT_KNOWLEDGE_BASE['eng'].some(k => t.includes(k))) return { icon: 'Languages', color: 'rose' };
+            if (SUBJECT_KNOWLEDGE_BASE['program'].some(k => t.includes(k))) return { icon: 'Laptop', color: 'indigo' };
+            return { icon: 'BookOpen', color: 'amber' }; // Default
+        };
+
+        const result = sortedSubjects.map(s => {
+            const style = getCategory(s.title);
+            return {
+                id: s.title,
+                name: s.title, // ชื่อวิชา
+                count: s.count,
+                ...style
+            };
+        });
+
+        res.json(result);
+
+    } catch (err) {
+        console.error("Popular Subjects Error:", err);
+        res.status(500).json({ error: 'Failed to fetch popular subjects' });
     }
 };

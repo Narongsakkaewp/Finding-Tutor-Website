@@ -666,19 +666,6 @@ export default function TutorInfoPage({ setCurrentPage }) {
                                     </div>
                                 </div>
                             </div>
-
-                            <div>
-                                <label htmlFor="hourly_rate" className="block text-sm font-medium text-gray-700">อัตราค่าสอนต่อชั่วโมง (บาท)</label>
-                                <input
-                                    type="number"
-                                    id="hourly_rate"
-                                    name="hourly_rate"
-                                    value={formData.hourly_rate}
-                                    onChange={handleChange}
-                                    className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="เช่น 300"
-                                />
-                            </div>
                         </div>
                     </div>
 

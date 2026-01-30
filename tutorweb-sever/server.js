@@ -388,7 +388,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
   try {
     const rawSubject = req.params.subject;
     const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 5, 50);
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const offset = (page - 1) * limit;
     const searchTerms = expandSearchTerm(rawSubject);
 
@@ -469,7 +469,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
 app.get('/api/tutors', async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 12, 50);
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const offset = (page - 1) * limit;
 
     const searchQuery = (req.query.search || '').trim();
@@ -504,13 +504,20 @@ app.get('/api/tutors', async (req, res) => {
           tp.can_teach_subjects,
           tp.profile_picture_url,
           tp.address,
-          tp.hourly_rate,
-          tp.about_me,
           tp.phone,
+          tp.about_me,
           tp.education,
-          tp.teaching_experience
+          tp.teaching_experience,
+          -- เพิ่ม review stats
+          COALESCE(rv.avg_rating, 0) AS avg_rating,
+          COALESCE(rv.review_count, 0) AS review_count
        FROM register r
        LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+       LEFT JOIN (
+          SELECT tutor_id, AVG(rating) as avg_rating, COUNT(*) as review_count
+          FROM reviews
+          GROUP BY tutor_id
+       ) rv ON r.user_id = rv.tutor_id
        ${whereClause}
        ORDER BY r.user_id DESC
        LIMIT ? OFFSET ?`,
@@ -538,15 +545,15 @@ app.get('/api/tutors', async (req, res) => {
         subject: r.can_teach_subjects || 'ไม่ระบุ',
         image: r.profile_picture_url || '/../blank_avatar.jpg',
         city: r.address,
-        price: Number(r.hourly_rate || 0),
+        price: 0, // Removed hourly_rate from profile
         about_me: r.about_me || '',
         contact_info: contactParts.join('\n') || "ไม่ระบุข้อมูลติดต่อ",
         phone: r.phone,
         email: r.email,
-        education: r.education,
-        teaching_experience: r.teaching_experience,
-        rating: 0,
-        reviews: 0,
+        education: (() => { try { return JSON.parse(r.education) || []; } catch { return []; } })(),
+        teaching_experience: (() => { try { return JSON.parse(r.teaching_experience) || []; } catch { return []; } })(),
+        rating: Number(r.avg_rating || 0),
+        reviews: Number(r.review_count || 0),
       };
     });
 
@@ -570,7 +577,7 @@ app.get('/api/tutor-posts', async (req, res) => {
   console.log("📩 /api/tutor-posts called:", req.query);
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 12, 50);
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const offset = (page - 1) * limit;
 
     const tutorId = req.query.tutorId ? parseInt(req.query.tutorId, 10) : null;
@@ -587,7 +594,7 @@ app.get('/api/tutor-posts', async (req, res) => {
     }
 
     // ✅ Add Soft Delete Filter
-    where.push('tp.is_active = 1');
+    where.push('COALESCE(tp.is_active, 1) = 1');
 
     // ถ้ามีการค้นหาด้วย subject (รองรับ Smart Search)
     let orderBy = 'ORDER BY tp.created_at DESC, tp.tutor_post_id DESC';
@@ -603,26 +610,10 @@ app.get('/api/tutor-posts', async (req, res) => {
         params.push(`%${kw}%`, `%${kw}%`);
       });
 
-      // ✅ Smart Search: ให้คะแนนความตรง (Relevance Score)
-      // 1. ตรงกับ Subject (คำที่พิมพ์) -> 100 คะแนน
-      // 2. ตรงกับ Subject (คำขยาย) -> 50 คะแนน
-      // 3. ตรงกับ Description -> 10 คะแนน
-      // เราจะใช้ Logic ง่ายๆ: ถ้าเจอใน Subject ให้ขึ้นก่อน
-
-      // หมายเหตุ: การทำ CASE WHEN ซ้อนกันหลายชั้นใน SQL string อาจจะยุ่งยากเรื่อง params
-      // ดังนั้นเราจะ prioritize ง่ายๆ: 
-      // ORDER BY (CASE WHEN tp.subject LIKE %subject% THEN 1 ELSE 2 END), created_at DESC
-
-      // เราต้อง push params สำหรับ order by เพิ่ม
-      // เพื่อความง่ายและไม่กระทบ params array เดิมที่ push ไปแล้วสำหรับ where
-      // เราจะใช้วิธีเรียงลำดับแบบ manual ใน SQL โดยการเช็คจากคำค้นหา "ตัวแรก" (คำหลัก)
-      const mainKeyword = keywords[0]; // คำที่ User พิมพ์ (หรือคำแรกที่ขยาย)
+      const mainKeyword = keywords[0];
       orderBy = `ORDER BY 
         (CASE WHEN tp.subject LIKE '%${mainKeyword}%' THEN 1 ELSE 2 END) ASC, 
         tp.created_at DESC`;
-      // *หมายเหตุ: ตรงนี้ใช้ String interpolation (${mainKeyword}) เฉพาะอันนี้เพื่อความง่ายในการจัดลำดับ 
-      // โดยไม่ต้องรื้อ params array ทั้งหมด (แต่ต้องระวัง SQL Injection หาก subject ไม่ได้ถูก sanitize)
-      // แต่ในระบบนี้ subject มาจาก req.query และ keywords มาจาก expandSearchTerm ซึ่งปลอดภัยระดับนึง
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -642,10 +633,18 @@ app.get('/api/tutor-posts', async (req, res) => {
         -- Joins
         COALESCE(jc.c,0) AS join_count,
         CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined,
-        CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me
+        CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me,
+        -- Reviews
+        COALESCE(rv.avg_rating, 0) AS avg_rating,
+        COALESCE(rv.review_count, 0) AS review_count
       FROM tutor_posts tp
       LEFT JOIN register r ON r.user_id = tp.tutor_id
       LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
+      LEFT JOIN (
+        SELECT tutor_id, AVG(rating) as avg_rating, COUNT(*) as review_count
+        FROM reviews
+        GROUP BY tutor_id
+      ) rv ON rv.tutor_id = tp.tutor_id
       LEFT JOIN (
         SELECT post_id, COUNT(*) AS c
         FROM posts_favorites
@@ -718,6 +717,8 @@ app.get('/api/tutor-posts', async (req, res) => {
         join_count: Number(r.join_count || 0),
         joined: !!r.joined,
         pending_me: !!r.pending_me,
+        rating: Number(r.avg_rating || 0),
+        reviews: Number(r.review_count || 0),
         images: []
       })),
       pagination: {
@@ -741,7 +742,7 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
     }
 
     const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 5, 50);
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const offset = (page - 1) * limit;
 
     const [rows] = await pool.execute(
@@ -749,7 +750,7 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
               teaching_days, teaching_time, location, price, contact_info,
               COALESCE(created_at, NOW()) AS created_at
        FROM tutor_posts
-       WHERE tutor_id = ? AND is_active = 1
+       WHERE tutor_id = ? AND COALESCE(is_active, 1) = 1
        ORDER BY tutor_post_id DESC
        LIMIT ? OFFSET ?`,
       [tutorId, limit, offset]
@@ -1796,7 +1797,7 @@ app.get('/api/calendar/:userId', async (req, res) => {
         event_id: `tp-${p.tutor_post_id}`,
         user_id: p.tutor_id,
         post_id: p.tutor_post_id,
-        title: `โพสต์ของคุณ (สอน): ${p.subject || 'วิชาทั่วไป'}`,
+        title: `โพสต์ของติวเตอร์ (สอน): ${p.subject || 'วิชาทั่วไป'}`,
         subject: p.subject || null,
         event_date,
         event_time,
@@ -1899,6 +1900,32 @@ app.get('/api/calendar/:userId', async (req, res) => {
       };
     });
 
+    // 5.5) [NEW] ดึงโพสต์ที่ "ติวเตอร์สอนเองและมีนักเรียนเข้าร่วม" (Owner + Has approved joiners)
+    const [rowsTutorSelfTeaching] = await pool.query(
+      `SELECT DISTINCT tp.tutor_post_id, tp.subject, tp.teaching_days, tp.teaching_time, tp.location, tp.created_at
+       FROM tutor_posts tp
+       JOIN tutor_post_joins j ON tp.tutor_post_id = j.tutor_post_id
+       WHERE tp.tutor_id = ? AND j.status = 'approved'`,
+      [userId]
+    );
+
+    const tutorSelfTeachingEvents = rowsTutorSelfTeaching.map(p => {
+      const event_date = parseDateFromPreferredDays(p.teaching_days);
+      const event_time = toSqlTimeMaybe(p.teaching_time);
+      return {
+        event_id: `teaching-sp-${p.tutor_post_id}`,
+        user_id: userId,
+        post_id: p.tutor_post_id,
+        title: `สอนพิเศษ (ของคุณ): ${p.subject || 'วิชาทั่วไป'}`,
+        subject: p.subject || null,
+        event_date,
+        event_time,
+        location: p.location || null,
+        created_at: p.created_at,
+        source: 'tutor_teaching_self_post',
+      };
+    });
+
     // รวมทั้งหมด
     // Note: Deduplicate might be needed if calendar_events already has it, but showing both is safer than missing it.
     // UI will render them.
@@ -1908,7 +1935,8 @@ app.get('/api/calendar/:userId', async (req, res) => {
       ...tutorPostsAsEvents,
       ...joinedStudentEvents,
       ...joinedTutorEvents,
-      ...offerEvents
+      ...offerEvents,
+      ...tutorSelfTeachingEvents
     ];
 
     // กรองเฉพาะที่มีวันที่ถูกต้อง และอยู่ในช่วงเวลา
@@ -2134,6 +2162,7 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         CASE
             WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'review_request', 'system_alert') THEN COALESCE(sp.subject, tp.subject)
             WHEN n.type IN ('tutor_join_request') THEN tp.subject
+            WHEN n.type LIKE 'schedule_%' THEN COALESCE(sp.subject, tp.subject)
             ELSE NULL
         END AS post_subject
 
@@ -2308,16 +2337,27 @@ app.get('/api/tutor-profile/:userId', async (req, res) => {
     } catch (e) { }
 
     const [rRows] = await pool.execute(`
-        SELECT r.rating, r.comment, r.created_at, reg.name, reg.lastname, sp.profile_picture_url
+        SELECT 
+            r.rating, r.comment, r.created_at, 
+            reg.name, reg.lastname, sp.profile_picture_url,
+            -- ดึงชื่อวิชา (เช็คทั้งโพสต์ติวเตอร์และโพสต์นักเรียน)
+            COALESCE(tp.subject, stp.subject) AS subject
         FROM reviews r
         LEFT JOIN register reg ON r.student_id = reg.user_id
         LEFT JOIN student_profiles sp ON r.student_id = sp.user_id
-        WHERE r.tutor_id = ? ORDER BY r.created_at DESC
+        -- Join โพสต์ติวเตอร์
+        LEFT JOIN tutor_posts tp ON r.post_id = tp.tutor_post_id AND r.post_type = 'tutor_post'
+        -- Join โพสต์นักเรียน (เผื่อกรณีรีวิวจากโพสต์นักเรียน)
+        LEFT JOIN student_posts stp ON r.post_id = stp.student_post_id AND r.post_type = 'student_post'
+        WHERE r.tutor_id = ? 
+        ORDER BY r.created_at DESC
     `, [userId]);
 
     const reviews = rRows.map(r => ({
       rating: Number(r.rating),
       comment: r.comment,
+      subject: r.subject || "วิชาทั่วไป", // ✅ ส่งชื่อวิชากลับไป
+      createdAt: r.created_at,
       reviewer: { name: `${r.name} ${r.lastname}`, avatar: r.profile_picture_url }
     }));
 
@@ -2376,9 +2416,9 @@ app.put('/api/tutor-profile/:userId', async (req, res) => {
         user_id, nickname, phone, address, about_me, 
         education, teaching_experience, 
         can_teach_subjects, can_teach_grades, 
-        hourly_rate, profile_picture_url
+        profile_picture_url
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         nickname=VALUES(nickname), 
         phone=VALUES(phone), 
@@ -2388,7 +2428,6 @@ app.put('/api/tutor-profile/:userId', async (req, res) => {
         teaching_experience=VALUES(teaching_experience),
         can_teach_subjects=VALUES(can_teach_subjects), 
         can_teach_grades=VALUES(can_teach_grades),
-        hourly_rate=VALUES(hourly_rate),
         profile_picture_url=VALUES(profile_picture_url)
     `;
 
@@ -2402,7 +2441,6 @@ app.put('/api/tutor-profile/:userId', async (req, res) => {
       jsonVal(body.teaching_experience),
       arrVal(body.can_teach_subjects || body.subjects),
       arrVal(body.can_teach_grades || body.grades),
-      v(body.hourly_rate || body.price),
       v(body.profile_picture_url || body.profile_image)
     ]);
 
@@ -3516,13 +3554,12 @@ app.post('/api/reviews', async (req, res) => {
 app.put('/api/student_posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
-    const {
-      subject, description, preferred_days, preferred_time,
-      grade_level, location, group_size, budget, contact_info
-    } = req.body;
+    const b = req.body;
 
-    // Validate ownership? We assume frontend checks or we can check here.
-    // For now simple update.
+    // 🔥 FIX: ดักจับชื่อตัวแปร
+    const gradeLevel = b.grade_level || b.level || b.target_student_level;
+    const groupSize = parseInt(b.group_size || b.capacity) || 1;
+    const budget = Number(b.budget || b.price || 0);
 
     await pool.query(
       `UPDATE student_posts SET 
@@ -3530,8 +3567,15 @@ app.put('/api/student_posts/:id', async (req, res) => {
         grade_level=?, location=?, group_size=?, budget=?, contact_info=?
        WHERE student_post_id=?`,
       [
-        subject, description, preferred_days, preferred_time,
-        grade_level, location, group_size, budget, contact_info,
+        b.subject,
+        b.description,
+        b.preferred_days,
+        b.preferred_time,
+        gradeLevel, // ✅ ใช้ตัวแปรที่ดักจับแล้ว
+        b.location,
+        groupSize,
+        budget,
+        b.contact_info,
         postId
       ]
     );
@@ -3547,10 +3591,18 @@ app.put('/api/student_posts/:id', async (req, res) => {
 app.put('/api/tutor-posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
-    const {
-      subject, description, teaching_days, teaching_time,
-      target_student_level, location, price, group_size, contact_info
-    } = req.body;
+    const b = req.body; // ใช้ตัวแปรสั้นๆ จะได้เช็คหลายชื่อง่ายๆ
+
+    // 🔥 FIX: ดักจับชื่อตัวแปรให้ครบ (เผื่อ Frontend ส่งมาไม่ตรง)
+    // รับทั้ง target_student_level, grade_level, level
+    const targetLevel = b.target_student_level || b.grade_level || b.level;
+
+    // รับทั้ง group_size, capacity
+    const rawGroup = b.group_size || b.capacity || b.maxStudents;
+    const groupSize = parseInt(rawGroup) || 1;
+
+    // รับทั้ง price, hourly_rate
+    const price = Number(b.price || b.hourly_rate || 0);
 
     await pool.query(
       `UPDATE tutor_posts SET 
@@ -3558,8 +3610,15 @@ app.put('/api/tutor-posts/:id', async (req, res) => {
         target_student_level=?, location=?, price=?, group_size=?, contact_info=?
        WHERE tutor_post_id=?`,
       [
-        subject, description, teaching_days, teaching_time,
-        target_student_level, location, price, group_size, contact_info,
+        b.subject,
+        b.description,
+        b.teaching_days,
+        b.teaching_time,
+        targetLevel, // ✅ ใช้ตัวแปรที่ดักจับแล้ว
+        b.location,
+        price,       // ✅ ใช้ตัวแปรที่แปลงแล้ว
+        groupSize,   // ✅ ใช้ตัวแปรที่แปลงแล้ว
+        b.contact_info,
         postId
       ]
     );

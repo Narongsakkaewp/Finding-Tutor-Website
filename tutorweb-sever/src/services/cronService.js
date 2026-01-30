@@ -31,23 +31,24 @@ async function checkAndSendNotifications() {
 
         // 1. Check for "Tomorrow" Classes
         console.log(`🔎 [Cron] Checking Tomorrow: ${tomorrow.toDateString()}`);
-        await processNotifications(conn, tomorrowNames, tomorrow, 'schedule_tomorrow', 'พรุ่งนี้คุณมีนัดติว/สอน');
-        await processCalendarEvents(conn, tomorrow, 'schedule_tomorrow', 'พรุ่งนี้คุณมีนัดติว/สอน');
+        // await processNotifications(conn, tomorrowNames, tomorrow, 'schedule_tomorrow', 'พรุ่งนี้คุณมีนัดติว/สอน');
+        // await processCalendarEvents(conn, tomorrow, 'schedule_tomorrow', 'พรุ่งนี้คุณมีนัดติว/สอน');
 
         // 2. Check for "Today" Classes
         console.log(`🔎 [Cron] Checking Today: ${today.toDateString()}`);
-        await processNotifications(conn, todayNames, today, 'schedule_today', 'วันนี้คุณมีนัดติว/สอน');
-        await processCalendarEvents(conn, today, 'schedule_today', 'วันนี้คุณมีนัดติว/สอน');
+        // await processNotifications(conn, todayNames, today, 'schedule_today', 'วันนี้คุณมีนัดติว/สอน');
+        // await processCalendarEvents(conn, today, 'schedule_today', 'วันนี้คุณมีนัดติว/สอน');
 
-        // 3. Check for "Yesterday" (Review Request)
+        // 3. Check for Reviews (Today + Yesterday)
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayNames = getDayNames(yesterday);
-        console.log(`🔎 [Cron] Checking Yesterday (for Review): ${yesterday.toDateString()}`);
 
-        // We reuse processNotifications logic but checking for review status inside a new helper or modifying existing one?
-        // Let's make a specialized function for review requests to avoid cluttering processNotifications
-        await processReviewRequests(conn, yesterdayNames, yesterday);
+        console.log(`🔎 [Cron] Checking for Review Requests...`);
+        // Today: only those older than 2 hours
+        await processReviewRequests(conn, todayNames, today, true);
+        // Yesterday: all
+        await processReviewRequests(conn, yesterdayNames, yesterday, false);
 
     } catch (err) {
         console.error('❌ [Cron] Error:', err);
@@ -213,25 +214,43 @@ async function sendNotificationIfNotExists(conn, userId, type, message, relatedI
 
 // Initialize Cron
 function initCron() {
-    // schedule: Run every day at 05:00 AM
-    cron.schedule('0 5 * * *', () => {
+    // Run every 30 minutes
+    cron.schedule('*/30 * * * *', () => {
         checkAndSendNotifications();
     });
 
-    console.log('✅ Scheduler Initialized (Daily at 05:00)');
+    console.log('✅ Scheduler Initialized (Every 30 minutes)');
+}
 
-    // For verify: Uncomment to run immediately on start (or add a test route)
-    // setTimeout(checkAndSendNotifications, 5000); 
+function isTimePassed(timeStr, hoursToWait = 2) {
+    if (!timeStr) return true;
+    try {
+        const now = new Date();
+        // Handle "16:00" or "16:00 - 18:00"
+        const startTimeStr = timeStr.split('-')[0].trim();
+        const match = startTimeStr.match(/(\d{1,2})[.:](\d{2})/);
+        if (!match) return true;
+
+        const h = parseInt(match[1], 10);
+        const m = parseInt(match[2], 10);
+
+        const startTime = new Date();
+        startTime.setHours(h, m, 0, 0);
+
+        const targetTime = new Date(startTime.getTime() + (hoursToWait * 60 * 60 * 1000));
+        return now >= targetTime;
+    } catch (e) {
+        return true;
+    }
 }
 
 
-async function processReviewRequests(conn, dayNames, targetDate) {
-    // Reverted to original Day Matching logic as requested
+async function processReviewRequests(conn, dayNames, targetDate, isToday = false) {
     const dateStr = targetDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
 
     // A. Student Accepted Tutor Offer
     const [offers] = await conn.query(`
-        SELECT sp.student_post_id, sp.subject, sp.preferred_days,
+        SELECT sp.student_post_id, sp.subject, sp.preferred_days, sp.preferred_time,
                sp.student_id AS student_id, o.tutor_id AS tutor_id
         FROM student_posts sp
         JOIN student_post_offers o ON sp.student_post_id = o.student_post_id
@@ -240,6 +259,10 @@ async function processReviewRequests(conn, dayNames, targetDate) {
 
     for (const post of offers) {
         if (isDayMatch(post.preferred_days, dayNames, targetDate)) {
+            // Apply 2-hour delay if it's today
+            if (isToday && !isTimePassed(post.preferred_time, 2)) {
+                continue;
+            }
             // 1. Notify Owner (Student who created the post)
             try {
                 const [exists] = await conn.query(
@@ -280,7 +303,7 @@ async function processReviewRequests(conn, dayNames, targetDate) {
 
     // B. Student Joined Tutor Post
     const [joins] = await conn.query(`
-         SELECT tp.tutor_post_id, tp.subject, tp.teaching_days,
+         SELECT tp.tutor_post_id, tp.subject, tp.teaching_days, tp.teaching_time,
                 tp.tutor_id AS tutor_id, j.user_id AS student_id
          FROM tutor_posts tp
          JOIN tutor_post_joins j ON tp.tutor_post_id = j.tutor_post_id
@@ -289,6 +312,10 @@ async function processReviewRequests(conn, dayNames, targetDate) {
 
     for (const post of joins) {
         if (isDayMatch(post.teaching_days, dayNames, targetDate)) {
+            // Apply 2-hour delay if it's today
+            if (isToday && !isTimePassed(post.teaching_time, 2)) {
+                continue;
+            }
             try {
                 const [exists] = await conn.query(
                     `SELECT review_id FROM reviews WHERE student_id=? AND post_id=? AND post_type='tutor_post'`,
