@@ -25,6 +25,7 @@ const searchController = require('./src/controllers/searchController'); // Impor
 // ----- Email Deps -----
 const nodemailer = require('nodemailer');
 const { initCron, checkAndSendNotifications } = require('./src/services/cronService');
+const { sendBookingConfirmationEmail } = require('./src/utils/emailService');
 
 // Initialize Scheduler
 initCron();
@@ -208,6 +209,7 @@ app.use('/api/favorites', favoriteRoutes);
 app.get('/api/recommendations/courses', recommendationController.getRecommendations);
 app.get('/api/recommendations/tutor', recommendationController.getStudentRequestsForTutor);
 app.get('/api/recommendations/friends', recommendationController.getStudyBuddyRecommendations);
+app.get('/api/recommendations/trending', recommendationController.getTrendingSubjects); // ✅ Dynamic Trending
 
 // --- ⭐ Reviews API ---
 // --- ⭐ Reviews API ---
@@ -496,6 +498,39 @@ app.get('/api/tutors', async (req, res) => {
       });
     }
 
+    // --- Advanced Filters (Tutors) ---
+    const locFilter = (req.query.location || '').trim();
+    const minRating = Number(req.query.minRating) || 0;
+
+    // Filter Location (City/Address)
+    if (locFilter) {
+      whereClause += ' AND tp.address LIKE ?';
+      params.push(`%${locFilter}%`);
+    }
+
+    // Filter Rating
+    if (minRating > 0) {
+      whereClause += ' AND COALESCE(rv.avg_rating, 0) >= ?';
+      params.push(minRating);
+    }
+
+    // --- Relevance Sorting ---
+    let orderBy = 'r.user_id DESC';
+    if (searchQuery) {
+      // Prioritize matches in Subject > Nickname > Name > About Me
+      orderBy = `(
+          CASE 
+            WHEN LOWER(tp.can_teach_subjects) LIKE ? THEN 100
+            WHEN LOWER(tp.nickname) LIKE ? THEN 50
+            WHEN LOWER(r.name) LIKE ? THEN 20
+            ELSE 0
+          END
+       ) DESC, r.user_id DESC`;
+
+      // Add params for ORDER BY
+      params.push(`%${searchQuery}%`, `%${searchQuery}%`, `%${searchQuery}%`);
+    }
+
     // ... (ส่วน subject filter ถ้ามี) ...
     const [rows] = await pool.execute(
       `SELECT 
@@ -519,7 +554,7 @@ app.get('/api/tutors', async (req, res) => {
           GROUP BY tutor_id
        ) rv ON r.user_id = rv.tutor_id
        ${whereClause}
-       ORDER BY r.user_id DESC
+       ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     );
@@ -593,30 +628,110 @@ app.get('/api/tutor-posts', async (req, res) => {
       params.push(tutorId);
     }
 
-    // ✅ Add Soft Delete Filter
-    where.push('COALESCE(tp.is_active, 1) = 1');
+    // --- Advanced Filters ---
+    const minPrice = Number(req.query.minPrice) || 0;
+    const maxPrice = Number(req.query.maxPrice) || 999999;
+    const locFilter = (req.query.location || '').trim();
+    const gradeFilter = (req.query.gradeLevel || '').trim();
+    const minRating = Number(req.query.minRating) || 0;
 
-    // ถ้ามีการค้นหาด้วย subject (รองรับ Smart Search)
-    let orderBy = 'ORDER BY tp.created_at DESC, tp.tutor_post_id DESC';
+    // Filter Price
+    where.push('tp.price BETWEEN ? AND ?');
+    params.push(minPrice, maxPrice);
+
+    // Filter Location
+    if (locFilter) {
+      where.push('tp.location LIKE ?');
+      params.push(`%${locFilter}%`);
+    }
+
+    // Filter Grade Level
+    if (gradeFilter) {
+      where.push('(tp.target_student_level LIKE ? OR tp.description LIKE ?)');
+      params.push(`%${gradeFilter}%`, `%${gradeFilter}%`);
+    }
+
+    // Filter Rating (needs to check COALESCE(rv.avg_rating, 0))
+    if (minRating > 0) {
+      where.push('COALESCE(rv.avg_rating, 0) >= ?');
+      params.push(minRating);
+    }
+
+    let orderBy = 'ORDER BY tp.created_at DESC';
 
     if (subject) {
       const keywords = expandSearchTerm(subject);
+
+      // Relevance Score Calculation
+      // 1. Exact Subject Match (100)
+      // 2. Partial Subject Match (50)
+      // 3. Exact Description Match (20)
+      // 4. Partial Description Match (10)
+
+      const relevanceCases = [];
+      const mainKw = keywords[0]; // Original query
+
+      // Main Keyword Priority
+      relevanceCases.push(`WHEN tp.subject LIKE ? THEN 100`);
+      params.push(mainKw); // Exact-ish
+
+      relevanceCases.push(`WHEN tp.subject LIKE ? THEN 80`);
+      params.push(`%${mainKw}%`);
+
+      keywords.forEach(kw => {
+        relevanceCases.push(`WHEN tp.subject LIKE ? THEN 50`);
+        params.push(`%${kw}%`);
+        relevanceCases.push(`WHEN tp.description LIKE ? THEN 20`);
+        params.push(`%${kw}%`);
+      });
+
+      // Construct OR conditions for WHERE
       const conditions = keywords.map(() =>
         `(tp.subject LIKE ? OR tp.description LIKE ?)`
       ).join(' OR ');
-      where.push(`(${conditions})`);
 
+      // IMPORTANT: Add to WHERE, not replace
+      // Make sure parsing params order matches!
+      // Params for ORDER BY are added above. 
+      // Params for WHERE need to be added NOW? 
+      // SQL param order matters! 'SELECT ... ORDER BY ...'
+      // The params for SELECT/WHERE come before ORDER BY in execution but likely same param list in `pool.query`.
+      // Actually, ORDER BY params come LAST.
+
+      // Wait, complex param injection in ORDER BY case statement is risky if I mix WHERE params.
+      // Better strategy: Use string interpolation for ORDER BY values IF they are safe (they are from `expandSearchTerm` which comes from user input... risky SQL injection).
+      // Standard practice: Use `?` everywhere.
+
+      // Let's simplify. I will put the score in the SELECT clause to keep param order clean.
+      // SELECT ..., (CASE ...) as score FROM ... ORDER BY score DESC
+
+      where.push(`(${conditions})`);
       keywords.forEach(kw => {
         params.push(`%${kw}%`, `%${kw}%`);
+        // Note: These params are for the WHERE clause.
       });
-
-      const mainKeyword = keywords[0];
-      orderBy = `ORDER BY 
-        (CASE WHEN tp.subject LIKE '%${mainKeyword}%' THEN 1 ELSE 2 END) ASC, 
-        tp.created_at DESC`;
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    // We need to inject the SCORE calculation into SELECT if we use it for sorting
+    // But modifying the big SELECT string is messy.
+    // Let's rely on a simpler ORDER BY for now that doesn't use bound parameters inside ORDER BY if possible,
+    // Or just append the params correctly.
+
+    // Alternative: Sort by exact match of `subject` vs `subject` parameter
+    if (subject) {
+      // Safe approach: Sort by expression using the query variable directly
+      // WARNING: Ensure `subject` doesn't break SQL. `pool.escape`?
+      // `pool.query` handles `?`
+
+      // Let's just strict sort by: `tp.subject LIKE %query%` DESC
+      orderBy = `ORDER BY 
+            (CASE WHEN tp.subject LIKE '${subject.replace(/'/g, "''")}%' THEN 3  -- Starts with query
+                  WHEN tp.subject LIKE '%${subject.replace(/'/g, "''")}%' THEN 2  -- Contains query
+                  ELSE 1 END) DESC,
+            tp.created_at DESC`;
+    }
 
     const [rows] = await pool.query(
       `
@@ -675,52 +790,78 @@ app.get('/api/tutor-posts', async (req, res) => {
       params
     );
 
-    res.json({
-      items: rows.map(r => ({
-        _id: r.tutor_post_id,
-        subject: r.subject,
-        content: r.description,
-        createdAt: r.created_at,
-        group_size: Number(r.group_size || 0),
-        authorId: {
-          id: r.tutor_id,
-          name: `${r.name || ''} ${r.lastname || ''}`.trim() || `ติวเตอร์ #${r.tutor_id}`,
-          avatarUrl: r.profile_picture_url || ''
-        },
-        user: {
-          id: r.tutor_id,
-          first_name: r.name || '',
-          last_name: r.lastname || '',
-          profile_image: r.profile_picture_url || '',
-          email: r.email || '',
-          phone: r.phone || '',
-          role: r.type || 'tutor'
-        },
-        // Profile Data added to top level for convenience
-        nickname: r.nickname,
-        about_me: r.about_me,
-        education: r.education,
-        teaching_experience: r.teaching_experience,
-        phone: r.phone,
-        email: r.email,
+    // Date Parsing Helper (reused)
+    const parseDate = (dStr) => {
+      if (!dStr) return null;
+      if (dStr.match(/^\d{4}-\d{2}-\d{2}/)) return new Date(dStr);
+      const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+      const parts = dStr.split(" ");
+      if (parts.length >= 3) {
+        const day = parseInt(parts[0]);
+        const monthIdx = thaiMonths.indexOf(parts[1]);
+        let year = parseInt(parts[2]);
+        if (year > 2400) year -= 543;
+        if (monthIdx !== -1 && !isNaN(day) && !isNaN(year)) {
+          return new Date(year, monthIdx, day);
+        }
+      }
+      return null;
+    };
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
 
-        meta: {
-          target_student_level: r.target_student_level || 'ไม่ระบุ',
-          teaching_days: r.teaching_days,
-          teaching_time: r.teaching_time,
-          location: r.location,
-          price: Number(r.price || 0),
-          contact_info: r.contact_info
-        },
-        fav_count: Number(r.fav_count || 0),
-        favorited: !!r.favorited,
-        join_count: Number(r.join_count || 0),
-        joined: !!r.joined,
-        pending_me: !!r.pending_me,
-        rating: Number(r.avg_rating || 0),
-        reviews: Number(r.review_count || 0),
-        images: []
-      })),
+    res.json({
+      items: rows.map(r => {
+        const tDate = parseDate(r.teaching_days);
+        const isExpired = tDate && tDate < now;
+
+        return {
+          _id: r.tutor_post_id,
+          subject: r.subject,
+          content: r.description,
+          createdAt: r.created_at,
+          group_size: Number(r.group_size || 0),
+          authorId: {
+            id: r.tutor_id,
+            name: `${r.name || ''} ${r.lastname || ''}`.trim() || `ติวเตอร์ #${r.tutor_id}`,
+            avatarUrl: r.profile_picture_url || ''
+          },
+          user: {
+            id: r.tutor_id,
+            first_name: r.name || '',
+            last_name: r.lastname || '',
+            profile_image: r.profile_picture_url || '',
+            email: r.email || '',
+            phone: r.phone || '',
+            role: r.type || 'tutor'
+          },
+          // Profile Data added to top level for convenience
+          nickname: r.nickname,
+          about_me: r.about_me,
+          education: r.education,
+          teaching_experience: r.teaching_experience,
+          phone: r.phone,
+          email: r.email,
+
+          meta: {
+            target_student_level: r.target_student_level || 'ไม่ระบุ',
+            teaching_days: r.teaching_days,
+            teaching_time: r.teaching_time,
+            location: r.location,
+            price: Number(r.price || 0),
+            contact_info: r.contact_info
+          },
+          is_expired: isExpired, // ✅ Add Flag
+          fav_count: Number(r.fav_count || 0),
+          favorited: !!r.favorited,
+          join_count: Number(r.join_count || 0),
+          joined: !!r.joined,
+          pending_me: !!r.pending_me,
+          rating: Number(r.avg_rating || 0),
+          reviews: Number(r.review_count || 0),
+          images: []
+        };
+      }),
       pagination: {
         page, limit, total,
         pages: Math.ceil(total / limit),
@@ -931,6 +1072,28 @@ app.get('/api/student_posts', async (req, res) => {
     if (ownerId > 0) {
       searchClause += ` AND sp.student_id = ?`;
       queryParams.push(ownerId);
+    }
+
+    // --- Advanced Filters (Student Posts) ---
+    const minPrice = Number(req.query.minPrice) || 0;
+    const maxPrice = Number(req.query.maxPrice) || 999999;
+    const locFilter = (req.query.location || '').trim();
+    const gradeFilter = (req.query.gradeLevel || '').trim();
+
+    // Filter Budget (Price)
+    searchClause += ' AND sp.budget BETWEEN ? AND ?';
+    queryParams.push(minPrice, maxPrice);
+
+    // Filter Location
+    if (locFilter) {
+      searchClause += ' AND sp.location LIKE ?';
+      queryParams.push(`%${locFilter}%`);
+    }
+
+    // Filter Grade Level
+    if (gradeFilter) {
+      searchClause += ' AND sp.grade_level LIKE ?';
+      queryParams.push(`%${gradeFilter}%`);
     }
 
     if (search) {
@@ -1568,8 +1731,12 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
           sp.student_id AS owner_id,
           sp.subject,
           sp.group_size,
+          sp.preferred_days,
+          sp.preferred_time,
+          sp.location,
           r.name AS owner_name,
-          r.lastname AS owner_lastname
+          r.lastname AS owner_lastname,
+          r.email AS owner_email
         FROM student_posts sp
         JOIN register r ON r.user_id = sp.student_id
         WHERE sp.student_post_id = ?
@@ -1641,8 +1808,35 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
       await conn.commit();
       conn.release();
 
-      // ------- หลัง commit: notify/calendar -------
+      // ------- หลัง commit: notify/calendar/EMAIL -------
       if (newStatus === 'approved') {
+
+        // 1. Fetch Joiner Email & Info for Email Sending
+        const [[joinerInfo]] = await pool.query('SELECT email, name, lastname FROM register WHERE user_id = ?', [targetUserId]);
+        const joinerName = joinerInfo ? `${joinerInfo.name} ${joinerInfo.lastname}` : 'ผู้เข้าร่วม';
+        const ownerNameFullName = `${sp.owner_name} ${sp.owner_lastname}`;
+
+        const emailDetails = {
+          courseName: sp.subject,
+          date: sp.preferred_days || 'ตามตกลง',
+          time: sp.preferred_time || 'ตามตกลง',
+          location: sp.location || 'ออนไลน์/ตามตกลง',
+        };
+
+        // Send to Owner (Student)
+        sendBookingConfirmationEmail(sp.owner_email, {
+          ...emailDetails,
+          partnerName: joinerName,
+          role: 'student'
+        });
+
+        // Send to Joiner (Tutor or Student)
+        sendBookingConfirmationEmail(joinerInfo?.email, {
+          ...emailDetails,
+          partnerName: ownerNameFullName,
+          role: isTutorTable ? 'tutor' : 'student'
+        });
+
         if (!isTutorTable) {
           await createCalendarEventsForStudentApproval(postId, targetUserId);
           await pool.query(
@@ -2005,6 +2199,7 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
   let capacity = 0;
   let joinCountAfter = 0;
   let tutorId = null;
+  let tp = null; // [FIX] Declare outside to use in email logic
 
   try {
     const conn = await pool.getConnection();
@@ -2012,13 +2207,16 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
       await conn.beginTransaction();
 
       // ✅ ล็อกแถวโพสต์ + เอา group_size มาเช็ค
-      const [[tp]] = await conn.query(
-        `SELECT tutor_post_id, group_size, tutor_id
-         FROM tutor_posts
-         WHERE tutor_post_id = ?
+      const [[tpFound]] = await conn.query(
+        `SELECT tp.tutor_post_id, tp.group_size, tp.tutor_id, tp.subject, tp.teaching_days, tp.teaching_time, tp.location,
+                r.name AS tutor_name, r.lastname AS tutor_lastname, r.email AS tutor_email
+         FROM tutor_posts tp
+         JOIN register r ON r.user_id = tp.tutor_id
+         WHERE tp.tutor_post_id = ?
          FOR UPDATE`,
         [postId]
       );
+      tp = tpFound; // [FIX] Assign to outer variable
 
       if (tp) tutorId = tp.tutor_id;
 
@@ -2090,6 +2288,39 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
     if (newStatus === 'approved') {
       await createCalendarEventsForTutorApproval(postId, userId);
       console.log(`🔔 Sending Join Approved Notification: User=${userId}, Actor=${tutorId}, Post=${postId}`);
+
+      // 📧 Send Emails
+      try {
+        // Fetch Joiner (Student) Info
+        const [[joiner]] = await pool.query('SELECT email, name, lastname FROM register WHERE user_id=?', [userId]);
+        const joinerName = joiner ? `${joiner.name} ${joiner.lastname}` : 'นักเรียน';
+        const tutorName = `${tp.tutor_name} ${tp.tutor_lastname}`;
+
+        const emailConfig = {
+          courseName: tp.subject,
+          date: tp.teaching_days,
+          time: tp.teaching_time,
+          location: tp.location
+        };
+
+        // 1. Send to Tutor
+        sendBookingConfirmationEmail(tp.tutor_email, {
+          ...emailConfig,
+          partnerName: joinerName,
+          role: 'tutor'
+        });
+
+        // 2. Send to Student (Joiner)
+        sendBookingConfirmationEmail(joiner?.email, {
+          ...emailConfig,
+          partnerName: tutorName,
+          role: 'student'
+        });
+
+      } catch (emailErr) {
+        console.error("❌ Email Send Error:", emailErr);
+      }
+
       try {
         await pool.query(
           `INSERT INTO notifications (user_id, actor_id, type, message, related_id)

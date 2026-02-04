@@ -939,7 +939,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                                     {!dailyEvents.length ? (
                                         <div className="py-10 text-center space-y-2">
                                             <div className="text-gray-300 flex justify-center"><Clock size={32} /></div>
-                                            <p className="text-xs font-bold text-gray-400 italic">ไม่มีกิจกรรมในวันนี้</p>
+                                            <p className="text-xs font-bold text-gray-400 ">ไม่มีกิจกรรมในวันนี้</p>
                                         </div>
                                     ) : (
                                         <div className="space-y-3">
@@ -1009,7 +1009,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                                         </>
                                     ) : (
                                         <div className="text-center py-12">
-                                            <p className="text-sm font-bold text-gray-400 italic">ยังไม่มีรีวิวจากนักเรียน</p>
+                                            <p className="text-sm font-bold text-gray-400 ">ยังไม่มีรีวิวจากนักเรียน</p>
                                         </div>
                                     )}
                                 </div>

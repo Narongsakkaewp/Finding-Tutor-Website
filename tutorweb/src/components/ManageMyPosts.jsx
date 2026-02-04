@@ -161,8 +161,8 @@ export default function ManageMyPosts({ onBack }) {
         try {
             setLoading(true);
             setError("");
-            // Filter by me=${tutorId}
-            const url = `${API_BASE}/api/tutor-posts?page=1&limit=200&me=${tutorId}`;
+            // Filter by me=${tutorId} AND tutorId=${tutorId} for server-side filtering
+            const url = `${API_BASE}/api/tutor-posts?page=1&limit=200&me=${tutorId}&tutorId=${tutorId}`;
             const res = await fetch(url);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();

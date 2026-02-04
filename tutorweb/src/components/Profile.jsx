@@ -207,7 +207,7 @@ function HiddenPostsModal({ open, onClose, posts, hiddenIds, onRestore, onRestor
 
 /* ---------- Main Component ---------- */
 
-function Profile({ user, setCurrentPage, onEditProfile }) {
+function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost, onViewProfile }) {
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -242,9 +242,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
   const [confirm, setConfirm] = useState({ open: false, id: null });
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
-  const currentUser = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem("user")); } catch { return null; }
-  }, []);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -821,7 +819,11 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                   ) : (
                     <ul className="space-y-3">
                       {dailyEvents.map((ev, index) => (
-                        <li key={ev.event_id || index} className="group bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-100 transition-all cursor-pointer">
+                        <li
+                          key={ev.event_id || index}
+                          onClick={() => onOpenPost && onOpenPost(ev.post_id)}
+                          className="group bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-100 transition-all cursor-pointer"
+                        >
                           <div className="flex items-center gap-3">
                             <div className="w-1 bg-indigo-500 rounded-full h-8" />
                             <div className="flex-grow">
@@ -855,7 +857,11 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2 space-y-3">
                 {!recommendedTutors.length ? <Empty line="ยังไม่มีติวเตอร์ที่เหมาะสม" /> : (
                   recommendedTutors.map((tutor) => (
-                    <div key={tutor.tutor_post_id} className="group flex flex-col gap-3 p-4 bg-white border border-gray-100 rounded-2xl hover:border-indigo-100 cursor-pointer transition-all shadow-sm hover:shadow-md" onClick={() => window.location.href = `/post/${tutor.tutor_post_id}`}>
+                    <div
+                      key={tutor.tutor_post_id}
+                      className="group flex flex-col gap-3 p-4 bg-white border border-gray-100 rounded-2xl hover:border-indigo-100 cursor-pointer transition-all shadow-sm hover:shadow-md"
+                      onClick={() => onOpenPost && onOpenPost(tutor.tutor_post_id, 'tutor_post')}
+                    >
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <img src={tutor.profile_picture_url || '/../blank_avatar.jpg'} alt={tutor.subject} className="w-10 h-10 rounded-xl object-cover border border-gray-50" />
@@ -866,7 +872,7 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                         </div>
                       </div>
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                        <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg font-black italic">฿{tutor.price} <span className="text-[9px] font-normal not-italic">/ชม.</span></span>
+                        <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg font-black ">฿{tutor.price} <span className="text-[9px] font-normal not-">/ชม.</span></span>
                         {tutor.relevance_score && <span className="text-[9px] text-indigo-400 font-bold uppercase tracking-tight">Match {tutor.relevance_score}%</span>}
                       </div>
                     </div>
@@ -880,7 +886,11 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
               <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2 space-y-3">
                 {!buddies.length ? <Empty line="ยังไม่พบเพื่อนที่ถูกใจ" /> : (
                   buddies.map((friend) => (
-                    <div key={friend.user_id} className="group p-4 bg-white border border-gray-100 rounded-2xl hover:border-orange-100 cursor-pointer transition-all shadow-sm hover:shadow-md">
+                    <div
+                      key={friend.user_id}
+                      className="group p-4 bg-white border border-gray-100 rounded-2xl hover:border-orange-100 cursor-pointer transition-all shadow-sm hover:shadow-md"
+                      onClick={() => onViewProfile && onViewProfile(friend.user_id)}
+                    >
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <img src={friend.profile_picture_url || '/../blank_avatar.jpg'} alt={friend.name} className="w-10 h-10 rounded-xl object-cover border border-gray-50" />
@@ -901,7 +911,13 @@ function Profile({ user, setCurrentPage, onEditProfile }) {
                             </span>
                           </div>
                         )}
-                        <button className="px-4 py-1.5 bg-orange-50 text-orange-600 rounded-xl text-[10px] font-black hover:bg-orange-600 hover:text-white transition-all uppercase">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewProfile && onViewProfile(friend.user_id);
+                          }}
+                          className="px-4 py-1.5 bg-orange-50 text-orange-600 rounded-xl text-[10px] font-black hover:bg-orange-600 hover:text-white transition-all uppercase"
+                        >
                           ติดต่อ
                         </button>
                       </div>

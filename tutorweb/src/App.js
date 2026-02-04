@@ -182,7 +182,7 @@ function App() {
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'home': return <Home setCurrentPage={setCurrentPage} />;
+      case 'home': return <Home setCurrentPage={setCurrentPage} user={user} />;
       case 'notification':
         return (
           <Notification
@@ -219,7 +219,14 @@ function App() {
         if (userType === 'tutor') {
           return <TutorProfile setCurrentPage={setCurrentPage} onEditProfile={handleEditProfile} />;
         } else {
-          return <Profile setCurrentPage={setCurrentPage} user={user} onEditProfile={handleEditProfile} />;
+          return <Profile
+            setCurrentPage={setCurrentPage}
+            user={user}
+            onEditProfile={handleEditProfile}
+            onOpenPost={(id, type) => openPostDetails(id, 'profile', type)}
+            onViewProfile={handleViewProfile}
+          />;
+
         }
       case 'tutor_layout': return <TutorLayout />;
       case 'student_calendar': return <StudentCalendar />;

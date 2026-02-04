@@ -11,7 +11,7 @@ function useDebounce(value, delay) {
   return debouncedValue;
 }
 
-export default function SmartSearch({ userId, onSearch }) {
+export default function SmartSearch({ userId, onSearch, onSelectResult }) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebounce(query, 500);
 
@@ -96,6 +96,12 @@ export default function SmartSearch({ userId, onSearch }) {
   };
 
   const handleSelectResult = (item, type) => {
+    // 1. If parent provided a specific handler for clicks (e.g. Index page opening a modal)
+    if (onSelectResult) {
+      onSelectResult(item, type);
+    }
+
+    // 2. Standard behavior: Update text and trigger generic search
     if (type === 'tutor') {
       setQuery(item.nickname || item.name);
       if (onSearch) onSearch(item.nickname || item.name);
@@ -168,7 +174,7 @@ export default function SmartSearch({ userId, onSearch }) {
         <div className="max-h-[60vh] overflow-y-auto custom-scrollbar">
 
           {/* Case 1: Live Results Found */}
-          {liveResults && (liveResults.tutors?.length > 0 || liveResults.students?.length > 0) ? (
+          {liveResults && (liveResults.tutors?.length > 0 || liveResults.posts?.length > 0) ? (
             <div>
               {/* Tutors Section */}
               {liveResults.tutors.length > 0 && (
@@ -194,23 +200,23 @@ export default function SmartSearch({ userId, onSearch }) {
               )}
 
               {/* Posts Section */}
-              {liveResults.students.length > 0 && (
+              {liveResults.posts?.length > 0 && (
                 <div className="py-2 border-t border-gray-100">
                   <div className="px-5 py-2 text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2 bg-gray-50/80">
-                    <BookOpen size={14} className="text-orange-500" /> โพสต์ประกาศหาครู
+                    <BookOpen size={14} className="text-orange-500" /> คอร์สเรียน / ประกาศสอน
                   </div>
-                  {liveResults.students.map((s, i) => (
+                  {liveResults.posts.map((s, i) => (
                     <div
                       key={`s-${i}`}
                       className="px-5 py-3 hover:bg-orange-50/50 cursor-pointer flex items-center gap-4 transition-colors border-b border-gray-50/50 last:border-0"
-                      onClick={() => handleSelectResult(s, 'student')}
+                      onClick={() => handleSelectResult(s, 'post')}
                     >
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-100 to-amber-100 flex items-center justify-center text-orange-600 shadow-sm shrink-0">
                         <BookOpen size={16} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-bold text-gray-800 truncate">{s.subject}</div>
-                        <div className="text-xs text-gray-500 truncate">{s.description}</div>
+                        <div className="text-xs text-gray-500 truncate">{s.description || 'ไม่มีรายละเอียด'}</div>
                       </div>
                       <ChevronRight size={16} className="text-gray-300" />
                     </div>

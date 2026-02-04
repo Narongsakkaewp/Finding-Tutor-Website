@@ -10,6 +10,7 @@ import {
   Star, CheckCircle, Users, BookOpen, ChevronRight, Menu, X,
   MapPin, Clock, Calendar, Mail, Phone, GraduationCap, Briefcase, PlusCircle, Search, Sparkles
 } from "lucide-react";
+import SmartSearch from './SmartSearch';
 
 const API_BASE = "http://localhost:5000";
 const priceText = (p) => new Intl.NumberFormat("th-TH").format(p || 0);
@@ -31,7 +32,7 @@ function ReviewCard({ review }) {
           <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'fill-current' : 'text-gray-400 opacity-30'}`} />
         ))}
       </div>
-      <p className="text-indigo-50 italic flex-grow leading-relaxed font-medium">"{review.comment}"</p>
+      <p className="text-indigo-50 flex-grow leading-relaxed font-medium">"{review.comment}"</p>
       <div className="mt-6 flex items-center gap-4 pt-4 border-t border-white/10">
         <img src={review.avatar} alt={review.name} className="w-10 h-10 rounded-full object-cover ring-2 ring-indigo-400" />
         <div>
@@ -326,7 +327,7 @@ function TutorDetailModal({ tutor, onClose, onSignUp }) {
                       <p className="font-black text-gray-900">{edu.degree}</p>
                       <p className="text-sm text-gray-500 font-bold">{edu.institution} {edu.year && `(${edu.year})`}</p>
                     </div>
-                  )) : <p className="text-gray-400 italic font-medium">ไม่ระบุ</p>}
+                  )) : <p className="text-gray-400 font-medium">ไม่ระบุ</p>}
                 </div>
               </section>
               <section>
@@ -340,7 +341,7 @@ function TutorDetailModal({ tutor, onClose, onSignUp }) {
                       <p className="text-sm text-indigo-500 font-bold">{exp.duration}</p>
                       <p className="text-sm text-gray-500 mt-2 font-medium">{exp.description}</p>
                     </div>
-                  )) : <p className="text-gray-400 italic font-medium">ไม่ระบุ</p>}
+                  )) : <p className="text-gray-400 font-medium">ไม่ระบุ</p>}
                 </div>
               </section>
             </div>
@@ -416,11 +417,47 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
   const [hasMoreTutors, setHasMoreTutors] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // ✅ New Search State
+  const [searchResults, setSearchResults] = useState({ tutors: [], students: [] });
+  const [isSearchActive, setIsSearchActive] = useState(false);
+
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // ... (fetchTutors, fetchPosts, fetchStudentPosts same as before) 
+  // ...
+
+  // ✅ Manual Search Handler (Modified)
+  const handleManualSearch = async (query) => {
+    if (!query || !query.trim()) {
+      setIsSearchActive(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+
+      setSearchResults({
+        tutors: data.tutors || [],
+        students: data.students || []
+      });
+      setIsSearchActive(true);
+
+      // Scroll slightly to reveal results if needed, but stay near top
+      // window.scrollTo({ top: 400, behavior: 'smooth' }); 
+
+    } catch (err) {
+      console.error("Search failed:", err);
+      alert("เกิดข้อผิดพลาดในการค้นหา");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ✅ Fetch Tutors (Pagination)
   const fetchTutors = async (page = 1) => {
@@ -472,7 +509,6 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
       try {
         const res = await fetch(`${API_BASE}/api/student_posts`);
         const data = await res.json();
-        // 🔥 แก้ slice เป็น 8
         setStudentPosts((data || []).slice(0, 8));
       } catch (err) {
         console.error("Error fetching student posts:", err);
@@ -480,6 +516,7 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
     };
     fetchStudentPosts();
   }, []);
+
 
   const handleLoadMoreTutors = () => {
     const nextPage = tutorPage + 1;
@@ -532,7 +569,7 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
       </nav>
 
       {/* --- Hero Section --- */}
-      <header className="relative pt-40 lg:pt-56 lg:pb-40 overflow-hidden">
+      <header className="relative pt-40 lg:pb-16 overflow-hidden">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[150%] bg-gradient-to-b from-indigo-50 via-white to-white -z-20"></div>
         <div className="absolute top-[-20%] right-[-10%] w-[1000px] h-[1000px] bg-gradient-to-br from-purple-200/40 to-indigo-100/20 rounded-full blur-[120px] animate-pulse -z-10"></div>
         <div className="absolute bottom-[-20%] left-[-10%] w-[800px] h-[800px] bg-gradient-to-tr from-blue-200/40 to-indigo-100/20 rounded-full blur-[120px] animate-pulse -z-10" style={{ animationDelay: '2s' }}></div>
@@ -542,10 +579,11 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
             <div className="w-2 h-2 bg-indigo-600 rounded-full animate-ping"></div>
             Best Learning Platform in Thailand
           </div>
-          <h1 className="text-6xl md:text-8xl font-black tracking-tighter mb-8 text-gray-900 leading-[0.9] animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+          {/* <h1 className="text-6xl md:text-8xl font-black tracking-tighter mb-8 text-gray-900 leading-[0.9] animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
             ค้นหาติวเตอร์ที่ใช่ <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-900">เกรดพุ่ง...ไม่มีหยุด</span>
-          </h1>
+          </h1> */}
+
           <p className="text-xl md:text-2xl text-gray-500 max-w-3xl mx-auto mb-14 leading-relaxed font-medium animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
             แหล่งรวมติวเตอร์คุณภาพระดับท็อป ครบทุกหลักสูตร จองเรียนง่าย <br className="hidden md:block" />
             ออกแบบการเรียนได้ด้วยตัวเอง ทั้งแบบออนไลน์และตัวต่อตัว
@@ -563,13 +601,13 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
             </button>
             <button
               onClick={() => setShowLogin(true)}
-              className="w-full sm:w-auto px-10 py-5 bg-white text-gray-900 border-2 border-gray-100 font-black rounded-[2rem] text-xl hover:border-indigo-600 hover:text-indigo-600 transition-all shadow-xl hover:shadow-indigo-100"
+              className="w-full sm:w-auto px-10 py-5 bg-white text-gray-900 font-black rounded-[2rem] text-xl hover:border-indigo-600 hover:text-indigo-600 transition-all shadow-xl hover:shadow-indigo-100"
             >
               สำรวจวิชาเรียน
             </button>
           </div>
 
-          <div className="mt-24 py-12 border-y border-gray-100 animate-fade-in" style={{ animationDelay: '0.8s' }}>
+          <div className="mt-14 animate-fade-in" style={{ animationDelay: '0.8s' }}>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-8">ครอบคลุมทุกระดับการศึกษา</p>
             <div className="flex flex-wrap justify-center gap-8 md:gap-16 opacity-40 grayscale hover:grayscale-0 transition-all duration-700">
               {['ประถม', 'มัธยมต้น', 'มัธยมปลาย', 'มหาวิทยาลัย', 'IELTS/TOEIC', 'เขียนโปรแกรม'].map((item, i) => (
@@ -580,8 +618,81 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
         </div>
       </header>
 
+      {/* ✅ Smart Search Box */}
+      <div className="max-w-xl mx-auto mb-14 relative z-50 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
+        <SmartSearch
+          userId={null}
+          onSelectResult={(item, type) => {
+            if (type === 'tutor') {
+              openTutorModal(item);
+            } else {
+              setShowRegister(true);
+            }
+          }}
+          onSearch={handleManualSearch}
+        />
+      </div>
+
+      {/* --- ✅ SEARCH RESULTS SECTION (Conditional) --- */}
+      {isSearchActive && (
+        <section className="py-16 bg-gradient-to-b from-white to-indigo-50/30 relative animate-fade-in-up">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-3xl font-black text-indigo-900 flex items-center gap-3">
+                <Search className="text-indigo-600" /> ผลการค้นหา
+              </h2>
+              <button
+                onClick={() => { setIsSearchActive(false); setSearchResults({ tutors: [], students: [] }); }}
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-bold transition-all text-sm flex items-center gap-2"
+              >
+                <X size={16} /> ปิดการค้นหา
+              </button>
+            </div>
+
+            {searchResults.tutors.length === 0 && searchResults.students.length === 0 ? (
+              <div className="text-center py-20 bg-white rounded-[2rem] border border-gray-100 shadow-sm opacity-60">
+                <Search size={48} className="mx-auto text-gray-300 mb-4" />
+                <p className="text-xl font-bold text-gray-400">ไม่พบข้อมูลที่ตรงกัน</p>
+                <p className="text-sm text-gray-400 mt-2">ลองค้นหาด้วยคำอื่น หรือดูรายการทั้งหมดด้านล่าง</p>
+              </div>
+            ) : (
+              <div className="space-y-12">
+                {/* Results: Tutors */}
+                {searchResults.tutors.length > 0 && (
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                      <GraduationCap size={20} className="text-indigo-500" /> ติวเตอร์
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                      {searchResults.tutors.map(tutor => (
+                        <TutorCard key={tutor.id} item={tutor} onOpen={openTutorModal} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Results: Students */}
+                {searchResults.students.length > 0 && (
+                  <div>
+                    <div className="w-full h-px bg-gray-200 my-8"></div>
+                    <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                      <BookOpen size={20} className="text-orange-500" /> ประกาศหาครู
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                      {searchResults.students.map(post => (
+                        <StudentRequestCard key={post.id} post={post} onRegister={() => setShowRegister(true)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* --- Tutors Section --- */}
-      <section className="pb-24 bg-white relative overflow-hidden">
+      <section className="pb-24 bg-white relative overflow-hidden" id="tutors-section">
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-50 rounded-full blur-[100px] -z-10 opacity-50"></div>
         <div className="max-w-7xl mx-auto px-6">
           <SectionHeader
