@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Mail, Phone, MapPin, Clock, ArrowLeft, Star, Users, DollarSign, User, GraduationCap, BookOpen, Briefcase, Lightbulb, Calendar, MoreVertical } from 'lucide-react';
+import { Mail, Phone, MapPin, Clock, ArrowLeft, Star, Users, DollarSign, User, GraduationCap, BookOpen, Briefcase, Lightbulb, Calendar, MoreVertical, X } from 'lucide-react'; // ✅ เพิ่ม X icon
 
 const API_BASE = "http://localhost:5000";
 
@@ -9,6 +9,9 @@ function UserProfilePage({ userId, onBack }) {
     const [userPosts, setUserPosts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+
+    // ✅ State สำหรับเปิด/ปิดรูปใหญ่
+    const [isImageOpen, setIsImageOpen] = useState(false);
 
     useEffect(() => {
         if (!userId) return;
@@ -68,7 +71,7 @@ function UserProfilePage({ userId, onBack }) {
         }
     };
 
-    // ✅ ย้าย Hooks มาไว้ตรงนี้ (ก่อน return)
+    // ✅ Hooks (useMemo)
     const derivedInterests = useMemo(() => {
         if (!user || user.role === 'tutor') return [];
         const subjects = userPosts
@@ -86,9 +89,8 @@ function UserProfilePage({ userId, onBack }) {
         } catch { return "-"; }
     }, [user]);
 
-    // ✅ ย้าย latestEducation มาไว้ตรงนี้ และเพิ่มเงื่อนไขเช็ค user
     const latestEducation = useMemo(() => {
-        if (!user) return "-"; // เพิ่มกัน Error
+        if (!user) return "-";
         const isTutor = user.role === 'tutor';
 
         if (!isTutor || !Array.isArray(user.education) || user.education.length === 0) return "-";
@@ -101,7 +103,6 @@ function UserProfilePage({ userId, onBack }) {
         return sortedEdu[0].degree || "-";
     }, [user]);
 
-    // ⛔️ ห้ามมี Hook (useMemo, useState) หลังบรรทัดเหล่านี้
     if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">กำลังโหลดข้อมูล...</div>;
     if (error) return <div className="min-h-screen flex items-center justify-center text-rose-500">{error}</div>;
     if (!user) return null;
@@ -110,7 +111,7 @@ function UserProfilePage({ userId, onBack }) {
     const reviews = user.reviews || [];
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-20 font-sans">
+        <div className="min-h-screen bg-gray-50 pb-20 font-sans relative">
             {/* Navbar */}
             <div className="bg-white shadow-sm sticky top-0 z-20 px-4 py-3 flex items-center gap-3">
                 <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600">
@@ -123,12 +124,24 @@ function UserProfilePage({ userId, onBack }) {
 
                 {/* 1. Header Profile */}
                 <div className="flex flex-col md:flex-row gap-8 items-start mb-8">
-                    <div className="flex-shrink-0 mx-auto md:mx-0 relative">
+                    {/* ✅ แก้ไขส่วนรูปภาพ: เพิ่ม onClick และ Cursor Pointer */}
+                    <div 
+                        className="flex-shrink-0 mx-auto md:mx-0 relative group cursor-pointer"
+                        onClick={() => setIsImageOpen(true)}
+                        title="คลิกเพื่อดูรูปใหญ่"
+                    >
                         <img
                             src={user.profile_picture_url || "/../blank_avatar.jpg"}
-                            className="w-32 h-32 md:w-40 md:h-40 rounded-full object-cover border-4 border-white shadow-lg"
+                            className="w-32 h-32 md:w-40 md:h-40 rounded-full object-cover border-4 border-white shadow-lg transition-transform duration-300 group-hover:scale-105 group-hover:brightness-90"
                             alt="Profile"
                         />
+                        {/* ไอคอนแว่นขยายเล็กๆ ตอน Hover (Optional) */}
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="bg-black/20 p-2 rounded-full backdrop-blur-sm">
+                                <Users size={20} className="text-white"/> 
+                            </div>
+                        </div>
+
                         <span className={`absolute bottom-1 right-1 px-3 py-1 rounded-full text-xs font-bold uppercase text-white shadow-sm ${isTutor ? 'bg-indigo-600' : 'bg-rose-500'}`}>
                             {isTutor ? 'Tutor' : 'Student'}
                         </span>
@@ -462,6 +475,27 @@ function UserProfilePage({ userId, onBack }) {
                 </div>
 
             </div>
+
+            {/* ✅ Image Lightbox Modal */}
+            {isImageOpen && (
+                <div 
+                    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-sm animate-in fade-in duration-200"
+                    onClick={() => setIsImageOpen(false)}
+                >
+                    <button 
+                        className="absolute top-5 right-5 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"
+                        onClick={() => setIsImageOpen(false)}
+                    >
+                        <X size={28} />
+                    </button>
+                    <img 
+                        src={user.profile_picture_url || "/../blank_avatar.jpg"} 
+                        className="max-w-[90vw] max-h-[85vh] rounded-lg shadow-2xl scale-100"
+                        alt="Full Size Profile"
+                        onClick={(e) => e.stopPropagation()} // กดที่รูปไม่ปิด
+                    />
+                </div>
+            )}
         </div>
     );
 }

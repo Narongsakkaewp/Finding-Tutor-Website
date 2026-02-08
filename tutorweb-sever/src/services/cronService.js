@@ -278,7 +278,7 @@ function isSameDate(d1, d2) {
 }
 
 async function sendNotificationIfNotExists(conn, userId, type, message, relatedId, actorId = null) {
-    if (!userId) return;
+    if (!userId) return false;
     const [existing] = await conn.query(`
     SELECT notification_id FROM notifications 
     WHERE user_id = ? AND type = ? AND related_id = ? 
@@ -292,7 +292,9 @@ async function sendNotificationIfNotExists(conn, userId, type, message, relatedI
       INSERT INTO notifications (user_id, actor_id, type, message, related_id, created_at)
       VALUES (?, ?, ?, ?, ?, NOW())
     `, [userId, actorId, type, message, relatedId]);
+        return true;
     }
+    return false;
 }
 
 
@@ -358,17 +360,19 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                     [post.student_id, post.student_post_id]
                 );
                 if (exists.length === 0) {
-                    await sendNotificationIfNotExists(conn, post.student_id, 'review_request',
+                    const sent = await sendNotificationIfNotExists(conn, post.student_id, 'review_request',
                         `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject}`, post.student_post_id, post.tutor_id);
 
-                    // [EMAIL] Send Reminder to Student
-                    sendReviewReminderEmail(post.student_email, {
-                        courseName: post.subject,
-                        date: dateStr,
-                        partnerName: post.tutor_name || 'ติวเตอร์',
-                        postId: post.student_post_id,
-                        type: 'student'
-                    });
+                    // [EMAIL] Send Reminder to Student ONLY if new notification
+                    if (sent) {
+                        sendReviewReminderEmail(post.student_email, {
+                            courseName: post.subject,
+                            date: dateStr,
+                            partnerName: post.tutor_name || 'ติวเตอร์',
+                            postId: post.student_post_id,
+                            type: 'student'
+                        });
+                    }
                 }
             } catch (e) {
                 console.log("⚠️ Error checking review existence (Owner):", e.message);
@@ -391,17 +395,19 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                         [joiner.user_id, post.student_post_id]
                     );
                     if (jExists.length === 0) {
-                        await sendNotificationIfNotExists(conn, joiner.user_id, 'review_request',
+                        const sent = await sendNotificationIfNotExists(conn, joiner.user_id, 'review_request',
                             `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject} (ร่วมติว)`, post.student_post_id, post.tutor_id);
 
-                        // [EMAIL] Send Reminder to Study Buddy
-                        sendReviewReminderEmail(joiner.email, {
-                            courseName: post.subject,
-                            date: dateStr,
-                            partnerName: 'เพื่อนร่วมติว/ติวเตอร์',
-                            postId: post.student_post_id,
-                            type: 'student'
-                        });
+                        // [EMAIL] Send Reminder to Study Buddy ONLY if new notification
+                        if (sent) {
+                            sendReviewReminderEmail(joiner.email, {
+                                courseName: post.subject,
+                                date: dateStr,
+                                partnerName: 'เพื่อนร่วมติว/ติวเตอร์',
+                                postId: post.student_post_id,
+                                type: 'student'
+                            });
+                        }
                     }
                 }
             } catch (e) {
@@ -434,17 +440,19 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                     [post.student_id, post.tutor_post_id]
                 );
                 if (exists.length === 0) {
-                    await sendNotificationIfNotExists(conn, post.student_id, 'review_request',
+                    const sent = await sendNotificationIfNotExists(conn, post.student_id, 'review_request',
                         `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject}`, post.tutor_post_id, post.tutor_id);
 
-                    // [EMAIL] Send Reminder
-                    sendReviewReminderEmail(post.student_email, {
-                        courseName: post.subject,
-                        date: dateStr,
-                        partnerName: `ติวเตอร์ ${post.tutor_name || ''}`,
-                        postId: post.tutor_post_id,
-                        type: 'tutor'
-                    });
+                    // [EMAIL] Send Reminder ONLY if new notification
+                    if (sent) {
+                        sendReviewReminderEmail(post.student_email, {
+                            courseName: post.subject,
+                            date: dateStr,
+                            partnerName: `ติวเตอร์ ${post.tutor_name || ''}`,
+                            postId: post.tutor_post_id,
+                            type: 'tutor'
+                        });
+                    }
                 }
             } catch (e) {
                 console.log("⚠️ Error checking review existence:", e.message);

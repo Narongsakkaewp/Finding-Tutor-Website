@@ -1,7 +1,11 @@
 // tutorweb/src/pages/Student_Info.jsx
 import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  User, Phone, MapPin, School, BookOpen, FileText, 
+  Camera, Save, X, ChevronLeft 
+} from 'lucide-react'; // ✅ Import Icons
 
-// Helper function to get user from localStorage, similar to your Profile.jsx
+// Helper function
 const getCurrentUser = () => {
   try {
     return JSON.parse(localStorage.getItem("user"));
@@ -11,10 +15,8 @@ const getCurrentUser = () => {
 };
 
 export default function StudentInfoPage({ setCurrentPage }) {
-  // 1. ดึงข้อมูลผู้ใช้ที่ล็อกอินอยู่จาก localStorage
   const currentUser = useMemo(() => getCurrentUser(), []);
 
-  // 2. State สำหรับจัดการข้อมูลในฟอร์ม, ไฟล์รูป, และสถานะการโหลด/ข้อความ
   const [formData, setFormData] = useState({
     profile_picture_url: '',
     nickname: '',
@@ -26,12 +28,11 @@ export default function StudentInfoPage({ setCurrentPage }) {
     major: '',
     about: ''
   });
-  const [imageFile, setImageFile] = useState(null); // State สำหรับเก็บไฟล์รูปที่เลือกใหม่
+  const [imageFile, setImageFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  // 3. เมื่อ Component โหลด, ดึงข้อมูลโปรไฟล์เดิมจาก Backend มาใส่ในฟอร์ม
   useEffect(() => {
     if (!currentUser?.user_id) {
       setError("ไม่พบข้อมูลผู้ใช้, กรุณาล็อกอินใหม่");
@@ -41,22 +42,19 @@ export default function StudentInfoPage({ setCurrentPage }) {
     const fetchProfile = async () => {
       try {
         const response = await fetch(`http://localhost:5000/api/profile/${currentUser.user_id}`);
-        if (!response.ok) {
-          throw new Error("ไม่สามารถดึงข้อมูลโปรไฟล์ได้");
-        }
+        if (!response.ok) throw new Error("ไม่สามารถดึงข้อมูลโปรไฟล์ได้");
         const data = await response.json();
 
-        // สังเกตว่าเราจะใช้ชื่อ field ตาม schema ของ database ที่เราออกแบบไว้
         setFormData({
           profile_picture_url: data.profile_picture_url || '',
           nickname: data.nickname || '',
-          phone: data.phone || '', // แก้ไขตาม schema
+          phone: data.phone || '',
           address: data.address || '',
-          gradeLevel: data.grade_level || '', // แก้ไขตาม schema
+          gradeLevel: data.grade_level || '',
           institution: data.institution || '',
           faculty: data.faculty || '',
           major: data.major || '',
-          about: data.about || '' // แก้ไขตาม schema
+          about: data.about || ''
         });
       } catch (err) {
         setError(err.message);
@@ -74,14 +72,12 @@ export default function StudentInfoPage({ setCurrentPage }) {
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setImageFile(file); // เก็บ object ของไฟล์ไว้
-      // แสดงภาพตัวอย่างทันที
+      setImageFile(file);
       const previewUrl = URL.createObjectURL(file);
       setFormData(prev => ({ ...prev, profile_picture_url: previewUrl }));
     }
   };
 
-  // 4. หัวใจหลัก: ฟังก์ชันส่งข้อมูลไปยัง Backend
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!currentUser?.user_id) {
@@ -96,27 +92,22 @@ export default function StudentInfoPage({ setCurrentPage }) {
     try {
       let imageUrl = formData.profile_picture_url;
 
-      // 4.1 ถ้ามีการเลือกไฟล์รูปใหม่, ให้อัปโหลดไฟล์ก่อน
       if (imageFile) {
         const uploadFormData = new FormData();
         uploadFormData.append('image', imageFile);
-
-        // ยิงไปที่ endpoint สำหรับอัปโหลดรูปภาพโดยเฉพาะ
         const uploadResponse = await fetch('http://localhost:5000/api/upload', {
           method: 'POST',
           body: uploadFormData,
         });
 
         if (!uploadResponse.ok) throw new Error('การอัปโหลดรูปภาพล้มเหลว');
-
         const uploadResult = await uploadResponse.json();
-        imageUrl = uploadResult.imageUrl; // รับ URL จริงจาก server
+        imageUrl = uploadResult.imageUrl;
       }
 
-      // 4.2 เตรียมข้อมูลทั้งหมดเพื่อส่งไปบันทึก
       const profileData = {
         nickname: formData.nickname,
-        phone_number: formData.phone, // ชื่อ field ต้องตรงกับ backend
+        phone_number: formData.phone,
         address: formData.address,
         grade_level: formData.gradeLevel,
         institution: formData.institution,
@@ -126,12 +117,9 @@ export default function StudentInfoPage({ setCurrentPage }) {
         profile_picture_url: imageUrl,
       };
 
-      // 4.3 ส่งข้อมูลไปอัปเดตที่ Backend
       const response = await fetch(`http://localhost:5000/api/profile/${currentUser.user_id}`, {
-        method: 'PUT', // ใช้ PUT สำหรับการอัปเดตข้อมูลที่มีอยู่แล้ว
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profileData),
       });
 
@@ -140,10 +128,9 @@ export default function StudentInfoPage({ setCurrentPage }) {
         throw new Error(errorData.message || 'การบันทึกข้อมูลล้มเหลว');
       }
 
-      // 4.4 เมื่อสำเร็จ: แสดงข้อความและเปลี่ยนหน้ากลับไปที่โปรไฟล์
       setMessage('บันทึกข้อมูลโปรไฟล์เรียบร้อยแล้ว!');
       setTimeout(() => {
-        setCurrentPage('profile'); // กลับไปหน้าโปรไฟล์
+        setCurrentPage('profile');
       }, 1500);
 
     } catch (err) {
@@ -153,7 +140,6 @@ export default function StudentInfoPage({ setCurrentPage }) {
     }
   };
 
-  // ดึงข้อมูลชื่อ-นามสกุล และอีเมลจาก currentUser มาแสดง (ส่วนที่ไม่ให้แก้ไข)
   const user = {
     name: currentUser?.name || '',
     lastname: currentUser?.lastname || '',
@@ -161,113 +147,181 @@ export default function StudentInfoPage({ setCurrentPage }) {
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen py-10">
-      <div className="max-w-4xl mx-auto p-8 bg-white rounded-lg shadow-md">
-        <h2 className="text-2xl font-bold mb-6 text-center">แก้ไขโปรไฟล์นักเรียน</h2>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* --- Profile Picture Section --- */}
-          <div className="flex flex-col items-center space-y-4">
-            <img
-              src={formData.profile_picture_url || 'https://via.placeholder.com/150'}
-              alt="Profile"
-              className="w-32 h-32 rounded-full object-cover border-4 border-gray-200"
-            />
-            <input type="file" id="profilePictureUpload" className="hidden" onChange={handleImageChange} accept="image/*" />
-            <label htmlFor="profilePictureUpload" className="cursor-pointer text-sm text-blue-600 hover:text-blue-800">
-              เปลี่ยนรูปโปรไฟล์
-            </label>
-          </div>
-
-          {/* --- Main Info Section --- */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">ชื่อจริง</label>
-              <input type="text" value={user.name} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">นามสกุล</label>
-              <input type="text" value={user.lastname} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
-            </div>
-            <div>
-              <label htmlFor="nickname" className="block text-sm font-medium text-gray-700">ชื่อเล่น</label>
-              <input type="text" id="nickname" name="nickname" value={formData.nickname} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
-            </div>
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">เบอร์โทรศัพท์</label>
-              <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">อีเมล</label>
-              <input type="email" value={user.email} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
-            </div>
-            <div className="md:col-span-2">
-              <label htmlFor="address" className="block text-sm font-medium text-gray-700">ที่อยู่ที่สามารถติดต่อได้</label>
-              <input type="text" id="address" name="address" value={formData.address} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
-            </div>
-          </div>
-
-          {/* --- Education & About Sections... (เหมือนเดิม) --- */}
+    <div className="bg-gray-50/50 min-h-screen py-12 px-4 sm:px-6 lg:px-8 font-sans">
+      <div className="max-w-4xl mx-auto">
+        
+        {/* Header Section */}
+        <div className="mb-8 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">การศึกษา</h3>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">แก้ไขโปรไฟล์นักเรียน</h1>
+            <p className="mt-1 text-sm text-gray-500">อัปเดตข้อมูลส่วนตัวเพื่อให้ติวเตอร์รู้จักคุณมากขึ้น</p>
+          </div>
+          <button 
+            onClick={() => setCurrentPage('profile')}
+            className="flex items-center text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <ChevronLeft size={20} /> <span className="ml-1 font-medium">ย้อนกลับ</span>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-8">
+          
+          {/* 1. ส่วนรูปโปรไฟล์ */}
+          <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col items-center">
+            <div className="relative group cursor-pointer">
+              <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-white shadow-lg ring-4 ring-indigo-50">
+                <img
+                  src={formData.profile_picture_url || 'https://via.placeholder.com/150'}
+                  alt="Profile"
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+              </div>
+              {/* Camera Overlay */}
+              <label htmlFor="profilePictureUpload" className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer">
+                <Camera className="text-white w-10 h-10 drop-shadow-md" />
+              </label>
+              <input type="file" id="profilePictureUpload" className="hidden" onChange={handleImageChange} accept="image/*" />
+            </div>
+            <p className="mt-4 text-sm text-gray-500">คลิกที่รูปเพื่อเปลี่ยนรูปโปรไฟล์</p>
+          </div>
+
+          {/* 2. ข้อมูลส่วนตัว (Card) */}
+          <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+              <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><User size={24}/></div>
+              <h3 className="text-xl font-bold text-gray-900">ข้อมูลส่วนตัว</h3>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-              {/* ✅✅✅ START: โค้ดที่แก้ไข ✅✅✅ */}
               <div>
-                <label htmlFor="gradeLevel" className="block text-sm font-medium text-gray-700">ระดับชั้น</label>
-                <select
-                  id="gradeLevel"
-                  name="gradeLevel"
-                  value={formData.gradeLevel}
-                  onChange={handleChange}
-                  className="mt-1 block w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="" disabled>--- เลือกระดับชั้น ---</option>
-                  <option value="ประถมศึกษา">ประถมศึกษา</option>
-                  <option value="ม.1">มัธยมศึกษาปีที่ 1</option>
-                  <option value="ม.2">มัธยมศึกษาปีที่ 2</option>
-                  <option value="ม.3">มัธยมศึกษาปีที่ 3</option>
-                  <option value="ม.4">มัธยมศึกษาปีที่ 4</option>
-                  <option value="ม.5">มัธยมศึกษาปีที่ 5</option>
-                  <option value="ม.6">มัธยมศึกษาปีที่ 6</option>
-                  <option value="ปริญญาตรี">ปริญญาตรี</option>
-                </select>
-              </div>
-              {/* ✅✅✅ END: โค้ดที่แก้ไข ✅✅✅ */}
-
-              <div>
-                <label htmlFor="institution" className="block text-sm font-medium text-gray-700">สถานศึกษา</label>
-                <input type="text" id="institution" name="institution" value={formData.institution} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
+                <label className="block text-sm font-semibold text-gray-700 mb-1">ชื่อจริง</label>
+                <input type="text" value={user.name} disabled className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed" />
               </div>
               <div>
-                <label htmlFor="faculty" className="block text-sm font-medium text-gray-700">คณะ</label>
-                <input type="text" id="faculty" name="faculty" value={formData.faculty} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
+                <label className="block text-sm font-semibold text-gray-700 mb-1">นามสกุล</label>
+                <input type="text" value={user.lastname} disabled className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed" />
+              </div>
+              
+              <div>
+                <label htmlFor="nickname" className="block text-sm font-semibold text-gray-700 mb-1">ชื่อเล่น</label>
+                <input 
+                  type="text" id="nickname" name="nickname" value={formData.nickname} onChange={handleChange} 
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none" 
+                  placeholder="เช่น น้องเอิร์น"
+                />
               </div>
               <div>
-                <label htmlFor="major" className="block text-sm font-medium text-gray-700">สาขา</label>
-                <input type="text" id="major" name="major" value={formData.major} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
+                <label htmlFor="phone" className="block text-sm font-semibold text-gray-700 mb-1">เบอร์โทรศัพท์</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><Phone size={18}/></div>
+                  <input 
+                    type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} 
+                    className="w-full pl-10 px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none" 
+                    placeholder="08x-xxx-xxxx"
+                  />
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">อีเมล</label>
+                <input type="email" value={user.email} disabled className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed" />
+              </div>
+              <div className="md:col-span-2">
+                <label htmlFor="address" className="block text-sm font-semibold text-gray-700 mb-1">ที่อยู่ที่สามารถติดต่อได้</label>
+                <div className="relative">
+                  <div className="absolute top-3.5 left-3 pointer-events-none text-gray-400"><MapPin size={18}/></div>
+                  <input 
+                    type="text" id="address" name="address" value={formData.address} onChange={handleChange} 
+                    className="w-full pl-10 px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none" 
+                    placeholder="บ้านเลขที่, ถนน, แขวง/ตำบล, เขต/อำเภอ, จังหวัด"
+                  />
+                </div>
               </div>
             </div>
           </div>
-          <div>
-            <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">เกี่ยวกับคุณ</h3>
-            <textarea id="about" name="about" rows="4" className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำตัวเองสั้นๆ..." value={formData.about} onChange={handleChange}></textarea>
+
+          {/* 3. การศึกษา (Card) */}
+          <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+              <div className="p-2 bg-blue-50 rounded-xl text-blue-600"><School size={24}/></div>
+              <h3 className="text-xl font-bold text-gray-900">การศึกษา</h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="gradeLevel" className="block text-sm font-semibold text-gray-700 mb-1">ระดับชั้นปัจจุบัน</label>
+                <div className="relative">
+                  <select
+                    id="gradeLevel" name="gradeLevel" value={formData.gradeLevel} onChange={handleChange}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none bg-white"
+                  >
+                    <option value="" disabled>--- เลือกระดับชั้น ---</option>
+                    <option value="ประถมศึกษา">ประถมศึกษา</option>
+                    <option value="ม.1">มัธยมศึกษาปีที่ 1</option>
+                    <option value="ม.2">มัธยมศึกษาปีที่ 2</option>
+                    <option value="ม.3">มัธยมศึกษาปีที่ 3</option>
+                    <option value="ม.4">มัธยมศึกษาปีที่ 4</option>
+                    <option value="ม.5">มัธยมศึกษาปีที่ 5</option>
+                    <option value="ม.6">มัธยมศึกษาปีที่ 6</option>
+                    <option value="ปริญญาตรี">ปริญญาตรี</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-500">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="institution" className="block text-sm font-semibold text-gray-700 mb-1">สถานศึกษา</label>
+                <input type="text" id="institution" name="institution" value={formData.institution} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="ชื่อโรงเรียน / มหาวิทยาลัย" />
+              </div>
+              <div>
+                <label htmlFor="faculty" className="block text-sm font-semibold text-gray-700 mb-1">คณะ (ถ้ามี)</label>
+                <input type="text" id="faculty" name="faculty" value={formData.faculty} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="ระบุคณะ" />
+              </div>
+              <div>
+                <label htmlFor="major" className="block text-sm font-semibold text-gray-700 mb-1">สาขา/สายการเรียน (ถ้ามี)</label>
+                <input type="text" id="major" name="major" value={formData.major} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="ระบุสาขา หรือ สายวิทย์-คณิต" />
+              </div>
+            </div>
           </div>
 
-          {/* --- Action Buttons & Messages --- */}
-          <div className="flex flex-col items-end space-y-2">
-            <div className="h-5">
-              {message && <div className="text-green-600 text-sm">{message}</div>}
-              {error && <div className="text-red-600 text-sm">{error}</div>}
+          {/* 4. เกี่ยวกับคุณ (Card) */}
+          <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+              <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600"><FileText size={24}/></div>
+              <h3 className="text-xl font-bold text-gray-900">เกี่ยวกับคุณ</h3>
             </div>
-            <div className="flex space-x-4">
-              <button type="button" onClick={() => setCurrentPage('profile')} className="px-6 py-2 border rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+            <textarea 
+              id="about" name="about" rows="4" 
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" 
+              placeholder="แนะนำตัวเองสั้นๆ เพื่อให้ติวเตอร์รู้จักคุณมากขึ้น..." 
+              value={formData.about} onChange={handleChange}
+            ></textarea>
+          </div>
+
+          {/* Messages & Actions */}
+          <div className="flex flex-col items-end gap-4 pt-4">
+            {message && <div className="px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-medium border border-green-200 animate-fade-in">{message}</div>}
+            {error && <div className="px-4 py-2 bg-red-50 text-red-700 rounded-lg text-sm font-medium border border-red-200 animate-fade-in">{error}</div>}
+            
+            <div className="flex gap-4 w-full md:w-auto">
+              <button 
+                type="button" 
+                onClick={() => setCurrentPage('profile')} 
+                className="flex-1 md:flex-none px-8 py-3 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 transition-all"
+              >
                 ยกเลิก
               </button>
-              <button type="submit" disabled={isSubmitting} className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300">
-                {isSubmitting ? 'กำลังบันทึก...' : 'บันทึก'}
+              <button 
+                type="submit" 
+                disabled={isSubmitting} 
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all disabled:bg-indigo-300 disabled:shadow-none"
+              >
+                {isSubmitting ? 'กำลังบันทึก...' : <><Save size={20} /> บันทึกข้อมูล</>}
               </button>
             </div>
           </div>
+
         </form>
       </div>
     </div>

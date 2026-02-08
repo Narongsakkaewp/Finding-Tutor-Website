@@ -361,7 +361,7 @@ function TrendingSubjectsList({ onOpen }) {
               </div>
               <div>
                 <div className="font-bold text-gray-900">{s.name}</div>
-                <div className="text-xs opacity-70">{s.count} โพสต์</div>
+                {/* <div className="text-xs opacity-70">{s.count} โพสต์</div> */}
               </div>
             </div>
             <ChevronRight size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />

@@ -147,8 +147,7 @@ const Navbar = ({
                 >
                   {/* Mobile Role Badge (Shown inside dropdown on mobile) */}
                   <div className="px-4 py-2 border-b border-gray-50 md:hidden">
-                    <p className="text-xs text-gray-500 font-medium mb-1">เข้าสู่ระบบ</p>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${userType === 'student' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium justify-end ${userType === 'student' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
                       }`}>
                       {userType === "student" ? "นักเรียน" : "ติวเตอร์"}
                     </span>

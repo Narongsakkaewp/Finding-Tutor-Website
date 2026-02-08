@@ -1,6 +1,10 @@
+// tutorweb/src/pages/Tutor_Info.jsx
 import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  User, Phone, MapPin, Briefcase, GraduationCap, 
+  BookOpen, Plus, Trash2, Camera, Save, X, ChevronLeft, Check, Mail // ✅ เพิ่ม icon Mail
+} from 'lucide-react';
 
-// ... (getCurrentUser function and initial option arrays are the same) ...
 const getCurrentUser = () => {
     try {
         return JSON.parse(localStorage.getItem("user"));
@@ -11,8 +15,8 @@ const getCurrentUser = () => {
 
 const gradeLevelOptions = [
     { value: 'ประถมศึกษา', label: 'ประถมศึกษา' },
-    { value: 'มัธยมต้น', label: 'มัธยมศึกษาตอนต้น (ม.1-ม.3)' },
-    { value: 'มัธยมปลาย', label: 'มัธยมศึกษาตอนปลาย (ม.4-ม.6)' },
+    { value: 'มัธยมต้น', label: 'มัธยมศึกษาตอนต้น (ม.1-3)' },
+    { value: 'มัธยมปลาย', label: 'มัธยมศึกษาตอนปลาย (ม.4-6)' },
     { value: 'ปริญญาตรี', label: 'ปริญญาตรี' },
     { value: 'บุคคลทั่วไป', label: 'บุคคลทั่วไป' },
 ];
@@ -28,7 +32,6 @@ const subjectOptions = [
     { value: 'คอมพิวเตอร์', label: 'คอมพิวเตอร์' },
     { value: 'ศิลปะ', label: 'ศิลปะ' },
     { value: 'ดนตรี', label: 'ดนตรี' },
-    { value: 'อื่นๆ', label: 'อื่นๆ โปรดระบุ' },
 ];
 
 export default function TutorInfoPage({ setCurrentPage }) {
@@ -42,7 +45,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
         district: '',
         subdistrict: '',
         postalCode: '',
-        addressDetails: '', // สำหรับบ้านเลขที่
+        addressDetails: '',
         about_me: '',
         education: [],
         teaching_experience: [],
@@ -51,13 +54,8 @@ export default function TutorInfoPage({ setCurrentPage }) {
         hourly_rate: '',
     });
 
-    const [db, setDb] = useState([]); // เก็บ Array ข้อมูลจังหวัด
-    const [addressData, setAddressData] = useState({
-        provinces: [],
-        districts: [],
-        subdistricts: []
-    });
-
+    const [db, setDb] = useState([]);
+    const [addressData, setAddressData] = useState({ provinces: [], districts: [], subdistricts: [] });
     const [customSubject, setCustomSubject] = useState('');
     const [imageFile, setImageFile] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,43 +63,25 @@ export default function TutorInfoPage({ setCurrentPage }) {
     const [error, setError] = useState('');
 
     useEffect(() => {
-        fetch('/db.json') // ดึงไฟล์จากโฟลเดอร์ public
-            .then(res => {
-                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-                return res.json();
-            })
-            .then(jsonData => {
-                // ตรวจสอบว่าได้ Array กลับมาจริงๆ
-                if (Array.isArray(jsonData) && jsonData.length > 0) {
-                    setDb(jsonData); // เก็บ Array จังหวัดทั้งหมด
-                    const provinceNames = jsonData.map(province => province.name_th).sort();
-                    setAddressData(prev => ({ ...prev, provinces: provinceNames }));
-                } else {
-                    throw new Error("Invalid address data structure");
-                }
-            })
-            .catch(err => {
-                console.error("Error loading address data:", err);
-                setError("ไม่สามารถโหลดข้อมูลที่อยู่ได้");
-            });
+        fetch('/db.json').then(res => res.json()).then(jsonData => {
+            if (Array.isArray(jsonData)) {
+                setDb(jsonData);
+                setAddressData(prev => ({ ...prev, provinces: jsonData.map(p => p.name_th).sort() }));
+            }
+        }).catch(err => console.error(err));
     }, []);
 
     useEffect(() => {
-        if (!currentUser?.user_id || db.length === 0) {
-            return;
-        }
-
+        if (!currentUser?.user_id || db.length === 0) return;
         const fetchProfile = async () => {
-            try {
+             try {
                 const response = await fetch(`http://localhost:5000/api/tutor-profile/${currentUser.user_id}`);
                 if (!response.ok) throw new Error("ดึงข้อมูลไม่สำเร็จ");
                 const data = await response.json();
 
                 let addr = { details: '', subdistrict: '', district: '', province: '', postalCode: '' };
-
                 if (data.address) {
                     const parts = data.address.split(' ').filter(Boolean);
-                    // ดึงจากหลังมาหน้า (Zip -> Province -> District -> Subdistrict)
                     if (parts.length >= 1) addr.postalCode = parts[parts.length - 1];
                     if (parts.length >= 2) addr.province = parts[parts.length - 2];
                     if (parts.length >= 3) addr.district = parts[parts.length - 3];
@@ -111,30 +91,22 @@ export default function TutorInfoPage({ setCurrentPage }) {
 
                 let districtNames = [];
                 let subdistrictNames = [];
-
                 if (addr.province) {
-                    const selectedProvinceData = db.find(p => p.name_th === addr.province);
-                    if (selectedProvinceData) {
-                        districtNames = selectedProvinceData.districts.map(d => d.name_th).sort();
-
+                    const pData = db.find(p => p.name_th === addr.province);
+                    if (pData) {
+                        districtNames = pData.districts.map(d => d.name_th).sort();
                         if (addr.district) {
-                            const selectedDistrictData = selectedProvinceData.districts.find(d => d.name_th === addr.district);
-                            if (selectedDistrictData) {
-                                subdistrictNames = selectedDistrictData.sub_districts.map(s => s.name_th).sort();
-                            }
+                            const dData = pData.districts.find(d => d.name_th === addr.district);
+                            if (dData) subdistrictNames = dData.sub_districts.map(s => s.name_th).sort();
                         }
                     }
                 }
-                setAddressData(prev => ({
-                    ...prev,
-                    districts: districtNames,
-                    subdistricts: subdistrictNames
-                }));
+                setAddressData(prev => ({ ...prev, districts: districtNames, subdistricts: subdistrictNames }));
+
                 setFormData({
                     profile_picture_url: data.profile_picture_url || '',
                     nickname: data.nickname || '',
                     phone: data.phone || '',
-                    // ใส่ข้อมูลที่อยู่ที่แยกแล้ว
                     province: addr.province || '',
                     district: addr.district || '',
                     subdistrict: addr.subdistrict || '',
@@ -147,13 +119,9 @@ export default function TutorInfoPage({ setCurrentPage }) {
                     can_teach_subjects: data.can_teach_subjects ? data.can_teach_subjects.split(',') : [],
                     hourly_rate: data.hourly_rate || '',
                 });
-            } catch (err) {
-                console.error(err);
-            }
+            } catch (err) { console.error(err); }
         };
-
         fetchProfile();
-
     }, [currentUser, db]);
 
     const handleChange = (e) => {
@@ -164,31 +132,22 @@ export default function TutorInfoPage({ setCurrentPage }) {
     const handleAddressChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
-
-        if (db.length === 0) return; // ถ้า db ยังไม่มีข้อมูล ให้หยุด
+        if (db.length === 0) return;
 
         if (name === 'province') {
-            const selectedProvinceData = db.find(p => p.name_th === value);
-            const districts = selectedProvinceData?.districts || [];
-            const districtNames = districts.map(d => d.name_th).sort();
-            setAddressData(prev => ({ ...prev, districts: districtNames, subdistricts: [] }));
+            const pData = db.find(p => p.name_th === value);
+            setAddressData(prev => ({ ...prev, districts: pData?.districts.map(d => d.name_th).sort() || [], subdistricts: [] }));
             setFormData(prev => ({ ...prev, district: '', subdistrict: '', postalCode: '' }));
         } else if (name === 'district') {
-            const selectedProvinceData = db.find(p => p.name_th === formData.province);
-            const districts = selectedProvinceData?.districts || [];
-            const selectedDistrictData = districts.find(d => d.name_th === value);
-            const subdistricts = selectedDistrictData?.sub_districts || [];
-            const subdistrictNames = subdistricts.map(s => s.name_th).sort();
-            setAddressData(prev => ({ ...prev, subdistricts: subdistrictNames }));
+            const pData = db.find(p => p.name_th === formData.province);
+            const dData = pData?.districts.find(d => d.name_th === value);
+            setAddressData(prev => ({ ...prev, subdistricts: dData?.sub_districts.map(s => s.name_th).sort() || [] }));
             setFormData(prev => ({ ...prev, subdistrict: '', postalCode: '' }));
         } else if (name === 'subdistrict') {
-            const selectedProvinceData = db.find(p => p.name_th === formData.province);
-            const districts = selectedProvinceData?.districts || [];
-            const selectedDistrictData = districts.find(d => d.name_th === formData.district);
-            const subdistricts = selectedDistrictData?.sub_districts || [];
-            const selectedSubdistrictData = subdistricts.find(s => s.name_th === value);
-            const postalCode = selectedSubdistrictData ? selectedSubdistrictData.zip_code : '';
-            setFormData(prev => ({ ...prev, postalCode: String(postalCode) }));
+            const pData = db.find(p => p.name_th === formData.province);
+            const dData = pData?.districts.find(d => d.name_th === formData.district);
+            const sData = dData?.sub_districts.find(s => s.name_th === value);
+            setFormData(prev => ({ ...prev, postalCode: sData ? String(sData.zip_code) : '' }));
         }
     };
 
@@ -196,111 +155,58 @@ export default function TutorInfoPage({ setCurrentPage }) {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             setImageFile(file);
-            const previewUrl = URL.createObjectURL(file);
-            setFormData(prev => ({ ...prev, profile_picture_url: previewUrl }));
+            setFormData(prev => ({ ...prev, profile_picture_url: URL.createObjectURL(file) }));
         }
     };
 
-    // Education/Experience Handlers (เหมือนเดิม)
     const handleEducationChange = (index, e) => {
         const { name, value } = e.target;
-        const updatedEducation = formData.education.map((item, i) =>
-            i === index ? { ...item, [name]: value } : item
-        );
-        setFormData(prev => ({ ...prev, education: updatedEducation }));
+        setFormData(prev => ({ ...prev, education: prev.education.map((item, i) => i === index ? { ...item, [name]: value } : item) }));
     };
     const addEducation = () => setFormData(prev => ({ ...prev, education: [...prev.education, { institution: '', degree: '', major: '', year: '' }] }));
     const removeEducation = (index) => setFormData(prev => ({ ...prev, education: prev.education.filter((_, i) => i !== index) }));
+
     const handleExperienceChange = (index, e) => {
         const { name, value } = e.target;
-        const updatedExperience = formData.teaching_experience.map((item, i) =>
-            i === index ? { ...item, [name]: value } : item
-        );
-        setFormData(prev => ({ ...prev, teaching_experience: updatedExperience }));
+        setFormData(prev => ({ ...prev, teaching_experience: prev.teaching_experience.map((item, i) => i === index ? { ...item, [name]: value } : item) }));
     };
     const addExperience = () => setFormData(prev => ({ ...prev, teaching_experience: [...prev.teaching_experience, { title: '', duration: '', description: '' }] }));
     const removeExperience = (index) => setFormData(prev => ({ ...prev, teaching_experience: prev.teaching_experience.filter((_, i) => i !== index) }));
 
     const handleGradeChange = (gradeValue) => {
         setFormData(prev => {
-            const currentGrades = prev.can_teach_grades;
-            // ถ้ามีอยู่แล้วให้เอาออก (ยกเลิกติ๊ก) ถ้ายังไม่มีให้เพิ่มเข้าไป (ติ๊กเลือก)
-            if (currentGrades.includes(gradeValue)) {
-                return { ...prev, can_teach_grades: currentGrades.filter(g => g !== gradeValue) };
-            } else {
-                return { ...prev, can_teach_grades: [...currentGrades, gradeValue] };
-            }
+            const current = prev.can_teach_grades;
+            return { ...prev, can_teach_grades: current.includes(gradeValue) ? current.filter(g => g !== gradeValue) : [...current, gradeValue] };
         });
     };
 
-    // ฟังก์ชันจัดการวิชา (เหมือนเดิม)
     const addSubject = (subject) => {
-        const trimmedSubject = subject.trim();
-        if (trimmedSubject && !formData.can_teach_subjects.includes(trimmedSubject)) {
-            setFormData(prev => ({
-                ...prev,
-                can_teach_subjects: [...prev.can_teach_subjects, trimmedSubject]
-            }));
+        const trimmed = subject.trim();
+        if (trimmed && !formData.can_teach_subjects.includes(trimmed)) {
+            setFormData(prev => ({ ...prev, can_teach_subjects: [...prev.can_teach_subjects, trimmed] }));
         }
     };
-    const handleAddCustomSubjectByKey = (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            addSubject(customSubject);
-            setCustomSubject('');
-        }
-    };
-    const handleAddCustomSubjectByClick = () => {
-        addSubject(customSubject);
-        setCustomSubject('');
-    };
-    const removeSubject = (subjectToRemove) => {
-        setFormData(prev => ({
-            ...prev,
-            can_teach_subjects: prev.can_teach_subjects.filter(subject => subject !== subjectToRemove)
-        }));
-    };
+    const removeSubject = (sub) => setFormData(prev => ({ ...prev, can_teach_subjects: prev.can_teach_subjects.filter(s => s !== sub) }));
 
-    // handleSubmit (เหมือนเดิม)
     const handleSubmit = async (e) => {
         e.preventDefault();
-        // ... (โค้ดส่วนนี้เหมือนเดิมทุกประการ)
-        if (!currentUser?.user_id) {
-            setError("ไม่สามารถบันทึกได้: ไม่พบข้อมูลผู้ใช้");
-            return;
-        }
-
-        setIsSubmitting(true);
-        setMessage('');
-        setError('');
+        if (!currentUser?.user_id) return setError("ไม่พบข้อมูลผู้ใช้");
+        setIsSubmitting(true); setMessage(''); setError('');
 
         try {
             let imageUrl = formData.profile_picture_url;
-
             if (imageFile) {
-                const uploadFormData = new FormData();
-                uploadFormData.append('image', imageFile);
-                const uploadResponse = await fetch('http://localhost:5000/api/upload', {
-                    method: 'POST',
-                    body: uploadFormData,
-                });
-                if (!uploadResponse.ok) throw new Error('การอัปโหลดรูปภาพล้มเหลว');
-                const uploadResult = await uploadResponse.json();
-                imageUrl = uploadResult.imageUrl;
+                const fd = new FormData(); fd.append('image', imageFile);
+                const res = await fetch('http://localhost:5000/api/upload', { method: 'POST', body: fd });
+                if (!res.ok) throw new Error('Upload failed');
+                imageUrl = (await res.json()).imageUrl;
             }
 
-            const fullAddress = [
-                formData.addressDetails,
-                formData.subdistrict,
-                formData.district,
-                formData.province,
-                formData.postalCode
-            ].filter(Boolean).join(' '); // รวมเฉพาะส่วนที่มีข้อมูล
-
+            const fullAddress = [formData.addressDetails, formData.subdistrict, formData.district, formData.province, formData.postalCode].filter(Boolean).join(' ');
             const profileData = {
                 nickname: formData.nickname,
                 phone: formData.phone,
-                address: fullAddress, // <--- ใช้ที่อยู่แบบรวม
+                address: fullAddress,
                 about_me: formData.about_me,
                 education: formData.education,
                 teaching_experience: formData.teaching_experience,
@@ -310,378 +216,203 @@ export default function TutorInfoPage({ setCurrentPage }) {
                 profile_picture_url: imageUrl,
             };
 
-            const response = await fetch(`http://localhost:5000/api/tutor-profile/${currentUser.user_id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(profileData),
+            const res = await fetch(`http://localhost:5000/api/tutor-profile/${currentUser.user_id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profileData),
             });
+            if (!res.ok) throw new Error((await res.json()).message || 'Failed');
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'การบันทึกข้อมูลติวเตอร์ล้มเหลว');
-            }
-
-            setMessage('บันทึกข้อมูลโปรไฟล์ติวเตอร์เรียบร้อยแล้ว!');
-            setTimeout(() => {
-                setCurrentPage('profile');
-            }, 1500);
-
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setIsSubmitting(false);
-        }
+            setMessage('บันทึกเรียบร้อย!');
+            setTimeout(() => setCurrentPage('profile'), 1500);
+        } catch (err) { setError(err.message); } 
+        finally { setIsSubmitting(false); }
     };
 
-    const user = {
-        name: currentUser?.name || '',
-        lastname: currentUser?.lastname || '',
-        email: currentUser?.email || ''
-    };
+    const user = { name: currentUser?.name || '', lastname: currentUser?.lastname || '', email: currentUser?.email || '' };
 
     return (
-        <div className="bg-gray-50 min-h-screen py-10">
-            <div className="max-w-4xl mx-auto p-8 bg-white rounded-lg shadow-md">
-                <h2 className="text-2xl font-bold mb-6 text-center">แก้ไขโปรไฟล์ติวเตอร์</h2>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* ... (Profile Picture, Main Info, About Me, Education, Experience sections are the same) ... */}
-                    {/* --- Profile Picture Section --- */}
-                    <div className="flex flex-col items-center space-y-4">
-                        <img
-                            src={formData.profile_picture_url || 'https://via.placeholder.com/150'}
-                            alt="Profile"
-                            className="w-32 h-32 rounded-full object-cover border-4 border-gray-200"
-                        />
-                        <input type="file" id="profilePictureUpload" className="hidden" onChange={handleImageChange} accept="image/*" />
-                        <label htmlFor="profilePictureUpload" className="cursor-pointer text-sm text-blue-600 hover:text-blue-800">
-                            เปลี่ยนรูปโปรไฟล์
-                        </label>
-                    </div>
-
-                    {/* --- Main Info Section --- */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">ชื่อจริง</label>
-                            <input type="text" value={user.name} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">นามสกุล</label>
-                            <input type="text" value={user.lastname} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
-                        </div>
-                        <div>
-                            <label htmlFor="nickname" className="block text-sm font-medium text-gray-700">ชื่อเล่น</label>
-                            <input type="text" id="nickname" name="nickname" value={formData.nickname} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
-                        </div>
-                        <div>
-                            <label htmlFor="phone" className="block text-sm font-medium text-gray-700">เบอร์โทรศัพท์</label>
-                            <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700">อีเมล</label>
-                            <input type="email" value={user.email} disabled className="mt-1 w-full border rounded-md shadow-sm bg-gray-100 p-2" />
-                        </div>
-                        <div className="md:col-span-2 space-y-3">
-                            <label className="block text-sm font-medium text-gray-700">ที่อยู่</label>
-                            {/* จังหวัด */}
-                            <select
-                                name="province"
-                                value={formData.province}
-                                onChange={handleAddressChange}
-                                required
-                                className="w-full border rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100"
-                                disabled={db.length === 0} // ปิดใช้งานจนกว่า db จะโหลดเสร็จ
-                            >
-                                <option value="" disabled>-- เลือกจังหวัด --</option>
-                                {addressData.provinces.map(province => (
-                                    <option key={province} value={province}>{province}</option>
-                                ))}
-                            </select>
-                            {/* อำเภอ */}
-                            <select
-                                name="district"
-                                value={formData.district}
-                                onChange={handleAddressChange}
-                                required
-                                className="w-full border rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100"
-                                disabled={!formData.province} // ปิดจนกว่าจะเลือกจังหวัด
-                            >
-                                <option value="" disabled>-- เลือกอำเภอ --</option>
-                                {addressData.districts.map(district => (
-                                    <option key={district} value={district}>{district}</option>
-                                ))}
-                            </select>
-                            {/* ตำบล */}
-                            <select
-                                name="subdistrict"
-                                value={formData.subdistrict}
-                                onChange={handleAddressChange}
-                                required
-                                className="w-full border rounded-md shadow-sm p-2 bg-white disabled:bg-gray-100"
-                                disabled={!formData.district} // ปิดจนกว่าจะเลือกอำเภอ
-                            >
-                                <option value="" disabled>-- เลือกตำบล --</option>
-                                {addressData.subdistricts.map(subdistrict => (
-                                    <option key={subdistrict} value={subdistrict}>{subdistrict}</option>
-                                ))}
-                            </select>
-                            {/* รหัสไปรษณีย์ */}
-                            <input
-                                type="text"
-                                name="postalCode"
-                                placeholder="รหัสไปรษณีย์"
-                                value={formData.postalCode}
-                                disabled // ปิดการแก้ไข
-                                className="w-full border rounded-md shadow-sm p-2 bg-gray-100"
-                            />
-                            {/* ที่อยู่เพิ่มเติม */}
-                            <input
-                                type="text"
-                                name="addressDetails"
-                                placeholder="บ้านเลขที่, หมู่, ถนน (ถ้ามี)"
-                                value={formData.addressDetails}
-                                onChange={handleChange}
-                                className="w-full border rounded-md shadow-sm p-2"
-                            />
-                        </div>
-                    </div>
-
-                    {/* --- About Me --- */}
+        <div className="bg-gray-50/50 min-h-screen py-12 px-4 sm:px-6 lg:px-8 font-sans">
+            <div className="max-w-5xl mx-auto">
+                {/* Header */}
+                <div className="mb-8 flex items-center justify-between">
                     <div>
-                        <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">เกี่ยวกับคุณ</h3>
-                        <textarea id="about_me" name="about_me" rows="4" className="mt-1 w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำตัวเอง, สไตล์การสอน, ประสบการณ์..." value={formData.about_me} onChange={handleChange}></textarea>
+                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">แก้ไขโปรไฟล์ติวเตอร์</h1>
+                        <p className="mt-1 text-sm text-gray-500">จัดการข้อมูลการสอนและประวัติของคุณ</p>
+                    </div>
+                    <button onClick={() => setCurrentPage('profile')} className="flex items-center text-gray-500 hover:text-gray-700 transition-colors">
+                        <ChevronLeft size={20} /> <span className="ml-1 font-medium">ย้อนกลับ</span>
+                    </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-8">
+                    
+                    {/* 1. Profile Picture */}
+                    <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col items-center">
+                        <div className="relative group cursor-pointer w-40 h-40">
+                            <img src={formData.profile_picture_url || 'https://via.placeholder.com/150'} alt="Profile" className="w-full h-full rounded-full object-cover border-4 border-white shadow-lg ring-4 ring-indigo-50" />
+                            <label htmlFor="profilePictureUpload" className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300">
+                                <Camera className="text-white w-10 h-10" />
+                            </label>
+                            <input type="file" id="profilePictureUpload" className="hidden" onChange={handleImageChange} accept="image/*" />
+                        </div>
+                        <p className="mt-4 text-sm text-gray-500">คลิกที่รูปเพื่ออัปเดตโปรไฟล์</p>
                     </div>
 
-                    {/* --- Education Section --- */}
-                    <div>
-                        <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">ประวัติการศึกษา <span className='text-sm text-gray-500'>(เรียงจากเก่าสุดไปใหม่สุด)</span></h3>
-                        {formData.education.map((edu, index) => (
-                            <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 border rounded-md relative">
-                                <button
-                                    type="button"
-                                    onClick={() => removeEducation(index)}
-                                    className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold"
-                                    title="ลบ"
-                                >
-                                    &times;
-                                </button>
-                                <div>
-                                    <label htmlFor={`edu-institution-${index}`} className="block text-sm font-medium text-gray-700">สถานศึกษา</label>
-                                    <input
-                                        type="text"
-                                        id={`edu-institution-${index}`}
-                                        name="institution"
-                                        value={edu.institution}
-                                        onChange={(e) => handleEducationChange(index, e)}
-                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor={`edu-degree-${index}`} className="block text-sm font-medium text-gray-700">ระดับ/วุฒิที่ได้รับ</label>
-                                    <input
-                                        type="text"
-                                        id={`edu-degree-${index}`}
-                                        name="degree"
-                                        value={edu.degree}
-                                        onChange={(e) => handleEducationChange(index, e)}
-                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor={`edu-major-${index}`} className="block text-sm font-medium text-gray-700">สาขาวิชา</label>
-                                    <input
-                                        type="text"
-                                        id={`edu-major-${index}`}
-                                        name="major"
-                                        value={edu.major}
-                                        onChange={(e) => handleEducationChange(index, e)}
-                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor={`edu-year-${index}`} className="block text-sm font-medium text-gray-700">ปีที่สำเร็จการศึกษา</label>
-                                    <input
-                                        type="text"
-                                        id={`edu-year-${index}`}
-                                        name="year"
-                                        value={edu.year}
-                                        onChange={(e) => handleEducationChange(index, e)}
-                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                        placeholder="เช่น 2020"
-                                    />
-                                </div>
-                            </div>
-                        ))}
-                        <button
-                            type="button"
-                            onClick={addEducation}
-                            className="flex items-center text-blue-600 hover:text-blue-800 text-sm mt-2"
-                        >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                            เพิ่มประวัติการศึกษา
-                        </button>
-                    </div>
-
-                    {/* --- Teaching Experience Section --- */}
-                    <div>
-                        <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">ประสบการณ์ด้านการสอน</h3>
-                        {formData.teaching_experience.map((exp, index) => (
-                            <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 p-4 border rounded-md relative">
-                                <button
-                                    type="button"
-                                    onClick={() => removeExperience(index)}
-                                    className="absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold"
-                                    title="ลบ"
-                                >
-                                    &times;
-                                </button>
-                                <div>
-                                    <label htmlFor={`exp-title-${index}`} className="block text-sm font-medium text-gray-700">ตำแหน่ง/ลักษณะงาน</label>
-                                    <input
-                                        type="text"
-                                        id={`exp-title-${index}`}
-                                        name="title"
-                                        value={exp.title}
-                                        onChange={(e) => handleExperienceChange(index, e)}
-                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                        placeholder="เช่น ติวเตอร์อิสระ, ครูสอนพิเศษ"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor={`exp-duration-${index}`} className="block text-sm font-medium text-gray-700">ระยะเวลา</label>
-                                    <input
-                                        type="text"
-                                        id={`exp-duration-${index}`}
-                                        name="duration"
-                                        value={exp.duration}
-                                        onChange={(e) => handleExperienceChange(index, e)}
-                                        className="mt-1 w-full border rounded-md shadow-sm p-2"
-                                        placeholder="เช่น 2018-ปัจจุบัน, 2 ปี"
-                                    />
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label htmlFor={`exp-description-${index}`} className="block text-sm font-medium text-gray-700">รายละเอียด</label>
-                                    <textarea
-                                        id={`exp-description-${index}`}
-                                        name="description"
-                                        rows="2"
-                                        value={exp.description}
-                                        onChange={(e) => handleExperienceChange(index, e)}
-                                        className="mt-1 w-full border border rounded-md shadow-sm p-2"
-                                        placeholder="อธิบายบทบาทและสิ่งที่สอน"
-                                    ></textarea>
-                                </div>
-                            </div>
-                        ))}
-                        <button
-                            type="button"
-                            onClick={addExperience}
-                            className="flex items-center text-blue-600 hover:text-blue-800 text-sm mt-2"
-                        >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                            เพิ่มประสบการณ์การสอน
-                        </button>
-                    </div>
-
-
-                    {/* --- Teaching Capabilities Section --- */}
-                    <div>
-                        <h3 className="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">ความสามารถในการสอน</h3>
+                    {/* 2. Personal Info */}
+                    <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+                            <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><User size={24}/></div>
+                            <h3 className="text-xl font-bold text-gray-900">ข้อมูลส่วนตัว</h3>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                            {/* ✅ 2. START: UI ใหม่สำหรับ "ระดับชั้นที่สอนได้" (Checkbox) */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">ระดับชั้นที่สอนได้</label>
-                                <div className="mt-2 space-y-2">
-                                    {gradeLevelOptions.map(option => (
-                                        <div key={option.value} className="flex items-center">
-                                            <input
-                                                id={`grade-${option.value}`}
-                                                name="can_teach_grades"
-                                                type="checkbox"
-                                                value={option.value}
-                                                checked={formData.can_teach_grades.includes(option.value)}
-                                                onChange={() => handleGradeChange(option.value)}
-                                                className="h-4 w-4 text-blue-600 border rounded focus:ring-blue-500"
-                                            />
-                                            <label htmlFor={`grade-${option.value}`} className="ml-3 block text-sm text-gray-900">
-                                                {option.label}
-                                            </label>
-                                        </div>
-                                    ))}
+                            <div><label className="text-sm font-bold text-gray-700">ชื่อจริง</label><input type="text" value={user.name} disabled className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed" /></div>
+                            <div><label className="text-sm font-bold text-gray-700">นามสกุล</label><input type="text" value={user.lastname} disabled className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed" /></div>
+                            <div><label className="text-sm font-bold text-gray-700">ชื่อเล่น</label><input type="text" name="nickname" value={formData.nickname} onChange={handleChange} className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
+                            <div><label className="text-sm font-bold text-gray-700">เบอร์โทรศัพท์</label><input type="tel" name="phone" value={formData.phone} onChange={handleChange} className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
+                            
+                            {/* ✅ เพิ่มช่อง Email (Read-Only) */}
+                            <div className="md:col-span-2">
+                                <label className="text-sm font-bold text-gray-700">อีเมล</label>
+                                <div className="relative mt-1">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><Mail size={18}/></div>
+                                    <input 
+                                        type="email" 
+                                        value={user.email} 
+                                        disabled 
+                                        className="w-full pl-10 px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed" 
+                                    />
                                 </div>
                             </div>
-                            {/* ✅ END: UI ใหม่สำหรับ "ระดับชั้นที่สอนได้" (Checkbox) */}
 
-                            {/* ✅ 3. START: UI ใหม่สำหรับ "วิชาที่สอน" (เพิ่มปุ่ม) */}
-                            <div>
-                                <label htmlFor="subjects" className="block text-sm font-medium text-gray-700">วิชาที่สอน</label>
-
-                                <div className="mt-1 flex flex-wrap gap-2 p-2 border rounded-md min-h-[42px]">
-                                    {formData.can_teach_subjects.length > 0 ? (
-                                        formData.can_teach_subjects.map(subject => (
-                                            <span key={subject} className="flex items-center bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded-full">
-                                                {subject}
-                                                <button type="button" onClick={() => removeSubject(subject)} className="ml-1.5 text-blue-600 hover:text-blue-800" title={`ลบ ${subject}`}>
-                                                    &times;
-                                                </button>
-                                            </span>
-                                        ))
-                                    ) : (
-                                        <span className="text-sm text-gray-500">ยังไม่ได้เลือกวิชา</span>
-                                    )}
-                                </div>
-
-                                <div className="mt-2 grid grid-cols-1 gap-2">
-                                    <select
-                                        onChange={(e) => {
-                                            if (e.target.value) addSubject(e.target.value);
-                                            e.target.value = '';
-                                        }}
-                                        className="w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        <option value="">--- เลือกจากรายการ ---</option>
-                                        {subjectOptions.map(option => (
-                                            <option key={option.value} value={option.value}>
-                                                {option.label}
-                                            </option>
-                                        ))}
-                                    </select>
-
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            value={customSubject}
-                                            onChange={(e) => setCustomSubject(e.target.value)}
-                                            onKeyDown={handleAddCustomSubjectByKey}
-                                            className="flex-grow w-full border rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="หรือพิมพ์วิชาอื่น..."
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={handleAddCustomSubjectByClick}
-                                            className="px-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                                        >
-                                            เพิ่ม
-                                        </button>
-                                    </div>
+                            {/* Address Grid */}
+                            <div className="md:col-span-2 p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                                <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2"><MapPin size={16}/> ที่อยู่ปัจจุบัน</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <select name="province" value={formData.province} onChange={handleAddressChange} disabled={db.length === 0} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white"><option value="" disabled>จังหวัด</option>{addressData.provinces.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                                    <select name="district" value={formData.district} onChange={handleAddressChange} disabled={!formData.province} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white"><option value="" disabled>อำเภอ/เขต</option>{addressData.districts.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                                    <select name="subdistrict" value={formData.subdistrict} onChange={handleAddressChange} disabled={!formData.district} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white"><option value="" disabled>ตำบล/แขวง</option>{addressData.subdistricts.map(s => <option key={s} value={s}>{s}</option>)}</select>
+                                    <input type="text" value={formData.postalCode} disabled placeholder="รหัสไปรษณีย์" className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-100 text-gray-500" />
+                                    <div className="col-span-2"><input type="text" name="addressDetails" value={formData.addressDetails} onChange={handleChange} placeholder="รายละเอียดเพิ่มเติม (Optional*) (บ้านเลขที่, ถนน, ซอย)" className="w-full px-3 py-2.5 rounded-lg border border-gray-200" /></div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* --- Action Buttons & Messages --- */}
-                    <div className="flex flex-col items-end space-y-2">
-                        <div className="h-5">
-                            {message && <div className="text-green-600 text-sm">{message}</div>}
-                            {error && <div className="text-red-600 text-sm">{error}</div>}
+                    {/* 3. Teaching Info (Chips & Tags) */}
+                    <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+                            <div className="p-2 bg-purple-50 rounded-xl text-purple-600"><BookOpen size={24}/></div>
+                            <h3 className="text-xl font-bold text-gray-900">ข้อมูลการสอน</h3>
                         </div>
-                        <div className="flex space-x-4">
-                            <button type="button" onClick={() => setCurrentPage('profile')} className="px-6 py-2 border border rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                ยกเลิก
-                            </button>
-                            <button type="submit" disabled={isSubmitting} className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300">
-                                {isSubmitting ? 'กำลังบันทึก...' : 'บันทึก'}
-                            </button>
+
+                        {/* Grade Level Chips */}
+                        <div className="mb-8">
+                            <label className="block text-sm font-bold text-gray-700 mb-3">ระดับชั้นที่สอนได้</label>
+                            <div className="flex flex-wrap gap-3">
+                                {gradeLevelOptions.map(option => {
+                                    const isSelected = formData.can_teach_grades.includes(option.value);
+                                    return (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => handleGradeChange(option.value)}
+                                            className={`px-4 py-2 rounded-full text-sm font-bold transition-all border ${isSelected ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-200' : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300 hover:bg-purple-50'}`}
+                                        >
+                                            {isSelected && <Check size={14} className="inline mr-1" />}
+                                            {option.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Subject Tags */}
+                        <div className="mb-8">
+                            <label className="block text-sm font-bold text-gray-700 mb-3">วิชาที่สอน</label>
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                {formData.can_teach_subjects.map(subject => (
+                                    <span key={subject} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold border border-blue-100">
+                                        {subject}
+                                        <button type="button" onClick={() => removeSubject(subject)} className="hover:text-blue-900"><X size={14}/></button>
+                                    </span>
+                                ))}
+                            </div>
+                            <div className="flex gap-2">
+                                <select onChange={(e) => { if(e.target.value) addSubject(e.target.value); e.target.value=''; }} className="px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-purple-500 outline-none">
+                                    <option value="">+ เลือกวิชา</option>
+                                    {subjectOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                                <div className="flex-1 flex gap-2">
+                                    <input type="text" value={customSubject} onChange={(e) => setCustomSubject(e.target.value)} placeholder="หรือพิมพ์วิชาเอง..." className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-purple-500 outline-none" />
+                                    <button type="button" onClick={() => { addSubject(customSubject); setCustomSubject(''); }} className="px-4 py-2.5 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all">เพิ่ม</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Rate & About */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">ค่าเรียนต่อชั่วโมง (บาท)</label>
+                                <input type="number" name="hourly_rate" value={formData.hourly_rate} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-purple-500 outline-none" placeholder="เช่น 250" />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-bold text-gray-700 mb-1">แนะนำตัว / สไตล์การสอน</label>
+                                <textarea name="about_me" rows="3" value={formData.about_me} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-purple-500 outline-none resize-none" placeholder="เขียนแนะนำตัวเองให้น่าสนใจ..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 4. Education & Experience (Cards) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* Education */}
+                        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                            <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><GraduationCap className="text-orange-500"/> การศึกษา</h3>
+                                <button type="button" onClick={addEducation} className="text-sm text-orange-600 font-bold hover:underline">+ เพิ่ม</button>
+                            </div>
+                            <div className="space-y-4">
+                                {formData.education.map((edu, idx) => (
+                                    <div key={idx} className="relative p-4 rounded-2xl bg-orange-50/50 border border-orange-100">
+                                        <button type="button" onClick={() => removeEducation(idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-600"><X size={16}/></button>
+                                        <div className="grid gap-2">
+                                            <input type="text" name="institution" value={edu.institution} onChange={(e) => handleEducationChange(idx, e)} placeholder="สถานศึกษา" className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                                            <div className="flex gap-2">
+                                                <input type="text" name="degree" value={edu.degree} onChange={(e) => handleEducationChange(idx, e)} placeholder="วุฒิ" className="w-1/3 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                                                <input type="text" name="major" value={edu.major} onChange={(e) => handleEducationChange(idx, e)} placeholder="สาขา" className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                                            </div>
+                                            <input type="text" name="year" value={edu.year} onChange={(e) => handleEducationChange(idx, e)} placeholder="ปีที่จบ (เช่น 2566)" className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Experience */}
+                        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+                            <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Briefcase className="text-blue-500"/> ประสบการณ์</h3>
+                                <button type="button" onClick={addExperience} className="text-sm text-blue-600 font-bold hover:underline">+ เพิ่ม</button>
+                            </div>
+                            <div className="space-y-4">
+                                {formData.teaching_experience.map((exp, idx) => (
+                                    <div key={idx} className="relative p-4 rounded-2xl bg-blue-50/50 border border-blue-100">
+                                        <button type="button" onClick={() => removeExperience(idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-600"><X size={16}/></button>
+                                        <div className="grid gap-2">
+                                            <input type="text" name="title" value={exp.title} onChange={(e) => handleExperienceChange(idx, e)} placeholder="ตำแหน่ง/งาน" className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold" />
+                                            <input type="text" name="duration" value={exp.duration} onChange={(e) => handleExperienceChange(idx, e)} placeholder="ระยะเวลา" className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                                            <textarea name="description" value={exp.description} onChange={(e) => handleExperienceChange(idx, e)} placeholder="รายละเอียดงาน..." rows="2" className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"></textarea>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col items-end gap-4 pt-6 border-t border-gray-100">
+                        <div className="h-6 text-sm font-bold">{message && <span className="text-green-600">{message}</span>}{error && <span className="text-red-600">{error}</span>}</div>
+                        <div className="flex gap-4 w-full md:w-auto">
+                            <button type="button" onClick={() => setCurrentPage('profile')} className="flex-1 md:flex-none px-8 py-3 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 transition-all">ยกเลิก</button>
+                            <button type="submit" disabled={isSubmitting} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all disabled:bg-indigo-300">{isSubmitting ? 'กำลังบันทึก...' : <><Save size={20}/> บันทึกข้อมูล</>}</button>
                         </div>
                     </div>
                 </form>

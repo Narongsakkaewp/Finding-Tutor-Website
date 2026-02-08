@@ -1,8 +1,8 @@
+// tutorweb/src/components/Settings.jsx
 import React, { useState, useEffect } from "react";
-import { User, Mail, Lock, Trash2, Save, AlertTriangle, Eye, EyeOff } from "lucide-react";
-import DeleteAccountModal from './DeleteAccountModal'; // ✅ Import Modal ที่เราสร้าง
+import { User, Mail, Lock, Trash2, Save, AlertTriangle, Eye, EyeOff, Info } from "lucide-react"; // ✅ เพิ่ม Icon Info
+import DeleteAccountModal from './DeleteAccountModal';
 
-// Mockup API URL (เปลี่ยนตามจริง)
 const API_BASE = "http://localhost:5000";
 
 export default function Settings() {
@@ -24,11 +24,8 @@ export default function Settings() {
         confirmPassword: ""
     });
     const [showPass, setShowPass] = useState(false);
-
-    // State สำหรับ Modal ลบบัญชี
     const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-    // โหลดข้อมูล User ปัจจุบัน
     useEffect(() => {
         const storedUser = JSON.parse(localStorage.getItem("user"));
         if (storedUser) {
@@ -43,13 +40,13 @@ export default function Settings() {
 
     // --- Handlers ---
 
-    // 1. อัปเดตข้อมูลทั่วไป
     const handleUpdateProfile = async (e) => {
         e.preventDefault();
         setLoading(true);
         setMessage({ type: "", text: "" });
 
         try {
+            // ส่งเฉพาะ email ไปอัปเดต (หรือส่งทั้งหมดก็ได้ แต่ชื่อจะไม่เปลี่ยนเพราะ input ล็อคไว้)
             const res = await fetch(`${API_BASE}/api/user/${user.user_id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -59,7 +56,6 @@ export default function Settings() {
 
             if (!res.ok) throw new Error(data.message || "อัปเดตไม่สำเร็จ");
 
-            // อัปเดต localStorage
             const newUser = { ...user, ...profileData };
             localStorage.setItem("user", JSON.stringify(newUser));
             setUser(newUser);
@@ -72,7 +68,6 @@ export default function Settings() {
         }
     };
 
-    // 2. เปลี่ยนรหัสผ่าน
     const handleChangePassword = async (e) => {
         e.preventDefault();
         if (passData.newPassword !== passData.confirmPassword) {
@@ -87,7 +82,7 @@ export default function Settings() {
         setLoading(true);
         try {
             const res = await fetch(`${API_BASE}/api/user/change-password`, {
-                method: "POST", // หรือ PUT ตาม API ของคุณ
+                method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     user_id: user.user_id,
@@ -107,10 +102,17 @@ export default function Settings() {
             setLoading(false);
         }
     };
-    // 3. ฟังก์ชันเด้งออกจากระบบ
+
     const handleLogout = () => {
         localStorage.clear();
         window.location.href = "/";
+    };
+
+    // ✅ ฟังก์ชันกดติดต่อผู้ดูแลระบบ (เปลี่ยน URL ตามต้องการ)
+    const handleContactAdmin = () => {
+        // ตัวอย่าง: ไปหน้าติดต่อ หรือ เปิด Modal
+        alert("กรุณาติดต่อผ่านเมนู 'รายงานปัญหา' หรืออีเมล support@tutorweb.com");
+        // window.location.href = "/contact"; 
     };
 
     if (!user) return <div className="p-10 text-center">กรุณาเข้าสู่ระบบ</div>;
@@ -121,7 +123,6 @@ export default function Settings() {
 
                 <h1 className="text-3xl font-bold text-gray-800">ตั้งค่าบัญชี</h1>
 
-                {/* Alert Message */}
                 {message.text && (
                     <div className={`p-4 rounded-xl flex items-center gap-2 ${message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                         {message.type === 'error' && <AlertTriangle size={18} />}
@@ -133,7 +134,7 @@ export default function Settings() {
                 <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
                     <div className="flex items-center gap-2 mb-6 border-b pb-4">
                         <User className="text-indigo-600" />
-                        <h2 className="text-xl font-bold text-gray-800">ชื่อและอีเมล</h2>
+                        <h2 className="text-xl font-bold text-gray-800">ข้อมูลส่วนตัว</h2>
                     </div>
 
                     <form onSubmit={handleUpdateProfile} className="space-y-4">
@@ -143,8 +144,8 @@ export default function Settings() {
                                 <input
                                     type="text"
                                     value={profileData.name}
-                                    onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                    disabled // 🔒 ล็อคไม่ให้แก้
+                                    className="w-full px-4 py-2 rounded-xl border border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed focus:outline-none"
                                 />
                             </div>
                             <div>
@@ -152,11 +153,27 @@ export default function Settings() {
                                 <input
                                     type="text"
                                     value={profileData.lastname}
-                                    onChange={(e) => setProfileData({ ...profileData, lastname: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                    disabled // 🔒 ล็อคไม่ให้แก้
+                                    className="w-full px-4 py-2 rounded-xl border border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed focus:outline-none"
                                 />
                             </div>
                         </div>
+
+                        {/* ✅ เพิ่มส่วนแจ้งเตือนให้ติดต่อ Admin */}
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-start sm:items-center gap-3">
+                            <Info className="text-blue-600 shrink-0" size={18} />
+                            <div className="text-sm text-blue-800">
+                                <span>หากต้องการแก้ไขชื่อ-นามสกุล </span>
+                                <button 
+                                    type="button" 
+                                    onClick={handleContactAdmin}
+                                    className="font-bold underline hover:text-blue-600 cursor-pointer"
+                                >
+                                    กรุณาติดต่อผู้ดูแลระบบ
+                                </button>
+                            </div>
+                        </div>
+
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Email (ใช้สำหรับเข้าสู่ระบบ)</label>
                             <div className="relative">
@@ -171,7 +188,7 @@ export default function Settings() {
                         </div>
                         <div className="flex justify-end pt-2">
                             <button type="submit" disabled={loading} className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-2 rounded-xl hover:bg-indigo-700 transition-colors disabled:bg-gray-300">
-                                <Save size={18} /> บันทึกการเปลี่ยนแปลง
+                                <Save size={18} /> บันทึกการเปลี่ยนแปลง (Email)
                             </button>
                         </div>
                     </form>
@@ -223,7 +240,7 @@ export default function Settings() {
                     </form>
                 </section>
 
-                {/* 3. ลบบัญชี (Danger Zone) */}
+                {/* 3. ลบบัญชี */}
                 <section className="bg-red-50 rounded-2xl p-6 border border-red-100">
                     <div className="flex items-center gap-2 mb-4">
                         <Trash2 className="text-red-600" />
@@ -242,12 +259,11 @@ export default function Settings() {
 
             </div>
 
-            {/* เรียก Component DeleteAccountModal */}
             <DeleteAccountModal
                 isOpen={showDeleteModal}
                 onClose={() => setShowDeleteModal(false)}
-                user={user}                // ✅ ส่ง object user ทั้งก้อน
-                userType={user.role || localStorage.getItem('userType')} // ✅ ส่งประเภท
+                user={user}
+                userType={user.role || localStorage.getItem('userType')}
                 onLogout={handleLogout}
             />
         </div>
