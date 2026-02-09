@@ -597,13 +597,18 @@ function HomeStudent() {
 
               <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 min-w-[130px]">
                 <GraduationCap size={14} className="text-gray-500" />
-                <input
-                  type="text"
-                  placeholder="ระดับชั้น (เช่น ม.5)"
-                  className="w-full bg-transparent text-sm focus:outline-none"
+                <select
+                  className="w-full bg-transparent text-sm focus:outline-none cursor-pointer"
                   value={filters.gradeLevel}
                   onChange={(e) => handleFilterChange('gradeLevel', e.target.value)}
-                />
+                >
+                  <option value="">ระดับชั้น (ทั้งหมด)</option>
+                  <option value="ประถม">ประถม</option>
+                  <option value="มัธยมต้น">มัธยมต้น</option>
+                  <option value="มัธยมปลาย">มัธยมปลาย</option>
+                  <option value="ปริญญาตรี">ปริญญาตรี</option>
+                  <option value="บุคคลทั่วไป">บุคคลทั่วไป</option>
+                </select>
               </div>
 
               <select
