@@ -80,8 +80,8 @@ exports.smartSearch = async (req, res) => {
         // 3. ค้นหาติวเตอร์ (Tutor Posts)
         const [tutors] = await pool.query(`
             SELECT 
-                tp.*, r.name, r.lastname, tpro.profile_picture_url, tpro.nickname,
-                tpro.about_me, tpro.education, tpro.teaching_experience, 
+                tp.*, r.name, r.lastname, r.username, tpro.profile_picture_url, tpro.nickname,
+                tpro.about_me, tpro.education, tpro.teaching_experience,  
                 tpro.can_teach_grades, tpro.can_teach_subjects, tpro.phone, tpro.address,
                 -- ให้คะแนนความเกี่ยวข้อง
                 (CASE 
@@ -106,7 +106,7 @@ exports.smartSearch = async (req, res) => {
         const [posts] = await pool.query(`
             SELECT 
                 tp.*, 
-                r.name, r.lastname, 
+                r.name, r.lastname, r.username,
                 tpro.profile_picture_url, tpro.nickname
             FROM tutor_posts tp
             LEFT JOIN register r ON tp.tutor_id = r.user_id

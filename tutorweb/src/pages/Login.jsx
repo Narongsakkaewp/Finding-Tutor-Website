@@ -1,9 +1,9 @@
+// tutorweb/src/pages/Login.jsx
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, LogIn } from 'lucide-react';
-import logo from "../assets/logo/FindingTutor_Logo.png";
+import { User, Lock, Eye, EyeOff, LogIn } from 'lucide-react'; // ✅ เปลี่ยน Mail เป็น User
 
-function Login({ onLoginSuccess, onSwitchToRegister }) {
-  const [email, setEmail] = useState('');
+function Login({ onLoginSuccess, onSwitchToRegister, onSwitchToForgotPassword }) {
+  const [email, setEmail] = useState(''); // ตัวแปรยังชื่อ email แต่จริงๆ รับได้ทั้ง user/email
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -18,13 +18,13 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
       const res = await fetch(`http://localhost:5000/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.toLowerCase(), password }), // แปลงพิมพ์เล็กกันเหนียว
       });
 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.message || 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+        throw new Error(data.message || 'อีเมล/Username หรือรหัสผ่านไม่ถูกต้อง');
       }
 
       if (onLoginSuccess) {
@@ -65,17 +65,17 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
           </div>
         )}
 
-        {/* Email Input */}
+        {/* Email/Username Input */}
         <div className="space-y-1.5">
-          <label className="text-sm font-semibold text-gray-700 ml-1">อีเมล</label>
+          <label className="text-sm font-semibold text-gray-700 ml-1">Email หรือ Username</label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Mail className="h-5 w-5 text-gray-400 group-focus-within:text-indigo-600 transition-colors" />
+              <User className="h-5 w-5 text-gray-400 group-focus-within:text-indigo-600 transition-colors" />
             </div>
             <input
-              type="email"
+              type="text"
               className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all sm:text-sm bg-gray-50 focus:bg-white"
-              placeholder="name@example.com"
+              placeholder="name@example.com หรือ username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -106,6 +106,15 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
               onClick={() => setShowPassword(!showPassword)}
             >
               {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onSwitchToForgotPassword}
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+            >
+              ลืมรหัสผ่าน?
             </button>
           </div>
         </div>

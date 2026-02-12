@@ -56,7 +56,8 @@ const normalizeStudentPost = (p = {}) => ({
     last_name: p.last_name || "",
     profile_image: p.profile_picture_url || "/../blank_avatar.jpg",
     email: p.email || "",
-    phone: p.phone || ""
+    phone: p.phone || "",
+    username: p.username || p.user?.username || "",
   },
 });
 
@@ -99,7 +100,8 @@ const normalizeTutorPost = (p = {}) => {
       last_name: last,
       profile_image: p.profile_image || p.authorId?.avatarUrl || "/../blank_avatar.jpg",
       email: p.email || "",
-      phone: p.phone || ""
+      phone: p.phone || "",
+      username: p.username || p.user?.username || "",
     },
   };
 };
@@ -948,6 +950,7 @@ function MyPost({ setPostsCache, onViewProfile }) {
                         <p className="font-semibold group-hover:text-indigo-600 group-hover:underline transition-colors">
                           {post.user?.first_name} {post.user?.last_name}
                         </p>
+                        {post.user?.username && <div className="text-xs text-indigo-500 font-medium -mt-0.5">@{post.user.username}</div>}
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${post.post_type === 'student'
                             ? 'bg-rose-200 text-rose-700'

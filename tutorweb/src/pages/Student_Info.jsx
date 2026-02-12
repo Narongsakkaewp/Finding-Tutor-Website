@@ -1,9 +1,10 @@
 // tutorweb/src/pages/Student_Info.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  User, Phone, MapPin, School, BookOpen, FileText, 
-  Camera, Save, X, ChevronLeft 
-} from 'lucide-react'; // ✅ Import Icons
+import {
+  User, Phone, MapPin, School, BookOpen, FileText,
+  Camera, Save, X, ChevronLeft
+} from 'lucide-react';
+import UniversityPicker from '../components/UniversityPicker'; // ✅ Import
 
 // Helper function
 const getCurrentUser = () => {
@@ -149,14 +150,13 @@ export default function StudentInfoPage({ setCurrentPage }) {
   return (
     <div className="bg-gray-50/50 min-h-screen py-12 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-4xl mx-auto">
-        
+
         {/* Header Section */}
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">แก้ไขโปรไฟล์นักเรียน</h1>
-            <p className="mt-1 text-sm text-gray-500">อัปเดตข้อมูลส่วนตัวเพื่อให้ติวเตอร์รู้จักคุณมากขึ้น</p>
           </div>
-          <button 
+          <button
             onClick={() => setCurrentPage('profile')}
             className="flex items-center text-gray-500 hover:text-gray-700 transition-colors"
           >
@@ -165,7 +165,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
-          
+
           {/* 1. ส่วนรูปโปรไฟล์ */}
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col items-center">
             <div className="relative group cursor-pointer">
@@ -188,7 +188,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
           {/* 2. ข้อมูลส่วนตัว (Card) */}
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-              <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><User size={24}/></div>
+              <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><User size={24} /></div>
               <h3 className="text-xl font-bold text-gray-900">ข้อมูลส่วนตัว</h3>
             </div>
 
@@ -201,22 +201,22 @@ export default function StudentInfoPage({ setCurrentPage }) {
                 <label className="block text-sm font-semibold text-gray-700 mb-1">นามสกุล</label>
                 <input type="text" value={user.lastname} disabled className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed" />
               </div>
-              
+
               <div>
                 <label htmlFor="nickname" className="block text-sm font-semibold text-gray-700 mb-1">ชื่อเล่น</label>
-                <input 
-                  type="text" id="nickname" name="nickname" value={formData.nickname} onChange={handleChange} 
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none" 
-                  placeholder="เช่น น้องเอิร์น"
+                <input
+                  type="text" id="nickname" name="nickname" value={formData.nickname} onChange={handleChange}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+                  placeholder="ระบุชื่อเล่นของคุณ"
                 />
               </div>
               <div>
                 <label htmlFor="phone" className="block text-sm font-semibold text-gray-700 mb-1">เบอร์โทรศัพท์</label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><Phone size={18}/></div>
-                  <input 
-                    type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} 
-                    className="w-full pl-10 px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none" 
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><Phone size={18} /></div>
+                  <input
+                    type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange}
+                    className="w-full pl-10 px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
                     placeholder="08x-xxx-xxxx"
                   />
                 </div>
@@ -228,10 +228,10 @@ export default function StudentInfoPage({ setCurrentPage }) {
               <div className="md:col-span-2">
                 <label htmlFor="address" className="block text-sm font-semibold text-gray-700 mb-1">ที่อยู่ที่สามารถติดต่อได้</label>
                 <div className="relative">
-                  <div className="absolute top-3.5 left-3 pointer-events-none text-gray-400"><MapPin size={18}/></div>
-                  <input 
-                    type="text" id="address" name="address" value={formData.address} onChange={handleChange} 
-                    className="w-full pl-10 px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none" 
+                  <div className="absolute top-3.5 left-3 pointer-events-none text-gray-400"><MapPin size={18} /></div>
+                  <input
+                    type="text" id="address" name="address" value={formData.address} onChange={handleChange}
+                    className="w-full pl-10 px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
                     placeholder="บ้านเลขที่, ถนน, แขวง/ตำบล, เขต/อำเภอ, จังหวัด"
                   />
                 </div>
@@ -242,7 +242,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
           {/* 3. การศึกษา (Card) */}
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-              <div className="p-2 bg-blue-50 rounded-xl text-blue-600"><School size={24}/></div>
+              <div className="p-2 bg-blue-50 rounded-xl text-blue-600"><School size={24} /></div>
               <h3 className="text-xl font-bold text-gray-900">การศึกษา</h3>
             </div>
 
@@ -272,7 +272,11 @@ export default function StudentInfoPage({ setCurrentPage }) {
 
               <div>
                 <label htmlFor="institution" className="block text-sm font-semibold text-gray-700 mb-1">สถานศึกษา</label>
-                <input type="text" id="institution" name="institution" value={formData.institution} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="ชื่อโรงเรียน / มหาวิทยาลัย" />
+                <UniversityPicker
+                  value={formData.institution}
+                  onChange={(val) => setFormData(prev => ({ ...prev, institution: val }))}
+                  placeholder="ชื่อโรงเรียน / มหาวิทยาลัย"
+                />
               </div>
               <div>
                 <label htmlFor="faculty" className="block text-sm font-semibold text-gray-700 mb-1">คณะ (ถ้ามี)</label>
@@ -288,13 +292,13 @@ export default function StudentInfoPage({ setCurrentPage }) {
           {/* 4. เกี่ยวกับคุณ (Card) */}
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-              <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600"><FileText size={24}/></div>
+              <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600"><FileText size={24} /></div>
               <h3 className="text-xl font-bold text-gray-900">เกี่ยวกับคุณ</h3>
             </div>
-            <textarea 
-              id="about" name="about" rows="4" 
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" 
-              placeholder="แนะนำตัวเองสั้นๆ เพื่อให้ติวเตอร์รู้จักคุณมากขึ้น..." 
+            <textarea
+              id="about" name="about" rows="4"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+              placeholder="แนะนำตัวเองสั้นๆ เพื่อให้ติวเตอร์รู้จักคุณมากขึ้น..."
               value={formData.about} onChange={handleChange}
             ></textarea>
           </div>
@@ -303,18 +307,18 @@ export default function StudentInfoPage({ setCurrentPage }) {
           <div className="flex flex-col items-end gap-4 pt-4">
             {message && <div className="px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-medium border border-green-200 animate-fade-in">{message}</div>}
             {error && <div className="px-4 py-2 bg-red-50 text-red-700 rounded-lg text-sm font-medium border border-red-200 animate-fade-in">{error}</div>}
-            
+
             <div className="flex gap-4 w-full md:w-auto">
-              <button 
-                type="button" 
-                onClick={() => setCurrentPage('profile')} 
+              <button
+                type="button"
+                onClick={() => setCurrentPage('profile')}
                 className="flex-1 md:flex-none px-8 py-3 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 transition-all"
               >
                 ยกเลิก
               </button>
-              <button 
-                type="submit" 
-                disabled={isSubmitting} 
+              <button
+                type="submit"
+                disabled={isSubmitting}
                 className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all disabled:bg-indigo-300 disabled:shadow-none"
               >
                 {isSubmitting ? 'กำลังบันทึก...' : <><Save size={20} /> บันทึกข้อมูล</>}

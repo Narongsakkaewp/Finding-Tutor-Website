@@ -33,11 +33,11 @@ const toLocalYMD = (date) => {
 };
 
 const postGradeLevelOptions = [
-  { value: "ประถมศึกษา", label: "ประถมศึกษา" },
-  { value: "มัธยมต้น", label: "มัธยมศึกษาตอนต้น (ม.1-ม.3)" },
-  { value: "มัธยมปลาย", label: "มัธยมศึกษาตอนปลาย (ม.4-ม.6)" },
-  { value: "ปริญญาตรี", label: "ปริญญาตรี" },
-  { value: "บุคคลทั่วไป", label: "บุคคลทั่วไป" },
+    { value: "ประถมศึกษา", label: "ประถมศึกษา" },
+    { value: "มัธยมต้น", label: "มัธยมศึกษาตอนต้น (ม.1-ม.3)" },
+    { value: "มัธยมปลาย", label: "มัธยมศึกษาตอนปลาย (ม.4-ม.6)" },
+    { value: "ปริญญาตรี", label: "ปริญญาตรี" },
+    { value: "บุคคลทั่วไป", label: "บุคคลทั่วไป" },
 ];
 
 /* ---------- Subcomponents ---------- */
@@ -346,7 +346,8 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                     educationDisplay: profileData.education?.[0]?.institution || "ยังไม่ระบุสถานศึกษา",
                     address: profileData.address || null,
                     phone: profileData.phone || null,
-                    email: profileData.email || null
+                    email: profileData.email || null,
+                    username: profileData.username || ""
                 });
 
                 setTutorPosts(Array.isArray(postsData.items) ? postsData.items.map(normalizeTutorPost) : []);
@@ -569,7 +570,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                         {/* Info Section */}
                         <div className="flex-grow space-y-6">
                             <div className="space-y-2">
-                                <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex flex-col items-start gap-3">
                                     <h1 className="text-4xl font-black text-gray-900 tracking-tight">
                                         {profile.fullName}
                                         {profile.nickname && (
@@ -578,6 +579,15 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                                             </span>
                                         )}
                                     </h1>
+
+                                    {/* username */}
+                                    {profile.username && (
+                                        <div className="inline-flex items-center px-3 py-1.5 rounded-xl bg-gray-100 border border-gray-200 shadow-sm">
+                                            <span className="text-indigo-600 font-medium text-md">
+                                                @{profile.username}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {profile.education && profile.education.length > 0 && (

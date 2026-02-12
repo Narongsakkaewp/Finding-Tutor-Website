@@ -263,6 +263,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
           subjects: currentUser?.subjects || [],
           bio: "",
           education: [],
+          username: currentUser?.username || "",
         };
         try {
           const pfRes = await fetch(`http://localhost:5000/api/profile/${me}`);
@@ -290,6 +291,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
               gradeLevel: p.grade_level ?? prof.gradeLevel,
               bio: p.about || "",
               education: education,
+              username: p.username || prof.username,
             };
           }
         } catch { }
@@ -534,7 +536,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
             {/* Info Section */}
             <div className="flex-grow space-y-6">
               <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col items-start gap-3">
                   <h1 className="text-4xl font-black text-gray-900 tracking-tight">
                     {profile.fullName}
                     {profile.nickname && (
@@ -543,6 +545,15 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                       </span>
                     )}
                   </h1>
+
+                  {/* username */}
+                  {profile.username && (
+                    <div className="inline-flex items-center px-3 py-1.5 rounded-xl bg-gray-100 border border-gray-200 shadow-sm">
+                      <span className="text-indigo-600 font-medium text-md">
+                        @{profile.username}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {profile.education && profile.education.length > 0 && (

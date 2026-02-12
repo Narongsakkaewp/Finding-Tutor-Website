@@ -1,5 +1,6 @@
+// tutorweb/src/pages/UserProfilePage.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { Mail, Phone, MapPin, Clock, ArrowLeft, Star, Users, DollarSign, User, GraduationCap, BookOpen, Briefcase, Lightbulb, Calendar, MoreVertical, X } from 'lucide-react'; // ✅ เพิ่ม X icon
+import { Mail, Phone, MapPin, Clock, ArrowLeft, Star, Users, DollarSign, User, GraduationCap, BookOpen, Briefcase, Lightbulb, Calendar, MoreVertical, X, Eye, EyeOff } from 'lucide-react'; // ✅ เพิ่ม Eye, EyeOff
 
 const API_BASE = "http://localhost:5000";
 
@@ -12,6 +13,8 @@ function UserProfilePage({ userId, onBack }) {
 
     // ✅ State สำหรับเปิด/ปิดรูปใหญ่
     const [isImageOpen, setIsImageOpen] = useState(false);
+    const [showPhone, setShowPhone] = useState(false);
+    const [showEmail, setShowEmail] = useState(false);
 
     useEffect(() => {
         if (!userId) return;
@@ -122,23 +125,22 @@ function UserProfilePage({ userId, onBack }) {
 
             <div className="max-w-5xl mx-auto px-4 mt-8">
 
-                {/* 1. Header Profile */}
-                <div className="flex flex-col md:flex-row gap-8 items-start mb-8">
-                    {/* ✅ แก้ไขส่วนรูปภาพ: เพิ่ม onClick และ Cursor Pointer */}
-                    <div 
-                        className="flex-shrink-0 mx-auto md:mx-0 relative group cursor-pointer"
+                {/* 1. Header Profile (Updated for Compact Mobile) */}
+                <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-center md:items-start mb-8">
+                    {/* รูปภาพ */}
+                    <div
+                        className="flex-shrink-0 relative group cursor-pointer"
                         onClick={() => setIsImageOpen(true)}
                         title="คลิกเพื่อดูรูปใหญ่"
                     >
                         <img
                             src={user.profile_picture_url || "/../blank_avatar.jpg"}
-                            className="w-32 h-32 md:w-40 md:h-40 rounded-full object-cover border-4 border-white shadow-lg transition-transform duration-300 group-hover:scale-105 group-hover:brightness-90"
+                            className="w-28 h-28 md:w-40 md:h-40 rounded-full object-cover border-4 border-white shadow-lg transition-transform duration-300 group-hover:scale-105 group-hover:brightness-90"
                             alt="Profile"
                         />
-                        {/* ไอคอนแว่นขยายเล็กๆ ตอน Hover (Optional) */}
                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                             <div className="bg-black/20 p-2 rounded-full backdrop-blur-sm">
-                                <Users size={20} className="text-white"/> 
+                                <Users size={20} className="text-white" />
                             </div>
                         </div>
 
@@ -147,12 +149,13 @@ function UserProfilePage({ userId, onBack }) {
                         </span>
                     </div>
 
-                    <div className="flex-1 text-center md:text-left space-y-4">
+                    <div className="flex-1 min-w-0 space-y-3">
                         <div>
-                            <h1 className="text-3xl font-bold text-gray-900 flex flex-col md:flex-row items-center md:items-baseline gap-2 justify-center md:justify-start">
+                            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex flex-wrap items-baseline gap-2">
                                 {user.displayName}
-                                {user.nickname && <span className="text-xl text-gray-500 font-medium">({user.nickname})</span>}
+                                {user.nickname && <span className="text-lg md:text-xl text-gray-500 font-medium">({user.nickname})</span>}
                             </h1>
+                            {user.username && <div className="text-gray-500 font-medium text-base md:text-lg">@{user.username}</div>}
 
                             {isTutor && (
                                 <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-yellow-50 border border-yellow-100 text-yellow-700 font-bold text-sm">
@@ -162,17 +165,17 @@ function UserProfilePage({ userId, onBack }) {
                             )}
                         </div>
 
-                        <p className="text-gray-600 leading-relaxed max-w-2xl mx-auto md:mx-0 whitespace-pre-line">
+                        <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm md:text-base">
                             {user.about_me || user.about || "ยังไม่ได้ระบุข้อมูลแนะนำตัว"}
                         </p>
 
-                        <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-sm text-gray-500">
+                        <div className="flex flex-wrap items-center gap-4 text-xs md:text-sm text-gray-500">
                             <span className="flex items-center gap-1"><Clock size={16} /> สมาชิกเมื่อ {memberSince}</span>
                         </div>
                     </div>
                 </div>
 
-                {/* 2. Contact Grid (Interactive Links) */}
+                {/* 2. Contact Grid (Interactive Links + Eye Icon) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 text-sm">
 
                     {/* Link: ที่อยู่ */}
@@ -192,35 +195,77 @@ function UserProfilePage({ userId, onBack }) {
                         </div>
                     </a>
 
-                    {/* Link: เบอร์โทร */}
-                    <a
-                        href={user.phone ? `tel:${user.phone}` : "#"}
-                        className={`flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl transition-all ${user.phone ? "hover:border-green-300 hover:shadow-md cursor-pointer" : "cursor-default opacity-80"}`}
-                        onClick={(e) => !user.phone && e.preventDefault()}
-                    >
+                    {/* Blinded: เบอร์โทร */}
+                    <div className={`flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl transition-all ${user.phone ? "hover:border-green-300 hover:shadow-md" : "opacity-80"}`}>
                         <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-500 shrink-0">
                             <Phone size={18} />
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                             <p className="text-xs text-gray-400 font-medium mb-0.5">เบอร์โทรศัพท์</p>
-                            <p className="text-sm font-semibold text-gray-800 truncate">{user.phone || "ยังไม่ระบุ"}</p>
-                        </div>
-                    </a>
+                            <div className="flex items-center justify-between">
+                                {user.phone ? (
+                                    showPhone ? (
+                                        <a href={`tel:${user.phone}`} className="text-sm font-semibold text-green-700 hover:underline">
+                                            {user.phone}
+                                        </a>
+                                    ) : (
+                                        <span className="text-sm font-semibold text-gray-800">
+                                            {user.phone.substring(0, 3)}XXXXXXX
+                                        </span>
+                                    )
+                                ) : (
+                                    <p className="text-sm font-semibold text-gray-800">ยังไม่ระบุ</p>
+                                )}
 
-                    {/* Link: อีเมล */}
-                    <a
-                        href={user.email ? `mailto:${user.email}` : "#"}
-                        className={`flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl transition-all ${user.email ? "hover:border-blue-300 hover:shadow-md cursor-pointer" : "cursor-default opacity-80"}`}
-                        onClick={(e) => !user.email && e.preventDefault()}
-                    >
+                                {/* Eye Icon Toggle */}
+                                {user.phone && (
+                                    <button
+                                        onClick={() => setShowPhone(!showPhone)}
+                                        className="p-1 text-gray-400 hover:text-green-600 transition-colors"
+                                        title={showPhone ? "ซ่อนเบอร์โทร" : "ดูเบอร์โทร"}
+                                    >
+                                        {showPhone ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Blinded: อีเมล */}
+                    <div className={`flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl transition-all ${user.email ? "hover:border-blue-300 hover:shadow-md" : "opacity-80"}`}>
                         <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 shrink-0">
                             <Mail size={18} />
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                             <p className="text-xs text-gray-400 font-medium mb-0.5">อีเมล</p>
-                            <p className="text-sm font-semibold text-gray-800 truncate">{user.email || "ยังไม่ระบุ"}</p>
+                            <div className="flex items-start justify-between gap-2">
+                                {user.email ? (
+                                    showEmail ? (
+                                        <a href={`mailto:${user.email}`} className="text-sm font-semibold text-blue-700 hover:underline break-all">
+                                            {user.email}
+                                        </a>
+                                    ) : (
+                                        <span className="text-sm font-semibold text-gray-800 break-all">
+                                            {user.email.substring(0, 3)}***@***
+                                        </span>
+                                    )
+                                ) : (
+                                    <p className="text-sm font-semibold text-gray-800">ยังไม่ระบุ</p>
+                                )}
+
+                                {/* Eye Icon Toggle */}
+                                {user.email && (
+                                    <button
+                                        onClick={() => setShowEmail(!showEmail)}
+                                        className="p-1 text-gray-400 hover:text-blue-600 transition-colors shrink-0"
+                                        title={showEmail ? "ซ่อนอีเมล" : "ดูอีเมล"}
+                                    >
+                                        {showEmail ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                    </a>
+                    </div>
 
                     {/* Info: วุฒิการศึกษาล่าสุด */}
                     <div className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl">
@@ -281,14 +326,22 @@ function UserProfilePage({ userId, onBack }) {
                                                             alt="avatar"
                                                             className="w-10 h-10 rounded-full object-cover border border-gray-100"
                                                         />
-                                                        <div>
+                                                        <div className="flex flex-col justify-center">
                                                             <div className="font-bold text-gray-900 text-sm flex items-center gap-2">
                                                                 {user.displayName}
                                                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${p.post_type === 'student' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-100 text-indigo-600'}`}>
                                                                     {p.post_type === 'student' ? 'หาครู' : 'รับสอน'}
                                                                 </span>
                                                             </div>
-                                                            <div className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleString("th-TH")}</div>
+                                                            <div className="flex items-center gap-1.5 mt-0.5 text-xs">
+                                                                {user.username && (
+                                                                    <>
+                                                                        <span className="font-medium text-indigo-500">@{user.username}</span>
+                                                                        <span className="text-gray-300">•</span>
+                                                                    </>
+                                                                )}
+                                                                <span className="text-gray-400">{new Date(p.createdAt).toLocaleString("th-TH")}</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <button className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-50">
@@ -365,7 +418,10 @@ function UserProfilePage({ userId, onBack }) {
                                                             <img src={r.reviewer?.avatar || "/default-avatar.png"} className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-md" alt="" />
                                                         </div>
                                                         <div>
-                                                            <div className="font-bold text-gray-900 text-sm">{r.reviewer?.name || "ผู้ใช้งาน"}</div>
+                                                            <div className="font-bold text-gray-900 text-sm">
+                                                                {r.reviewer?.name || "ผู้ใช้งาน"}
+                                                                {r.reviewer?.username && <span className="text-gray-500 font-normal ml-1">(@{r.reviewer?.username})</span>}
+                                                            </div>
                                                             <div className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</div>
                                                         </div>
                                                     </div>
@@ -478,18 +534,18 @@ function UserProfilePage({ userId, onBack }) {
 
             {/* ✅ Image Lightbox Modal */}
             {isImageOpen && (
-                <div 
+                <div
                     className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-sm animate-in fade-in duration-200"
                     onClick={() => setIsImageOpen(false)}
                 >
-                    <button 
+                    <button
                         className="absolute top-5 right-5 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"
                         onClick={() => setIsImageOpen(false)}
                     >
                         <X size={28} />
                     </button>
-                    <img 
-                        src={user.profile_picture_url || "/../blank_avatar.jpg"} 
+                    <img
+                        src={user.profile_picture_url || "/../blank_avatar.jpg"}
                         className="max-w-[90vw] max-h-[85vh] rounded-lg shadow-2xl scale-100"
                         alt="Full Size Profile"
                         onClick={(e) => e.stopPropagation()} // กดที่รูปไม่ปิด

@@ -1,9 +1,11 @@
 // tutorweb/src/pages/Tutor_Info.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  User, Phone, MapPin, Briefcase, GraduationCap, 
-  BookOpen, Plus, Trash2, Camera, Save, X, ChevronLeft, Check, Mail // ✅ เพิ่ม icon Mail
+import {
+    User, Phone, MapPin, Briefcase, GraduationCap,
+    BookOpen, Plus, Trash2, Camera, Save, X, ChevronLeft, Check, Mail
 } from 'lucide-react';
+import UniversityPicker from '../components/UniversityPicker';
+import SearchableSelect from '../components/SearchableSelect'; // ✅ Import
 
 const getCurrentUser = () => {
     try {
@@ -74,7 +76,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
     useEffect(() => {
         if (!currentUser?.user_id || db.length === 0) return;
         const fetchProfile = async () => {
-             try {
+            try {
                 const response = await fetch(`http://localhost:5000/api/tutor-profile/${currentUser.user_id}`);
                 if (!response.ok) throw new Error("ดึงข้อมูลไม่สำเร็จ");
                 const data = await response.json();
@@ -140,13 +142,20 @@ export default function TutorInfoPage({ setCurrentPage }) {
             setFormData(prev => ({ ...prev, district: '', subdistrict: '', postalCode: '' }));
         } else if (name === 'district') {
             const pData = db.find(p => p.name_th === formData.province);
-            const dData = pData?.districts.find(d => d.name_th === value);
+            // Safety check in case pData is undefined (though shouldn't happen if logic is correct)
+            if (!pData) return;
+
+            const dData = pData.districts.find(d => d.name_th === value);
             setAddressData(prev => ({ ...prev, subdistricts: dData?.sub_districts.map(s => s.name_th).sort() || [] }));
             setFormData(prev => ({ ...prev, subdistrict: '', postalCode: '' }));
         } else if (name === 'subdistrict') {
             const pData = db.find(p => p.name_th === formData.province);
-            const dData = pData?.districts.find(d => d.name_th === formData.district);
-            const sData = dData?.sub_districts.find(s => s.name_th === value);
+            if (!pData) return;
+
+            const dData = pData.districts.find(d => d.name_th === formData.district);
+            if (!dData) return;
+
+            const sData = dData.sub_districts.find(s => s.name_th === value);
             setFormData(prev => ({ ...prev, postalCode: sData ? String(sData.zip_code) : '' }));
         }
     };
@@ -223,7 +232,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
 
             setMessage('บันทึกเรียบร้อย!');
             setTimeout(() => setCurrentPage('profile'), 1500);
-        } catch (err) { setError(err.message); } 
+        } catch (err) { setError(err.message); }
         finally { setIsSubmitting(false); }
     };
 
@@ -236,7 +245,6 @@ export default function TutorInfoPage({ setCurrentPage }) {
                 <div className="mb-8 flex items-center justify-between">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900 tracking-tight">แก้ไขโปรไฟล์ติวเตอร์</h1>
-                        <p className="mt-1 text-sm text-gray-500">จัดการข้อมูลการสอนและประวัติของคุณ</p>
                     </div>
                     <button onClick={() => setCurrentPage('profile')} className="flex items-center text-gray-500 hover:text-gray-700 transition-colors">
                         <ChevronLeft size={20} /> <span className="ml-1 font-medium">ย้อนกลับ</span>
@@ -244,7 +252,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-8">
-                    
+
                     {/* 1. Profile Picture */}
                     <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col items-center">
                         <div className="relative group cursor-pointer w-40 h-40">
@@ -260,7 +268,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
                     {/* 2. Personal Info */}
                     <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-                            <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><User size={24}/></div>
+                            <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><User size={24} /></div>
                             <h3 className="text-xl font-bold text-gray-900">ข้อมูลส่วนตัว</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -268,26 +276,34 @@ export default function TutorInfoPage({ setCurrentPage }) {
                             <div><label className="text-sm font-bold text-gray-700">นามสกุล</label><input type="text" value={user.lastname} disabled className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed" /></div>
                             <div><label className="text-sm font-bold text-gray-700">ชื่อเล่น</label><input type="text" name="nickname" value={formData.nickname} onChange={handleChange} className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
                             <div><label className="text-sm font-bold text-gray-700">เบอร์โทรศัพท์</label><input type="tel" name="phone" value={formData.phone} onChange={handleChange} className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
-                            
+
                             {/* ✅ เพิ่มช่อง Email (Read-Only) */}
                             <div className="md:col-span-2">
                                 <label className="text-sm font-bold text-gray-700">อีเมล</label>
                                 <div className="relative mt-1">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><Mail size={18}/></div>
-                                    <input 
-                                        type="email" 
-                                        value={user.email} 
-                                        disabled 
-                                        className="w-full pl-10 px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed" 
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><Mail size={18} /></div>
+                                    <input
+                                        type="email"
+                                        value={user.email}
+                                        disabled
+                                        className="w-full pl-10 px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
                                     />
                                 </div>
                             </div>
 
                             {/* Address Grid */}
                             <div className="md:col-span-2 p-6 bg-gray-50 rounded-2xl border border-gray-100">
-                                <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2"><MapPin size={16}/> ที่อยู่ปัจจุบัน</h4>
+                                <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2"><MapPin size={16} /> ที่อยู่ปัจจุบัน</h4>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <select name="province" value={formData.province} onChange={handleAddressChange} disabled={db.length === 0} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white"><option value="" disabled>จังหวัด</option>{addressData.provinces.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                                    <div className="w-full">
+                                        <SearchableSelect
+                                            options={addressData.provinces}
+                                            value={formData.province}
+                                            onChange={(val) => handleAddressChange({ target: { name: 'province', value: val } })}
+                                            placeholder="ค้นหาจังหวัด..."
+                                            disabled={db.length === 0}
+                                        />
+                                    </div>
                                     <select name="district" value={formData.district} onChange={handleAddressChange} disabled={!formData.province} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white"><option value="" disabled>อำเภอ/เขต</option>{addressData.districts.map(d => <option key={d} value={d}>{d}</option>)}</select>
                                     <select name="subdistrict" value={formData.subdistrict} onChange={handleAddressChange} disabled={!formData.district} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white"><option value="" disabled>ตำบล/แขวง</option>{addressData.subdistricts.map(s => <option key={s} value={s}>{s}</option>)}</select>
                                     <input type="text" value={formData.postalCode} disabled placeholder="รหัสไปรษณีย์" className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-100 text-gray-500" />
@@ -300,7 +316,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
                     {/* 3. Teaching Info (Chips & Tags) */}
                     <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-                            <div className="p-2 bg-purple-50 rounded-xl text-purple-600"><BookOpen size={24}/></div>
+                            <div className="p-2 bg-purple-50 rounded-xl text-purple-600"><BookOpen size={24} /></div>
                             <h3 className="text-xl font-bold text-gray-900">ข้อมูลการสอน</h3>
                         </div>
 
@@ -332,12 +348,12 @@ export default function TutorInfoPage({ setCurrentPage }) {
                                 {formData.can_teach_subjects.map(subject => (
                                     <span key={subject} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold border border-blue-100">
                                         {subject}
-                                        <button type="button" onClick={() => removeSubject(subject)} className="hover:text-blue-900"><X size={14}/></button>
+                                        <button type="button" onClick={() => removeSubject(subject)} className="hover:text-blue-900"><X size={14} /></button>
                                     </span>
                                 ))}
                             </div>
                             <div className="flex gap-2">
-                                <select onChange={(e) => { if(e.target.value) addSubject(e.target.value); e.target.value=''; }} className="px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-purple-500 outline-none">
+                                <select onChange={(e) => { if (e.target.value) addSubject(e.target.value); e.target.value = ''; }} className="px-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-purple-500 outline-none">
                                     <option value="">+ เลือกวิชา</option>
                                     {subjectOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                 </select>
@@ -366,15 +382,19 @@ export default function TutorInfoPage({ setCurrentPage }) {
                         {/* Education */}
                         <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                             <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
-                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><GraduationCap className="text-orange-500"/> การศึกษา</h3>
+                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><GraduationCap className="text-orange-500" /> การศึกษา</h3>
                                 <button type="button" onClick={addEducation} className="text-sm text-orange-600 font-bold hover:underline">+ เพิ่ม</button>
                             </div>
                             <div className="space-y-4">
                                 {formData.education.map((edu, idx) => (
                                     <div key={idx} className="relative p-4 rounded-2xl bg-orange-50/50 border border-orange-100">
-                                        <button type="button" onClick={() => removeEducation(idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-600"><X size={16}/></button>
+                                        <button type="button" onClick={() => removeEducation(idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-600"><X size={16} /></button>
                                         <div className="grid gap-2">
-                                            <input type="text" name="institution" value={edu.institution} onChange={(e) => handleEducationChange(idx, e)} placeholder="สถานศึกษา" className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                                            <UniversityPicker
+                                                value={edu.institution}
+                                                onChange={(val) => handleEducationChange(idx, { target: { name: 'institution', value: val } })}
+                                                placeholder="สถานศึกษา"
+                                            />
                                             <div className="flex gap-2">
                                                 <input type="text" name="degree" value={edu.degree} onChange={(e) => handleEducationChange(idx, e)} placeholder="วุฒิ" className="w-1/3 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm" />
                                                 <input type="text" name="major" value={edu.major} onChange={(e) => handleEducationChange(idx, e)} placeholder="สาขา" className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm" />
@@ -389,13 +409,13 @@ export default function TutorInfoPage({ setCurrentPage }) {
                         {/* Experience */}
                         <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
                             <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
-                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Briefcase className="text-blue-500"/> ประสบการณ์</h3>
+                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Briefcase className="text-blue-500" /> ประสบการณ์</h3>
                                 <button type="button" onClick={addExperience} className="text-sm text-blue-600 font-bold hover:underline">+ เพิ่ม</button>
                             </div>
                             <div className="space-y-4">
                                 {formData.teaching_experience.map((exp, idx) => (
                                     <div key={idx} className="relative p-4 rounded-2xl bg-blue-50/50 border border-blue-100">
-                                        <button type="button" onClick={() => removeExperience(idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-600"><X size={16}/></button>
+                                        <button type="button" onClick={() => removeExperience(idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-600"><X size={16} /></button>
                                         <div className="grid gap-2">
                                             <input type="text" name="title" value={exp.title} onChange={(e) => handleExperienceChange(idx, e)} placeholder="ตำแหน่ง/งาน" className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold" />
                                             <input type="text" name="duration" value={exp.duration} onChange={(e) => handleExperienceChange(idx, e)} placeholder="ระยะเวลา" className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm" />
@@ -412,7 +432,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
                         <div className="h-6 text-sm font-bold">{message && <span className="text-green-600">{message}</span>}{error && <span className="text-red-600">{error}</span>}</div>
                         <div className="flex gap-4 w-full md:w-auto">
                             <button type="button" onClick={() => setCurrentPage('profile')} className="flex-1 md:flex-none px-8 py-3 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 transition-all">ยกเลิก</button>
-                            <button type="submit" disabled={isSubmitting} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all disabled:bg-indigo-300">{isSubmitting ? 'กำลังบันทึก...' : <><Save size={20}/> บันทึกข้อมูล</>}</button>
+                            <button type="submit" disabled={isSubmitting} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all disabled:bg-indigo-300">{isSubmitting ? 'กำลังบันทึก...' : <><Save size={20} /> บันทึกข้อมูล</>}</button>
                         </div>
                     </div>
                 </form>

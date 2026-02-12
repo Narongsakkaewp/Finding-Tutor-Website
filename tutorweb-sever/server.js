@@ -16,12 +16,11 @@ const fs = require('fs');
 
 // ----- recommendation sets -----
 const pool = require('./db'); // นำเข้าไฟล์การตั้งค่า DB
-const recommendationController = require('./src/controllers/recommendationController'); // ✅ Import Recommendations
+const recommendationController = require('./src/controllers/recommendationController');
 const scheduleController = require('./src/controllers/scheduleController');
 const searchRoutes = require('./src/routes/searchRoutes');
 const favoriteRoutes = require('./src/routes/favoriteRoutes');
-const searchController = require('./src/controllers/searchController'); // Import searchController for history
-
+const searchController = require('./src/controllers/searchController');
 // ----- Email Deps -----
 const nodemailer = require('nodemailer');
 const { initCron, checkAndSendNotifications } = require('./src/services/cronService');
@@ -140,7 +139,7 @@ function sendDbError(res, err) {
 // student joiners (ใช้ใน student_posts)
 async function getJoiners(postId) {
   const [rows] = await pool.query(
-    `SELECT j.user_id, j.joined_at, r.name, r.lastname
+    `SELECT j.user_id, j.joined_at, r.name, r.lastname, r.username
        FROM student_post_joins j
        LEFT JOIN register r ON r.user_id = j.user_id
       WHERE j.student_post_id = ? AND j.status = 'approved'
@@ -302,17 +301,21 @@ app.get('/api/user/:userId', async (req, res) => {
   }
 });
 
-// ล็อกอิน
+// ล็อกอิน (รองรับทั้ง Email และ Username)
 app.post('/api/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body; // ตัวแปร email จากหน้าเว็บอาจจะเป็น username หรือ email ก็ได้
+
+    // เช็คว่ากรอกตรงกับช่อง email หรือ username
     const [rows] = await pool.execute(
-      'SELECT * FROM register WHERE email = ? AND password = ?',
-      [email, password]
+      'SELECT * FROM register WHERE (email = ? OR username = ?) AND password = ?',
+      [email, email, password]
     );
+
     if (rows.length === 0) {
-      return res.json({ success: false, message: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
+      return res.status(401).json({ success: false, message: 'อีเมล/Username หรือรหัสผ่านไม่ถูกต้อง' });
     }
+
     const user = rows[0];
     const raw = String(user.type || '').trim().toLowerCase();
     const mapped = raw === 'teacher' ? 'tutor' : raw;
@@ -321,14 +324,14 @@ app.post('/api/login', async (req, res) => {
       success: true,
       user: {
         ...user,
-        role: user.role || mapped, // Use DB role (admin) if exists, else fallback to type
+        role: user.role || mapped,
         userType: mapped
       },
       userType: mapped,
-      role: user.role || mapped // Send explicit role key
+      role: user.role || mapped
     });
   } catch (err) {
-    console.error(err);
+    console.error('Login Error:', err);
     res.status(500).json({ success: false, message: 'Database error' });
   }
 });
@@ -342,7 +345,7 @@ app.get('/api/student-posts/:id', async (req, res) => {
         sp.student_post_id, sp.student_id, sp.subject, sp.description,
         sp.preferred_days, sp.preferred_time, sp.location, sp.group_size, sp.budget, sp.contact_info,
         sp.grade_level, sp.created_at,
-        r.name, r.lastname, r.email, r.type,
+        r.name, r.lastname, r.email, r.username, r.type,
         spro.profile_picture_url, spro.phone,
         (SELECT COUNT(*) FROM student_post_joins WHERE student_post_id = sp.student_post_id AND status = 'approved') AS join_count
       FROM student_posts sp
@@ -374,6 +377,7 @@ app.get('/api/student-posts/:id', async (req, res) => {
       user: {
         first_name: post.name,
         last_name: post.lastname,
+        username: post.username,
         profile_image: post.profile_picture_url || '/../blank_avatar.jpg'
       }
     };
@@ -412,6 +416,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
           COALESCE(sp.created_at, NOW()) AS created_at,
           r.name        AS student_name,
           r.lastname    AS student_lastname,
+          r.username    AS student_username,
           spro.profile_picture_url
         FROM student_posts sp
         LEFT JOIN register r ON r.user_id = sp.student_id
@@ -435,6 +440,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
         _id: r.student_post_id,
         authorId: {
           name: fullName || `นักเรียน #${r.student_id}`,
+          username: r.student_username,
           avatarUrl: r.profile_picture_url || '/../blank_avatar.jpg' /* ส่งรูปไปด้วย */
         },
         content: r.description,
@@ -534,7 +540,7 @@ app.get('/api/tutors', async (req, res) => {
     // ... (ส่วน subject filter ถ้ามี) ...
     const [rows] = await pool.execute(
       `SELECT 
-          r.user_id, r.name, r.lastname, r.email,
+          r.user_id, r.name, r.lastname, r.email, r.username,
           tp.nickname,
           tp.can_teach_subjects,
           tp.profile_picture_url,
@@ -576,6 +582,7 @@ app.get('/api/tutors', async (req, res) => {
         id: `t-${r.user_id}`,
         dbTutorId: r.user_id,
         name: `${r.name || ''} ${r.lastname || ''}`.trim(),
+        username: r.username,
         nickname: r.nickname,
         subject: r.can_teach_subjects || 'ไม่ระบุ',
         image: r.profile_picture_url || '/../blank_avatar.jpg',
@@ -740,7 +747,7 @@ app.get('/api/tutor-posts', async (req, res) => {
         tp.target_student_level,
         tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
-        r.name, r.lastname, r.email, r.type,
+        r.name, r.lastname, r.email, r.username, r.type,
         tpro.profile_picture_url, tpro.nickname, tpro.about_me, tpro.education, tpro.teaching_experience, tpro.phone,
         -- Favorites
         COALESCE(fvc.c,0) AS fav_count,
@@ -830,6 +837,7 @@ app.get('/api/tutor-posts', async (req, res) => {
             id: r.tutor_id,
             first_name: r.name || '',
             last_name: r.lastname || '',
+            username: r.username,
             profile_image: r.profile_picture_url || '',
             email: r.email || '',
             phone: r.phone || '',
@@ -949,7 +957,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
         tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
         tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
-        r.name, r.lastname, tpro.profile_picture_url
+        r.name, r.lastname, r.username, tpro.profile_picture_url
       FROM tutor_posts tp
       LEFT JOIN register r       ON r.user_id = tp.tutor_id
       LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
@@ -998,7 +1006,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
           price: Number(r.price || 0),
           contact_info: r.contact_info
         },
-        user: { first_name: r.name || '', last_name: r.lastname || '', profile_image: r.profile_picture_url || '' },
+        user: { first_name: r.name || '', last_name: r.lastname || '', username: r.username, profile_image: r.profile_picture_url || '' },
         createdAt: r.created_at
       });
     }
@@ -1008,30 +1016,56 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
   }
 });
 
-
-// สมัครสมาชิก
+// สมัครสมาชิก (มีระบบ OTP + Username)
 app.post('/api/register', async (req, res) => {
   let connection;
   try {
-    const { name, lastname, email, password, type } = req.body;
+    const { username, name, lastname, email, password, type, otp } = req.body;
 
-    const [dup] = await pool.execute('SELECT 1 FROM register WHERE email = ?', [email]);
-    if (dup.length > 0) {
-      return res.json({ success: false, message: 'อีเมลนี้ถูกใช้แล้ว' });
+    if (!username || !name || !lastname || !email || !password || !type || !otp) {
+      return res.status(400).json({ success: false, message: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
     }
 
+    // 1. ตรวจสอบ OTP
+    const [otpRows] = await pool.query(
+      'SELECT * FROM otp_codes WHERE email = ? AND code = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [email, otp]
+    );
+
+    if (otpRows.length === 0) {
+      return res.status(400).json({ success: false, message: 'รหัส OTP ไม่ถูกต้องหรือหมดอายุ' });
+    }
+
+    // 2. เช็คว่าอีเมลซ้ำไหม
+    const [dupEmail] = await pool.execute('SELECT 1 FROM register WHERE email = ?', [email]);
+    if (dupEmail.length > 0) {
+      return res.status(400).json({ success: false, message: 'อีเมลนี้ถูกใช้งานแล้ว' });
+    }
+
+    // 3. เช็คว่า Username ซ้ำไหม
+    const [dupUsername] = await pool.execute('SELECT 1 FROM register WHERE username = ?', [username]);
+    if (dupUsername.length > 0) {
+      return res.status(400).json({ success: false, message: 'Username นี้มีคนใช้แล้ว กรุณาใช้ชื่ออื่น' });
+    }
+
+    // 4. เริ่มบันทึกข้อมูล
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
+    // 4.1 ลบ OTP เก่าทิ้งหลังจากใช้สำเร็จ
+    await connection.query('DELETE FROM otp_codes WHERE email = ?', [email]);
+
+    // 4.2 บันทึกข้อมูลสมาชิกลง Database (เพิ่ม username และบังคับใส่ role ให้ตรงกับ type)
     const [result] = await connection.execute(
-      'INSERT INTO register (name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?)',
-      [name, lastname, email, password, type]
+      'INSERT INTO register (username, name, lastname, email, password, type, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [username, name, lastname, email, password, type, type]
     );
 
     const newUserId = result.insertId;
 
+    // 4.3 ดึงข้อมูลที่เพิ่งสมัครกลับมาส่งให้ Frontend
     const [rows] = await connection.execute(
-      'SELECT user_id, name, lastname, email, type FROM register WHERE user_id = ?',
+      'SELECT user_id, username, name, lastname, email, type, role FROM register WHERE user_id = ?',
       [newUserId]
     );
     const newUser = rows[0];
@@ -1120,8 +1154,9 @@ app.get('/api/student_posts', async (req, res) => {
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
         sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
         sp.grade_level,  /* ✅ เพิ่ม: ดึงระดับชั้นออกมาด้วย */
+        sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
         sp.grade_level,  /* ✅ เพิ่ม: ดึงระดับชั้นออกมาด้วย */
-        r.name, r.lastname, r.email, r.type,
+        r.name, r.lastname, r.email, r.username, r.type,
         spro.profile_picture_url, spro.phone,
         COALESCE(jc.join_count, 0) AS join_count,
         CASE WHEN (jme.user_id IS NOT NULL OR ome.tutor_id IS NOT NULL) THEN 1 ELSE 0 END AS joined,
@@ -1193,6 +1228,7 @@ app.get('/api/student_posts', async (req, res) => {
       user: {
         first_name: r.name || '',
         last_name: r.lastname || '',
+        username: r.username,
         profile_image: r.profile_picture_url || '/../blank_avatar.jpg',
         email: r.email || '',
         phone: r.phone || '',
@@ -1277,7 +1313,7 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
     const [rows] = await pool.query(
       `SELECT 
       tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description, tp.target_student_level, tp.teaching_days, tp.teaching_time,
-      tp.location, tp.group_size, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname
+      tp.location, tp.group_size, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname, r.username
     FROM tutor_posts tp
     LEFT JOIN register r ON r.user_id = tp.tutor_id
     WHERE tp.tutor_post_id = ?`,
@@ -1303,7 +1339,7 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
         user: {
           first_name: r.name || '',
           last_name: r.lastname || '',
-
+          username: r.username
         },
         group_size: Number(r.group_size || 0),
         createdAt: r.created_at
@@ -1645,7 +1681,7 @@ app.get('/api/tutor_posts/:id/joiners', async (req, res) => {
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
 
     const [rows] = await pool.query(
-      `SELECT j.user_id, j.joined_at, r.name, r.lastname
+      `SELECT j.user_id, j.joined_at, r.name, r.lastname, r.username
        FROM tutor_post_joins j
        LEFT JOIN register r ON r.user_id = j.user_id
       WHERE j.tutor_post_id = ? AND j.status = 'approved'
@@ -1674,7 +1710,7 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     const sqlStudent = `
       SELECT 
         j.student_post_id, j.user_id, j.status, j.requested_at,
-        j.name, j.lastname, r.email,
+        j.name, j.lastname, r.email, r.username,
         'student' AS request_type
       FROM student_post_joins j
       LEFT JOIN register r ON r.user_id = j.user_id
@@ -1685,7 +1721,7 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     const sqlTutor = `
       SELECT 
         o.student_post_id, o.tutor_id AS user_id, o.status, o.requested_at,
-        o.name, o.lastname, r.email,
+        o.name, o.lastname, r.email, r.username,
         'tutor' AS request_type
       FROM student_post_offers o
       LEFT JOIN register r ON r.user_id = o.tutor_id
@@ -2456,7 +2492,7 @@ app.get('/api/profile/:userId', async (req, res) => {
     const { userId } = req.params;
     const sql = `
       SELECT
-        r.name, r.lastname, r.email, r.type,
+        r.name, r.lastname, r.email, r.username, r.type, r.name_change_at,
         sp.*, r.created_at 
       FROM register r
       LEFT JOIN student_profiles sp ON r.user_id = sp.user_id
@@ -2551,7 +2587,7 @@ app.get('/api/tutor-profile/:userId', async (req, res) => {
     const { userId } = req.params;
     const sql = `
       SELECT
-        r.name, r.lastname, r.email, r.type,
+        r.name, r.lastname, r.email, r.username, r.type, r.name_change_at,
         tp.*, r.created_at 
       FROM register r
       LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
@@ -2570,8 +2606,8 @@ app.get('/api/tutor-profile/:userId', async (req, res) => {
     const [rRows] = await pool.execute(`
         SELECT 
             r.rating, r.comment, r.created_at, 
-            reg.name, reg.lastname, sp.profile_picture_url,
-            -- ดึงชื่อวิชา (เช็คทั้งโพสต์ติวเตอร์และโพสต์นักเรียน)
+            reg.name, reg.lastname, reg.username, sp.profile_picture_url,
+            -- ดึงชื่อวิชา
             COALESCE(tp.subject, stp.subject) AS subject
         FROM reviews r
         LEFT JOIN register reg ON r.student_id = reg.user_id
@@ -2589,7 +2625,11 @@ app.get('/api/tutor-profile/:userId', async (req, res) => {
       comment: r.comment,
       subject: r.subject || "วิชาทั่วไป", // ✅ ส่งชื่อวิชากลับไป
       createdAt: r.created_at,
-      reviewer: { name: `${r.name} ${r.lastname}`, avatar: r.profile_picture_url }
+      reviewer: {
+        name: `${r.name} ${r.lastname}`,
+        username: r.username,
+        avatar: r.profile_picture_url
+      }
     }));
 
     let avgRating = "0.0";
@@ -2998,6 +3038,7 @@ app.get('/api/tutors/:tutorId/reviews', async (req, res) => {
         -- ข้อมูลนักเรียนจากตาราง register
         r.name AS student_name,
         r.lastname AS student_lastname,
+        r.username AS student_username,
         -- รูปโปรไฟล์จากตาราง student_profiles (ถ้ามี)
         sp.profile_picture_url
       FROM reviews rv
@@ -3019,6 +3060,7 @@ app.get('/api/tutors/:tutorId/reviews', async (req, res) => {
       createdAt: row.created_at,
       reviewer: {
         name: `${row.student_name} ${row.student_lastname || ''}`.trim(),
+        username: row.student_username,
         avatar: row.profile_picture_url || '/../blank_avatar.jpg'
       }
     }));
@@ -3072,42 +3114,58 @@ const getEmailTemplate = (otpCode) => {
   `;
 };
 
-// API ส่ง OTP
+// API ส่ง OTP (รองรับ Register, Change Email, Forgot Password)
 app.post('/api/auth/request-otp', async (req, res) => {
-  console.log("📨 Received OTP Request:", req.body.email);
-  const { email, type } = req.body;
+  console.log("📨 Received OTP Request:", req.body);
+  const { email, type, userId, username } = req.body; // userId needed for change_email check, username for register check
 
   try {
+    // 1. ตรวจสอบเงื่อนไขก่อนส่ง
     if (type === 'register') {
-      const [existing] = await pool.query('SELECT 1 FROM register WHERE email = ?', [email]);
-      if (existing.length > 0) {
-        return res.status(400).json({ success: false, message: 'อีเมลนี้ถูกใช้งานแล้ว' });
+      const [existingEmail] = await pool.query('SELECT 1 FROM register WHERE email = ?', [email]);
+      if (existingEmail.length > 0) return res.status(400).json({ success: false, message: 'อีเมลนี้ถูกใช้งานแล้ว' });
+
+      if (username) {
+        const [existingUser] = await pool.query('SELECT 1 FROM register WHERE username = ?', [username]);
+        if (existingUser.length > 0) return res.status(400).json({ success: false, message: 'Username นี้ถูกใช้งานแล้ว' });
       }
+    }
+    else if (type === 'change_email') {
+      // เช็คว่าอีเมลใหม่ซ้ำกับคนอื่นไหม (ยกเว้นตัวเอง)
+      // กรณีนี้ userId คือคนขอเปลี่ยน
+      if (!userId) return res.status(400).json({ success: false, message: 'User ID required for checking' });
+      const [existing] = await pool.query('SELECT 1 FROM register WHERE email = ? AND user_id != ?', [email, userId]);
+      if (existing.length > 0) return res.status(400).json({ success: false, message: 'อีเมลนี้มีผู้ใช้งานแล้ว' });
+    }
+    else if (type === 'forgot_password') {
+      // ต้องมีอีเมลในระบบถึงจะส่งได้
+      const [existing] = await pool.query('SELECT 1 FROM register WHERE email = ?', [email]);
+      if (existing.length === 0) return res.status(404).json({ success: false, message: 'ไม่พบอีเมลนี้ในระบบ' });
     }
 
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    // 1. บันทึก DB
+    // 2. บันทึก DB
     await pool.query('INSERT INTO otp_codes (email, code, expires_at) VALUES (?, ?, ?)', [email, otpCode, expiresAt]);
-    console.log("✅ OTP Saved to DB");
+    console.log(`✅ OTP Saved to DB for ${email} (${type})`);
 
-    // 2. เตรียมส่งเมล (ใช้รูปจาก URL เพื่อความเบา แต่ยังสวย)
+    // 3. เตรียม Subject ตามประเภท
+    let subject = '🔐 รหัสยืนยันตัวตน (OTP) - Tutor Web';
+    if (type === 'change_email') subject = '📧 รหัสยืนยันการเปลี่ยนอีเมล - Tutor Web';
+    if (type === 'forgot_password') subject = '🔑 รหัสรีเซ็ตรหัสผ่าน - Tutor Web';
+
     const mailOptions = {
       from: '"Finding TutorWeb" <findingtoturwebteam@gmail.com>',
       to: email,
-      subject: '🔐 รหัสยืนยันตัวตน (OTP) - Tutor Web',
-      html: getEmailTemplate(otpCode), // ใช้ฟังก์ชัน HTML ตัวล่าสุดของคุณ
-      // attachments: [] <-- ไม่ต้องใส่ attachments แล้ว
+      subject: subject,
+      html: getEmailTemplate(otpCode),
     };
 
-    // 3. ✅ ใส่ await กลับมา (เพื่อให้หน่วงรอจนกว่า Gmail จะบอกว่า "ส่งแล้วนะ")
-    // ตรงนี้จะใช้เวลาประมาณ 1-2 วินาที ซึ่งเป็นความหน่วงที่กำลังดีครับ
     console.log("⏳ กำลังเชื่อมต่อ Gmail...");
     await transporter.sendMail(mailOptions);
     console.log("🚀 ส่งเมลสำเร็จ!");
 
-    // 4. แจ้งหน้าเว็บ
     res.json({ success: true, message: 'ส่งรหัส OTP เรียบร้อยแล้ว' });
 
   } catch (err) {
@@ -3132,30 +3190,114 @@ app.post('/api/register', async (req, res) => {
   // 2. ถ้า OTP ถูกต้อง -> ลบ OTP เก่าทิ้ง (Optional แต่ควรทำ)
   await pool.query('DELETE FROM otp_codes WHERE email = ?', [email]);
 
-  // 3. ทำการสมัครสมาชิก (Logic เดิมของคุณ) ...
-  // ... (INSERT INTO register ...)
+  // 3. ทำการสมัครสมาชิก
+  // เช็คซ้ำอีกรอบกันเหนียว
+  const [existingUser] = await pool.query('SELECT 1 FROM register WHERE email = ? OR username = ?', [email, req.body.username]);
+  if (existingUser.length > 0) return res.status(400).json({ success: false, message: 'อีเมลหรือ Username ถูกใช้งานแล้ว' });
 
-  // (Copy โค้ดเดิมส่วน Insert มาใส่ตรงนี้)
+  // INSERT
+  const [result] = await pool.query(
+    'INSERT INTO register (name, lastname, email, password, type, username, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+    [name, lastname, email, password, type, req.body.username]
+  );
+
+  // สร้าง Profile ว่างๆ รอไว้เลยตามประเภท (Optional)
+  if (type === 'student') {
+    await pool.query('INSERT INTO student_profiles (user_id) VALUES (?)', [result.insertId]);
+  } else if (type === 'tutor') {
+    await pool.query('INSERT INTO tutor_profiles (user_id) VALUES (?)', [result.insertId]);
+  }
+
+  res.json({ success: true, message: 'สมัครสมาชิกสำเร็จ', userId: result.insertId });
 });
 
-// 1. API แก้ไขข้อมูลส่วนตัว (User Info)
+// 1. API แก้ไขข้อมูลส่วนตัว (User Info) - เพิ่ม Check 90 วัน + OTP Email Change
 app.put('/api/user/:id', async (req, res) => {
   try {
-    const { name, lastname, email } = req.body;
+    const { name, lastname, email, otp } = req.body; // รับ otp มาด้วยถ้าเปลี่ยนเมล
     const userId = req.params.id;
 
-    // เช็คว่าอีเมลซ้ำกับคนอื่นไหม (ถ้ามีการเปลี่ยนอีเมล)
-    const [existing] = await pool.query('SELECT user_id FROM register WHERE email = ? AND user_id != ?', [email, userId]);
-    if (existing.length > 0) {
-      return res.status(400).json({ success: false, message: 'อีเมลนี้มีผู้ใช้งานแล้ว' });
+    // --- Logic 90 Days Limit ---
+    const [[currentUser]] = await pool.query('SELECT name, lastname, email, name_change_at FROM register WHERE user_id = ?', [userId]);
+    if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
+
+    // 1. Check Name Change Limit
+    const isNameChanged = (name && name !== currentUser.name) || (lastname && lastname !== currentUser.lastname);
+    let shouldUpdateDate = false;
+
+    if (isNameChanged) {
+      const lastChange = currentUser.name_change_at ? new Date(currentUser.name_change_at) : null;
+      if (lastChange) {
+        const diffTime = Math.abs(new Date() - lastChange);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays < 90) {
+          const nextDate = new Date(lastChange);
+          nextDate.setDate(nextDate.getDate() + 90);
+          return res.status(400).json({ success: false, message: `เปลี่ยนชื่อได้อีกครั้งวันที่ ${nextDate.toLocaleDateString('th-TH')}` });
+        }
+      }
+      shouldUpdateDate = true;
     }
 
-    await pool.query(
-      'UPDATE register SET name = ?, lastname = ?, email = ? WHERE user_id = ?',
-      [name, lastname, email, userId]
-    );
+    // 2. Check Email Change & OTP
+    if (email && email !== currentUser.email) {
+      // เช็คว่าอีเมลใหม่ซ้ำไหม
+      const [existing] = await pool.query('SELECT user_id FROM register WHERE email = ? AND user_id != ?', [email, userId]);
+      if (existing.length > 0) return res.status(400).json({ success: false, message: 'อีเมลนี้มีผู้ใช้งานแล้ว' });
+
+      if (!otp) {
+        return res.status(400).json({ success: false, message: 'กรุณาระบุรหัส OTP เพื่อยืนยันการเปลี่ยนอีเมล' });
+      }
+      // Verify OTP
+      const [otpRows] = await pool.query(
+        'SELECT * FROM otp_codes WHERE email = ? AND code = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+        [email, otp] // check OTP ของอีเมลใหม่
+      );
+      if (otpRows.length === 0) {
+        return res.status(400).json({ success: false, message: 'รหัส OTP ไม่ถูกต้องหรือหมดอายุ' });
+      }
+      // ลบ OTP ที่ใช้แล้ว
+      await pool.query('DELETE FROM otp_codes WHERE email = ?', [email]);
+    }
+
+    // Update Query
+    let sql = 'UPDATE register SET name = ?, lastname = ?, email = ?';
+    const params = [name, lastname, email];
+
+    if (shouldUpdateDate) sql += ', name_change_at = NOW()';
+
+    sql += ' WHERE user_id = ?';
+    params.push(userId);
+
+    await pool.query(sql, params);
 
     res.json({ success: true, message: 'Updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Database error' });
+  }
+});
+
+// ✅ API รีเซ็ตรหัสผ่านด้วย OTP (Forgot Password)
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+  try {
+    // 1. ตรวจสอบ OTP
+    const [otpRows] = await pool.query(
+      'SELECT * FROM otp_codes WHERE email = ? AND code = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [email, otp]
+    );
+    if (otpRows.length === 0) {
+      return res.status(400).json({ success: false, message: 'รหัส OTP ไม่ถูกต้องหรือหมดอายุ' });
+    }
+
+    // 2. เปลี่ยนรหัสผ่าน
+    await pool.query('UPDATE register SET password = ? WHERE email = ?', [newPassword, email]);
+
+    // 3. ลบ OTP
+    await pool.query('DELETE FROM otp_codes WHERE email = ?', [email]);
+
+    res.json({ success: true, message: 'เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Database error' });

@@ -79,7 +79,10 @@ function TutorCard({ item, onOpen, onToggleSave }) {
           <Heart className={`h-4 w-4 ${liked ? "fill-rose-500" : ""}`} />
         </button>
         <div className="absolute bottom-3 left-3 right-3 text-white">
-          <div className="font-bold text-lg truncate">{item.name} {item.nickname && `(${item.nickname})`}</div>
+          <div className="font-bold text-lg truncate flex items-center gap-1">
+            {item.name} {item.nickname && `(${item.nickname})`}
+          </div>
+          {item.username && <div className="text-xs text-indigo-100 font-medium opacity-90">@{item.username}</div>}
           <div className="text-sm text-gray-200 truncate">{item.subject}</div>
         </div>
       </div>
@@ -218,6 +221,7 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
         const isStudent = (type === "student" || type === "tutor_recommendation" || type === "recommended_courses"); // ✅ Fix logic
         const userImg = p.user?.profile_image || p.authorId?.avatarUrl || p.profile_picture_url || "../blank_avatar.jpg";
         const userName = p.user?.first_name || p.authorId?.name || (p.name ? `${p.name} ${p.lastname || ""}` : "User");
+        const userUsername = p.user?.username || p.authorId?.username || p.username || ""; // ✅ Get Username
         const date = p.createdAt || p.created_at;
         const subject = p.subject;
         const desc = p.description || p.content;
@@ -245,7 +249,9 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
             <div className="flex items-center gap-3 mb-3">
               <img src={userImg} className="w-10 h-10 rounded-full object-cover border" alt="" />
               <div>
-                <div className={`text-sm font-bold line-clamp-1 ${isExpired ? 'text-gray-600' : 'text-gray-900'}`}>{userName}</div>
+                <div className={`text-sm font-bold line-clamp-1 ${isExpired ? 'text-gray-600' : 'text-gray-900'}`}>
+                  {userName} <span className="text-xs font-normal text-gray-500 ml-1"> {userUsername ? `(@${userUsername})` : ""}</span>
+                </div>
                 <div className="text-xs text-gray-500">{new Date(date).toLocaleDateString("th-TH")}</div>
               </div>
               {!isExpired && (
@@ -691,7 +697,10 @@ function HomeStudent() {
               <div className="flex items-start gap-4">
                 <img src={preview.image || preview.authorId?.avatarUrl || "/../blank_avatar.jpg"} alt={preview.name || preview.authorId?.name} className="w-20 h-20 rounded-full object-cover border shadow-sm" />
                 <div>
-                  <h5 className="text-xl font-bold text-gray-900">{preview.name || preview.authorId?.name} {preview.nickname ? `(${preview.nickname})` : ""}</h5>
+                  <h5 className="text-xl font-bold text-gray-900">
+                    {preview.name || preview.authorId?.name} {preview.nickname ? `(${preview.nickname})` : ""}
+                  </h5>
+                  {preview.username && <div className="text-sm text-gray-500 font-medium">@{preview.username}</div>}
                   {/* แสดงรีวิวถ้ามี */}
                   {preview.reviews > 0 && (
                     <div className="flex items-center gap-2 mt-1">
@@ -812,6 +821,7 @@ function HomeStudent() {
               <img src={preview.user?.profile_image || preview.authorId?.avatarUrl || preview.profile_picture_url || "/../blank_avatar.jpg"} className="w-16 h-16 rounded-full object-cover border" alt="" />
               <div>
                 <h3 className="text-xl font-bold text-gray-900">{preview.user?.first_name || preview.authorId?.name || (preview.name ? `${preview.name} ${preview.lastname || ""}` : "นักเรียน")}</h3>
+                {(preview.user?.username || preview.authorId?.username || preview.username) && <div className="text-sm text-indigo-600 font-medium">@{preview.user?.username || preview.authorId?.username || preview.username}</div>}
                 <div className="text-sm text-gray-500">ลงประกาศเมื่อ: {new Date(preview.createdAt || preview.created_at).toLocaleDateString("th-TH")}</div>
                 <Badge text="กำลังหาครู" color="rose" />
               </div>

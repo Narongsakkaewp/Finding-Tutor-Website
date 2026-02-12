@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react'; // ✅ เพิ่ม useEffect ตรงนี้
-import { User, Mail, Lock, Eye, EyeOff, UserPlus, GraduationCap, Presentation, AlertCircle, ArrowLeft } from 'lucide-react';
+// tutorweb/src/pages/Register.jsx
+import React, { useState, useEffect } from 'react';
+import { User, Mail, Lock, Eye, EyeOff, UserPlus, GraduationCap, Presentation, AlertCircle, ArrowLeft, AtSign } from 'lucide-react'; //  เพิ่ม AtSign
 
 function Register({ onRegisterSuccess, onSwitchToLogin }) {
   const [step, setStep] = useState(1);
   const [timeLeft, setTimeLeft] = useState(300);
   const [formData, setFormData] = useState({
+    username: '', //  เพิ่ม username
     name: '',
     lastname: '',
     email: '',
@@ -19,7 +21,14 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    //  ยอมรับ ภาษาอังกฤษ, ตัวเลข, จุด (.), และ ขีดล่าง (_)
+    if (e.target.name === 'username') {
+      // เพิ่ม . (จุด) เข้าไปในเงื่อนไขการกรอง
+      const val = e.target.value.replace(/[^a-zA-Z0-9_.]/g, '').toLowerCase();
+      setFormData({ ...formData, username: val });
+    } else {
+      setFormData({ ...formData, [e.target.name]: e.target.value });
+    }
   };
 
   const handleTypeChange = (selectedType) => {
@@ -45,6 +54,10 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
     e.preventDefault();
     setError('');
 
+    if (formData.username.length < 12) {
+      setError('Username ต้องมีอย่างน้อย 12 ตัวอักษร');
+      return;
+    }
     if (formData.password !== formData.confirmPassword) {
       setError('รหัสผ่านไม่ตรงกัน');
       return;
@@ -60,7 +73,7 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
       const res = await fetch('http://localhost:5000/api/auth/request-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, type: 'register' }),
+        body: JSON.stringify({ email: formData.email, username: formData.username, type: 'register' }),
       });
 
       const data = await res.json();
@@ -98,11 +111,10 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.message || 'การยืนยัน OTP ล้มเหลว');
+        throw new Error(data.message || 'การสมัครสมาชิกล้มเหลว');
       }
 
       if (onRegisterSuccess) {
-        // ✅ ส่ง Flag ว่าเป็นการสมัครใหม่ (isNewRegistration: true)
         onRegisterSuccess({ ...data, isNewRegistration: true });
       } else {
         alert("สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ");
@@ -133,33 +145,73 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
             {step === 1 ? 'สร้างบัญชีใหม่' : 'ยืนยันอีเมล'}
           </h2>
           <p className="text-gray-500 text-sm mt-2 font-medium">
-            {step === 1 ? 'กรุณาเลือกประเภทผู้ใช้' : `กรอกรหัส OTP ที่ส่งไปยัง ${formData.email}`}
+            {step === 1 ? 'กรุณาเลือกประเภทผู้ใช้และกรอกข้อมูล' : `กรอกรหัส OTP ที่ส่งไปยัง ${formData.email}`}
           </p>
         </div>
-
-        {error && (
-          <div className="mb-4 flex items-start gap-2 bg-rose-50 border border-rose-100 text-rose-600 text-xs rounded-lg p-2.5">
-            <AlertCircle size={16} className="mt-0.5 shrink-0" />
-            <span className="font-medium">{error}</span>
-          </div>
-        )}
 
         {/* --- STEP 1: กรอกข้อมูล --- */}
         {step === 1 && (
           <form onSubmit={handleRequestOtp} className="space-y-4">
-            {/* ... (ส่วน Form Step 1 ของคุณถูกต้องแล้ว ใช้โค้ดเดิมได้เลย) ... */}
+
             <div className="grid grid-cols-2 gap-2 p-1 bg-gray-50 rounded-xl border border-gray-100">
               <button type="button" onClick={() => handleTypeChange('student')} className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 ${formData.type === 'student' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}><GraduationCap size={16} /> นักเรียน</button>
               <button type="button" onClick={() => handleTypeChange('tutor')} className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 ${formData.type === 'tutor' ? 'bg-white text-purple-600 shadow-sm ring-1 ring-black/5' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}><Presentation size={16} /> ติวเตอร์</button>
             </div>
+
+            {/* ช่อง Username */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-500 uppercase ml-1">ชื่อผู้ใช้งาน (Username)</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <AtSign className="h-4 w-4 text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  name="username"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none text-sm"
+                  placeholder="อังกฤษ, ตัวเลข, จุด(.) และ ขีดล่าง(_)"
+                  value={formData.username}
+                  onChange={handleChange}
+                  required
+                />
+                <span className="absolute inset-y-0 right-3 flex items-center text-xs text-gray-400">{formData.username.length}/20</span>
+              </div>
+              <span className="text-xs font-light text-gray-500">*คุณจะไม่สามารถแก้ไขชื่อผู้ใช้ได้ภายหลังการลงทะเบียน</span>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">ชื่อ</label><input type="text" name="name" className="w-full px-3 py-2.5 rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none text-sm" placeholder="สมชาย" value={formData.name} onChange={handleChange} required /></div>
               <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">นามสกุล</label><input type="text" name="lastname" className="w-full px-3 py-2.5 rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none text-sm" placeholder="ใจดี" value={formData.lastname} onChange={handleChange} required /></div>
             </div>
-            <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">อีเมล</label><input type="email" name="email" className="w-full px-3 py-2.5 rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none text-sm" placeholder="email@example.com" value={formData.email} onChange={handleChange} required /></div>
-            <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">รหัสผ่าน</label><div className="relative"><input type={showPassword ? 'text' : 'password'} name="password" className="w-full px-3 py-2.5 rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none text-sm pr-10" placeholder="ขั้นต่ำ 8 ตัวอักษร" value={formData.password} onChange={handleChange} required /><button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
-            <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">ยืนยันรหัสผ่าน</label><input type={showPassword ? 'text' : 'password'} name="confirmPassword" className="w-full px-3 py-2.5 rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none text-sm" placeholder="กรอกรหัสผ่านอีกครั้ง" value={formData.confirmPassword} onChange={handleChange} required /></div>
-            <button type="submit" disabled={loading} className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-black transition-all mt-2 disabled:bg-gray-300">{loading ? 'กำลังส่ง OTP...' : 'ดำเนินการต่อ'}</button>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-500 uppercase ml-1">อีเมล</label>
+              <input type="email" name="email" className="w-full px-3 py-2.5 rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none text-sm" placeholder="email@example.com" value={formData.email} onChange={handleChange} required />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-500 uppercase ml-1">รหัสผ่าน</label>
+              <div className="relative">
+                <input type={showPassword ? 'text' : 'password'} name="password" className="w-full px-3 py-2.5 rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none text-sm pr-10" placeholder="ขั้นต่ำ 8 ตัวอักษร" value={formData.password} onChange={handleChange} required />
+                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-500 uppercase ml-1">ยืนยันรหัสผ่าน</label>
+              <input type={showPassword ? 'text' : 'password'} name="confirmPassword" className="w-full px-3 py-2.5 rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-indigo-500 outline-none text-sm" placeholder="กรอกรหัสผ่านอีกครั้ง" value={formData.confirmPassword} onChange={handleChange} required />
+            </div>
+
+            {error && (
+              <div className="mb-2 flex items-start gap-2 bg-rose-50 border border-rose-100 text-rose-600 text-xs rounded-lg p-2.5">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <span className="font-medium">{error}</span>
+              </div>
+            )}
+
+            <button type="submit" disabled={loading} className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-black transition-all mt-2 disabled:bg-gray-300">
+              {loading ? 'กำลังส่ง OTP...' : 'ดำเนินการต่อ'}
+            </button>
           </form>
         )}
 
@@ -180,7 +232,6 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
                 autoFocus
               />
 
-              {/* ✅ แสดงเวลาถอยหลังจริงๆ แทนข้อความตายตัว */}
               <p className={`text-xs mt-2 font-medium transition-colors ${timeLeft <= 0 ? 'text-red-500' : 'text-gray-400'}`}>
                 {timeLeft > 0 ? (
                   <>รหัสจะหมดอายุใน <span className="text-indigo-600 font-bold">{formatTime(timeLeft)}</span> นาที</>
@@ -189,6 +240,13 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
                 )}
               </p>
             </div>
+
+            {error && (
+              <div className="mb-4 flex items-start gap-2 bg-rose-50 border border-rose-100 text-rose-600 text-xs rounded-lg p-2.5">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <span className="font-medium">{error}</span>
+              </div>
+            )}
 
             <div className="flex gap-4">
               <button
@@ -203,12 +261,12 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
                 disabled={loading || otp.length !== 6}
                 className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-indigo-700 transition-all disabled:bg-indigo-300 disabled:shadow-none"
               >
-                {loading ? 'กำลังตรวจสอบ...' : 'ยืนยัน'}
+                {loading ? 'กำลังตรวจสอบ...' : 'ยืนยันและสมัครสมาชิก'}
               </button>
             </div>
 
             <div className="text-center">
-              <button type="button" onClick={handleRequestOtp} className="text-xs text-indigo-500 hover:underline">
+              <button type="button" onClick={handleRequestOtp} disabled={timeLeft > 0} className="text-xs text-indigo-500 hover:underline disabled:text-gray-300 disabled:no-underline">
                 ขอรหัสใหม่
               </button>
             </div>

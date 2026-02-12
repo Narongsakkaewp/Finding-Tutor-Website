@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import ReactCalendar from "react-calendar";
 import 'react-calendar/dist/Calendar.css';
 import Login from '../pages/Login';
+
 import Register from '../pages/Register';
+import ForgotPassword from '../pages/ForgotPassword';
 import logo from "../assets/logo/FindingTutor_Logo.png";
 
 // Import Icons
@@ -401,7 +403,9 @@ function TutorDetailModal({ tutor, onClose, onSignUp }) {
 
 function Index({ setIsAuthenticated, onLoginSuccess }) {
   const [showLogin, setShowLogin] = useState(false);
+
   const [showRegister, setShowRegister] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [selectedTutor, setSelectedTutor] = useState(null);
 
   const [tutors, setTutors] = useState([]);
@@ -524,9 +528,10 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
     fetchTutors(nextPage);
   };
 
-  const handleClose = () => { setShowLogin(false); setShowRegister(false); setSelectedTutor(null); };
-  const handleSwitchToRegister = () => { setShowLogin(false); setShowRegister(true); };
-  const handleSwitchToLogin = () => { setShowRegister(false); setShowLogin(true); };
+  const handleClose = () => { setShowLogin(false); setShowRegister(false); setShowForgotPassword(false); setSelectedTutor(null); };
+  const handleSwitchToRegister = () => { setShowLogin(false); setShowRegister(true); setShowForgotPassword(false); };
+  const handleSwitchToLogin = () => { setShowRegister(false); setShowForgotPassword(false); setShowLogin(true); };
+  const handleSwitchToForgotPassword = () => { setShowLogin(false); setShowForgotPassword(true); };
 
   const openTutorModal = (tutor) => {
     setSelectedTutor(tutor);
@@ -834,7 +839,7 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
       </footer>
 
       {/* --- Auth Modal --- */}
-      {(showLogin || showRegister) && (
+      {(showLogin || showRegister || showForgotPassword) && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-md animate-fade-in" onClick={handleClose}></div>
           <div className="relative w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl overflow-hidden animate-zoom-in">
@@ -847,11 +852,17 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
                   setIsAuthenticated={setIsAuthenticated}
                   onLoginSuccess={onLoginSuccess}
                   onSwitchToRegister={handleSwitchToRegister}
+                  onSwitchToForgotPassword={handleSwitchToForgotPassword}
                 />
               )}
               {showRegister && (
                 <Register
                   onRegisterSuccess={onLoginSuccess}
+                  onSwitchToLogin={handleSwitchToLogin}
+                />
+              )}
+              {showForgotPassword && (
+                <ForgotPassword
                   onSwitchToLogin={handleSwitchToLogin}
                 />
               )}
