@@ -56,7 +56,8 @@ const normalizeStudentPost = (p = {}) => ({
     last_name: p.last_name || "",
     profile_image: p.profile_picture_url || "/../blank_avatar.jpg",
     email: p.email || "",
-    phone: p.phone || ""
+    phone: p.phone || "",
+    username: p.username || p.user?.username || "",
   },
 });
 
@@ -99,7 +100,8 @@ const normalizeTutorPost = (p = {}) => {
       last_name: last,
       profile_image: p.profile_image || p.authorId?.avatarUrl || "/../blank_avatar.jpg",
       email: p.email || "",
-      phone: p.phone || ""
+      phone: p.phone || "",
+      username: p.username || p.user?.username || "",
     },
   };
 };
@@ -948,6 +950,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                         <p className="font-semibold group-hover:text-indigo-600 group-hover:underline transition-colors">
                           {post.user?.first_name} {post.user?.last_name}
                         </p>
+                        {post.user?.username && <div className="text-xs text-indigo-500 font-medium -mt-0.5">@{post.user.username}</div>}
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${post.post_type === 'student'
                             ? 'bg-rose-200 text-rose-700'
@@ -1077,18 +1080,20 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                           ) : (
                             // 2. ถ้ายังไม่เคยกด
                             <button
-                              disabled={busy || isExpired || (isFull && !isTutor)}
+                              disabled={busy || isExpired || (isFull && !isTutor) || (isTutor && post.has_tutor)}
                               onClick={() => handleJoin(post)}
                               className={`px-4 py-2 rounded-xl text-white ${isExpired ? "bg-gray-400 cursor-not-allowed" :
                                 (isFull && !isTutor) ? "bg-gray-400 cursor-not-allowed" :
-                                  isTutor ? "bg-indigo-600 hover:bg-indigo-700" : // สีครามสำหรับติวเตอร์
-                                    "bg-purple-600 hover:bg-purple-700"
+                                  (isTutor && post.has_tutor) ? "bg-indigo-300 cursor-not-allowed" : // สีจางๆ เมื่อมีติวเตอร์แล้ว
+                                    isTutor ? "bg-indigo-600 hover:bg-indigo-700" : // สีครามสำหรับติวเตอร์
+                                      "bg-purple-600 hover:bg-purple-700"
                                 }`}
                             >
                               {isExpired ? "หมดเวลา" :
                                 (isFull && !isTutor) ? "เต็มแล้ว" :
-                                  busy ? "..." :
-                                    (isTutor ? "ต้องการสอน" : "Join")}
+                                  (isTutor && post.has_tutor) ? "ได้ติวเตอร์แล้ว" :
+                                    busy ? "..." :
+                                      (isTutor ? "ต้องการสอน" : "Join")}
                             </button>
                           )
                         )

@@ -16,15 +16,15 @@ const fs = require('fs');
 
 // ----- recommendation sets -----
 const pool = require('./db'); // นำเข้าไฟล์การตั้งค่า DB
-const recommendationController = require('./src/controllers/recommendationController'); // ✅ Import Recommendations
+const recommendationController = require('./src/controllers/recommendationController');
 const scheduleController = require('./src/controllers/scheduleController');
 const searchRoutes = require('./src/routes/searchRoutes');
 const favoriteRoutes = require('./src/routes/favoriteRoutes');
-const searchController = require('./src/controllers/searchController'); // Import searchController for history
-
+const searchController = require('./src/controllers/searchController');
 // ----- Email Deps -----
 const nodemailer = require('nodemailer');
 const { initCron, checkAndSendNotifications } = require('./src/services/cronService');
+const { sendBookingConfirmationEmail } = require('./src/utils/emailService');
 
 // Initialize Scheduler
 initCron();
@@ -139,7 +139,7 @@ function sendDbError(res, err) {
 // student joiners (ใช้ใน student_posts)
 async function getJoiners(postId) {
   const [rows] = await pool.query(
-    `SELECT j.user_id, j.joined_at, r.name, r.lastname
+    `SELECT j.user_id, j.joined_at, r.name, r.lastname, r.username
        FROM student_post_joins j
        LEFT JOIN register r ON r.user_id = j.user_id
       WHERE j.student_post_id = ? AND j.status = 'approved'
@@ -208,6 +208,7 @@ app.use('/api/favorites', favoriteRoutes);
 app.get('/api/recommendations/courses', recommendationController.getRecommendations);
 app.get('/api/recommendations/tutor', recommendationController.getStudentRequestsForTutor);
 app.get('/api/recommendations/friends', recommendationController.getStudyBuddyRecommendations);
+app.get('/api/recommendations/trending', recommendationController.getTrendingSubjects); // ✅ Dynamic Trending
 
 // --- ⭐ Reviews API ---
 // --- ⭐ Reviews API ---
@@ -300,17 +301,21 @@ app.get('/api/user/:userId', async (req, res) => {
   }
 });
 
-// ล็อกอิน
+// ล็อกอิน (รองรับทั้ง Email และ Username)
 app.post('/api/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body; // ตัวแปร email จากหน้าเว็บอาจจะเป็น username หรือ email ก็ได้
+
+    // เช็คว่ากรอกตรงกับช่อง email หรือ username
     const [rows] = await pool.execute(
-      'SELECT * FROM register WHERE email = ? AND password = ?',
-      [email, password]
+      'SELECT * FROM register WHERE (email = ? OR username = ?) AND password = ?',
+      [email, email, password]
     );
+
     if (rows.length === 0) {
-      return res.json({ success: false, message: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
+      return res.status(401).json({ success: false, message: 'อีเมล/Username หรือรหัสผ่านไม่ถูกต้อง' });
     }
+
     const user = rows[0];
     const raw = String(user.type || '').trim().toLowerCase();
     const mapped = raw === 'teacher' ? 'tutor' : raw;
@@ -319,30 +324,30 @@ app.post('/api/login', async (req, res) => {
       success: true,
       user: {
         ...user,
-        role: user.role || mapped, // Use DB role (admin) if exists, else fallback to type
+        role: user.role || mapped,
         userType: mapped
       },
       userType: mapped,
-      role: user.role || mapped // Send explicit role key
+      role: user.role || mapped
     });
   } catch (err) {
-    console.error(err);
+    console.error('Login Error:', err);
     res.status(500).json({ success: false, message: 'Database error' });
   }
 });
 
 // ✅ API: Get Single Student Post
-app.get('/api/student_posts/:id', async (req, res) => {
-  const postId = Number(req.params.id);
-  if (!Number.isFinite(postId)) {
-    return res.status(400).json({ message: 'invalid post id' });
-  }
-
-  const conn = await pool.getConnection();
+app.get('/api/student-posts/:id', async (req, res) => {
   try {
-    // 1. ดึงโพสต์
-    const [[post]] = await conn.query(`
-      SELECT sp.*, r.name, r.lastname, r.profile_image
+    const postId = req.params.id;
+    const [rows] = await pool.query(`
+      SELECT
+        sp.student_post_id, sp.student_id, sp.subject, sp.description,
+        sp.preferred_days, sp.preferred_time, sp.location, sp.group_size, sp.budget, sp.contact_info,
+        sp.grade_level, sp.created_at,
+        r.name, r.lastname, r.email, r.type,
+        spro.profile_picture_url, spro.phone,
+        (SELECT COUNT(*) FROM student_post_joins WHERE student_post_id = sp.student_post_id AND status = 'approved') AS join_count
       FROM student_posts sp
       JOIN register r ON r.user_id = sp.student_id
       WHERE sp.student_post_id = ?
@@ -353,32 +358,30 @@ app.get('/api/student_posts/:id', async (req, res) => {
       return res.status(404).json({ message: 'post not found' });
     }
 
-    // 2. ดึงผู้เข้าร่วม (approved)
-    const [joiners] = await conn.query(`
-      SELECT j.user_id, r.name, r.lastname, j.joined_at
-      FROM student_post_joins j
-      JOIN register r ON r.user_id = j.user_id
-      WHERE j.student_post_id = ? AND j.status = 'approved'
-      ORDER BY j.joined_at ASC
-    `, [postId]);
+    const post = rows[0];
 
-    // 3. ดึงติวเตอร์ (ถ้ามี)
-    const [[tutor]] = await conn.query(`
-      SELECT r.user_id, r.name, r.lastname
-      FROM student_post_offers o
-      JOIN register r ON r.user_id = o.tutor_id
-      WHERE o.student_post_id = ? AND o.status = 'approved'
-      LIMIT 1
-    `, [postId]);
+    // Normalize response for MyPostDetails
+    const result = {
+      id: post.student_post_id,
+      owner_id: post.student_id,
+      subject: post.subject,
+      description: post.description,
+      location: post.location,
+      group_size: post.group_size,
+      budget: post.budget,
+      preferred_days: post.preferred_days,
+      preferred_time: post.preferred_time,
+      contact_info: post.contact_info,
+      createdAt: post.created_at,
+      join_count: Number(post.join_count || 0),
+      user: {
+        first_name: post.name,
+        last_name: post.lastname,
+        profile_image: post.profile_picture_url || '/../blank_avatar.jpg'
+      }
+    };
 
-    conn.release();
-
-    return res.json({
-      post,
-      //joiners,
-      tutor: tutor || null
-    });
-
+    res.json(result);
   } catch (err) {
     conn.release();
     console.error(err);
@@ -392,7 +395,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
   try {
     const rawSubject = req.params.subject;
     const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 5, 50);
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const offset = (page - 1) * limit;
     const searchTerms = expandSearchTerm(rawSubject);
 
@@ -414,6 +417,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
           COALESCE(sp.created_at, NOW()) AS created_at,
           r.name        AS student_name,
           r.lastname    AS student_lastname,
+          r.username    AS student_username,
           spro.profile_picture_url
         FROM student_posts sp
         LEFT JOIN register r ON r.user_id = sp.student_id
@@ -437,6 +441,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
         _id: r.student_post_id,
         authorId: {
           name: fullName || `นักเรียน #${r.student_id}`,
+          username: r.student_username,
           avatarUrl: r.profile_picture_url || '/../blank_avatar.jpg' /* ส่งรูปไปด้วย */
         },
         content: r.description,
@@ -473,7 +478,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
 app.get('/api/tutors', async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 12, 50);
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const offset = (page - 1) * limit;
 
     const searchQuery = (req.query.search || '').trim();
@@ -500,23 +505,63 @@ app.get('/api/tutors', async (req, res) => {
       });
     }
 
+    // --- Advanced Filters (Tutors) ---
+    const locFilter = (req.query.location || '').trim();
+    const minRating = Number(req.query.minRating) || 0;
+
+    // Filter Location (City/Address)
+    if (locFilter) {
+      whereClause += ' AND tp.address LIKE ?';
+      params.push(`%${locFilter}%`);
+    }
+
+    // Filter Rating
+    if (minRating > 0) {
+      whereClause += ' AND COALESCE(rv.avg_rating, 0) >= ?';
+      params.push(minRating);
+    }
+
+    // --- Relevance Sorting ---
+    let orderBy = 'r.user_id DESC';
+    if (searchQuery) {
+      // Prioritize matches in Subject > Nickname > Name > About Me
+      orderBy = `(
+          CASE 
+            WHEN LOWER(tp.can_teach_subjects) LIKE ? THEN 100
+            WHEN LOWER(tp.nickname) LIKE ? THEN 50
+            WHEN LOWER(r.name) LIKE ? THEN 20
+            ELSE 0
+          END
+       ) DESC, r.user_id DESC`;
+
+      // Add params for ORDER BY
+      params.push(`%${searchQuery}%`, `%${searchQuery}%`, `%${searchQuery}%`);
+    }
+
     // ... (ส่วน subject filter ถ้ามี) ...
     const [rows] = await pool.execute(
       `SELECT 
-          r.user_id, r.name, r.lastname, r.email,
+          r.user_id, r.name, r.lastname, r.email, r.username,
           tp.nickname,
           tp.can_teach_subjects,
           tp.profile_picture_url,
           tp.address,
-          tp.hourly_rate,
-          tp.about_me,
           tp.phone,
+          tp.about_me,
           tp.education,
-          tp.teaching_experience
+          tp.teaching_experience,
+          -- เพิ่ม review stats
+          COALESCE(rv.avg_rating, 0) AS avg_rating,
+          COALESCE(rv.review_count, 0) AS review_count
        FROM register r
        LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+       LEFT JOIN (
+          SELECT tutor_id, AVG(rating) as avg_rating, COUNT(*) as review_count
+          FROM reviews
+          GROUP BY tutor_id
+       ) rv ON r.user_id = rv.tutor_id
        ${whereClause}
-       ORDER BY r.user_id DESC
+       ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     );
@@ -538,19 +583,20 @@ app.get('/api/tutors', async (req, res) => {
         id: `t-${r.user_id}`,
         dbTutorId: r.user_id,
         name: `${r.name || ''} ${r.lastname || ''}`.trim(),
+        username: r.username,
         nickname: r.nickname,
         subject: r.can_teach_subjects || 'ไม่ระบุ',
         image: r.profile_picture_url || '/../blank_avatar.jpg',
         city: r.address,
-        price: Number(r.hourly_rate || 0),
+        price: 0, // Removed hourly_rate from profile
         about_me: r.about_me || '',
         contact_info: contactParts.join('\n') || "ไม่ระบุข้อมูลติดต่อ",
         phone: r.phone,
         email: r.email,
-        education: r.education,
-        teaching_experience: r.teaching_experience,
-        rating: 0,
-        reviews: 0,
+        education: (() => { try { return JSON.parse(r.education) || []; } catch { return []; } })(),
+        teaching_experience: (() => { try { return JSON.parse(r.teaching_experience) || []; } catch { return []; } })(),
+        rating: Number(r.avg_rating || 0),
+        reviews: Number(r.review_count || 0),
       };
     });
 
@@ -574,7 +620,7 @@ app.get('/api/tutor-posts', async (req, res) => {
   console.log("📩 /api/tutor-posts called:", req.query);
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 12, 50);
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const offset = (page - 1) * limit;
 
     const tutorId = req.query.tutorId ? parseInt(req.query.tutorId, 10) : null;
@@ -590,46 +636,110 @@ app.get('/api/tutor-posts', async (req, res) => {
       params.push(tutorId);
     }
 
-    // ✅ Add Soft Delete Filter
-    where.push('tp.is_active = 1');
+    // --- Advanced Filters ---
+    const minPrice = Number(req.query.minPrice) || 0;
+    const maxPrice = Number(req.query.maxPrice) || 999999;
+    const locFilter = (req.query.location || '').trim();
+    const gradeFilter = (req.query.gradeLevel || '').trim();
+    const minRating = Number(req.query.minRating) || 0;
 
-    // ถ้ามีการค้นหาด้วย subject (รองรับ Smart Search)
-    let orderBy = 'ORDER BY tp.created_at DESC, tp.tutor_post_id DESC';
+    // Filter Price
+    where.push('tp.price BETWEEN ? AND ?');
+    params.push(minPrice, maxPrice);
+
+    // Filter Location
+    if (locFilter) {
+      where.push('tp.location LIKE ?');
+      params.push(`%${locFilter}%`);
+    }
+
+    // Filter Grade Level
+    if (gradeFilter) {
+      where.push('(tp.target_student_level LIKE ? OR tp.description LIKE ?)');
+      params.push(`%${gradeFilter}%`, `%${gradeFilter}%`);
+    }
+
+    // Filter Rating (needs to check COALESCE(rv.avg_rating, 0))
+    if (minRating > 0) {
+      where.push('COALESCE(rv.avg_rating, 0) >= ?');
+      params.push(minRating);
+    }
+
+    let orderBy = 'ORDER BY tp.created_at DESC';
 
     if (subject) {
       const keywords = expandSearchTerm(subject);
+
+      // Relevance Score Calculation
+      // 1. Exact Subject Match (100)
+      // 2. Partial Subject Match (50)
+      // 3. Exact Description Match (20)
+      // 4. Partial Description Match (10)
+
+      const relevanceCases = [];
+      const mainKw = keywords[0]; // Original query
+
+      // Main Keyword Priority
+      relevanceCases.push(`WHEN tp.subject LIKE ? THEN 100`);
+      params.push(mainKw); // Exact-ish
+
+      relevanceCases.push(`WHEN tp.subject LIKE ? THEN 80`);
+      params.push(`%${mainKw}%`);
+
+      keywords.forEach(kw => {
+        relevanceCases.push(`WHEN tp.subject LIKE ? THEN 50`);
+        params.push(`%${kw}%`);
+        relevanceCases.push(`WHEN tp.description LIKE ? THEN 20`);
+        params.push(`%${kw}%`);
+      });
+
+      // Construct OR conditions for WHERE
       const conditions = keywords.map(() =>
         `(tp.subject LIKE ? OR tp.description LIKE ?)`
       ).join(' OR ');
-      where.push(`(${conditions})`);
 
+      // IMPORTANT: Add to WHERE, not replace
+      // Make sure parsing params order matches!
+      // Params for ORDER BY are added above. 
+      // Params for WHERE need to be added NOW? 
+      // SQL param order matters! 'SELECT ... ORDER BY ...'
+      // The params for SELECT/WHERE come before ORDER BY in execution but likely same param list in `pool.query`.
+      // Actually, ORDER BY params come LAST.
+
+      // Wait, complex param injection in ORDER BY case statement is risky if I mix WHERE params.
+      // Better strategy: Use string interpolation for ORDER BY values IF they are safe (they are from `expandSearchTerm` which comes from user input... risky SQL injection).
+      // Standard practice: Use `?` everywhere.
+
+      // Let's simplify. I will put the score in the SELECT clause to keep param order clean.
+      // SELECT ..., (CASE ...) as score FROM ... ORDER BY score DESC
+
+      where.push(`(${conditions})`);
       keywords.forEach(kw => {
         params.push(`%${kw}%`, `%${kw}%`);
+        // Note: These params are for the WHERE clause.
       });
-
-      // ✅ Smart Search: ให้คะแนนความตรง (Relevance Score)
-      // 1. ตรงกับ Subject (คำที่พิมพ์) -> 100 คะแนน
-      // 2. ตรงกับ Subject (คำขยาย) -> 50 คะแนน
-      // 3. ตรงกับ Description -> 10 คะแนน
-      // เราจะใช้ Logic ง่ายๆ: ถ้าเจอใน Subject ให้ขึ้นก่อน
-
-      // หมายเหตุ: การทำ CASE WHEN ซ้อนกันหลายชั้นใน SQL string อาจจะยุ่งยากเรื่อง params
-      // ดังนั้นเราจะ prioritize ง่ายๆ: 
-      // ORDER BY (CASE WHEN tp.subject LIKE %subject% THEN 1 ELSE 2 END), created_at DESC
-
-      // เราต้อง push params สำหรับ order by เพิ่ม
-      // เพื่อความง่ายและไม่กระทบ params array เดิมที่ push ไปแล้วสำหรับ where
-      // เราจะใช้วิธีเรียงลำดับแบบ manual ใน SQL โดยการเช็คจากคำค้นหา "ตัวแรก" (คำหลัก)
-      const mainKeyword = keywords[0]; // คำที่ User พิมพ์ (หรือคำแรกที่ขยาย)
-      orderBy = `ORDER BY 
-        (CASE WHEN tp.subject LIKE '%${mainKeyword}%' THEN 1 ELSE 2 END) ASC, 
-        tp.created_at DESC`;
-      // *หมายเหตุ: ตรงนี้ใช้ String interpolation (${mainKeyword}) เฉพาะอันนี้เพื่อความง่ายในการจัดลำดับ 
-      // โดยไม่ต้องรื้อ params array ทั้งหมด (แต่ต้องระวัง SQL Injection หาก subject ไม่ได้ถูก sanitize)
-      // แต่ในระบบนี้ subject มาจาก req.query และ keywords มาจาก expandSearchTerm ซึ่งปลอดภัยระดับนึง
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    // We need to inject the SCORE calculation into SELECT if we use it for sorting
+    // But modifying the big SELECT string is messy.
+    // Let's rely on a simpler ORDER BY for now that doesn't use bound parameters inside ORDER BY if possible,
+    // Or just append the params correctly.
+
+    // Alternative: Sort by exact match of `subject` vs `subject` parameter
+    if (subject) {
+      // Safe approach: Sort by expression using the query variable directly
+      // WARNING: Ensure `subject` doesn't break SQL. `pool.escape`?
+      // `pool.query` handles `?`
+
+      // Let's just strict sort by: `tp.subject LIKE %query%` DESC
+      orderBy = `ORDER BY 
+            (CASE WHEN tp.subject LIKE '${subject.replace(/'/g, "''")}%' THEN 3  -- Starts with query
+                  WHEN tp.subject LIKE '%${subject.replace(/'/g, "''")}%' THEN 2  -- Contains query
+                  ELSE 1 END) DESC,
+            tp.created_at DESC`;
+    }
 
     const [rows] = await pool.query(
       `
@@ -638,7 +748,7 @@ app.get('/api/tutor-posts', async (req, res) => {
         tp.target_student_level,
         tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
-        r.name, r.lastname, r.email, r.type,
+        r.name, r.lastname, r.email, r.username, r.type,
         tpro.profile_picture_url, tpro.nickname, tpro.about_me, tpro.education, tpro.teaching_experience, tpro.phone,
         -- Favorites
         COALESCE(fvc.c,0) AS fav_count,
@@ -646,10 +756,18 @@ app.get('/api/tutor-posts', async (req, res) => {
         -- Joins
         COALESCE(jc.c,0) AS join_count,
         CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined,
-        CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me
+        CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me,
+        -- Reviews
+        COALESCE(rv.avg_rating, 0) AS avg_rating,
+        COALESCE(rv.review_count, 0) AS review_count
       FROM tutor_posts tp
       LEFT JOIN register r ON r.user_id = tp.tutor_id
       LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
+      LEFT JOIN (
+        SELECT tutor_id, AVG(rating) as avg_rating, COUNT(*) as review_count
+        FROM reviews
+        GROUP BY tutor_id
+      ) rv ON rv.tutor_id = tp.tutor_id
       LEFT JOIN (
         SELECT post_id, COUNT(*) AS c
         FROM posts_favorites
@@ -680,50 +798,79 @@ app.get('/api/tutor-posts', async (req, res) => {
       params
     );
 
-    res.json({
-      items: rows.map(r => ({
-        _id: r.tutor_post_id,
-        subject: r.subject,
-        content: r.description,
-        createdAt: r.created_at,
-        group_size: Number(r.group_size || 0),
-        authorId: {
-          id: r.tutor_id,
-          name: `${r.name || ''} ${r.lastname || ''}`.trim() || `ติวเตอร์ #${r.tutor_id}`,
-          avatarUrl: r.profile_picture_url || ''
-        },
-        user: {
-          id: r.tutor_id,
-          first_name: r.name || '',
-          last_name: r.lastname || '',
-          profile_image: r.profile_picture_url || '',
-          email: r.email || '',
-          phone: r.phone || '',
-          role: r.type || 'tutor'
-        },
-        // Profile Data added to top level for convenience
-        nickname: r.nickname,
-        about_me: r.about_me,
-        education: r.education,
-        teaching_experience: r.teaching_experience,
-        phone: r.phone,
-        email: r.email,
+    // Date Parsing Helper (reused)
+    const parseDate = (dStr) => {
+      if (!dStr) return null;
+      if (dStr.match(/^\d{4}-\d{2}-\d{2}/)) return new Date(dStr);
+      const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+      const parts = dStr.split(" ");
+      if (parts.length >= 3) {
+        const day = parseInt(parts[0]);
+        const monthIdx = thaiMonths.indexOf(parts[1]);
+        let year = parseInt(parts[2]);
+        if (year > 2400) year -= 543;
+        if (monthIdx !== -1 && !isNaN(day) && !isNaN(year)) {
+          return new Date(year, monthIdx, day);
+        }
+      }
+      return null;
+    };
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
 
-        meta: {
-          target_student_level: r.target_student_level || 'ไม่ระบุ',
-          teaching_days: r.teaching_days,
-          teaching_time: r.teaching_time,
-          location: r.location,
-          price: Number(r.price || 0),
-          contact_info: r.contact_info
-        },
-        fav_count: Number(r.fav_count || 0),
-        favorited: !!r.favorited,
-        join_count: Number(r.join_count || 0),
-        joined: !!r.joined,
-        pending_me: !!r.pending_me,
-        images: []
-      })),
+    res.json({
+      items: rows.map(r => {
+        const tDate = parseDate(r.teaching_days);
+        const isExpired = tDate && tDate < now;
+
+        return {
+          _id: r.tutor_post_id,
+          subject: r.subject,
+          content: r.description,
+          createdAt: r.created_at,
+          group_size: Number(r.group_size || 0),
+          authorId: {
+            id: r.tutor_id,
+            name: `${r.name || ''} ${r.lastname || ''}`.trim() || `ติวเตอร์ #${r.tutor_id}`,
+            avatarUrl: r.profile_picture_url || ''
+          },
+          user: {
+            id: r.tutor_id,
+            first_name: r.name || '',
+            last_name: r.lastname || '',
+            username: r.username,
+            profile_image: r.profile_picture_url || '',
+            email: r.email || '',
+            phone: r.phone || '',
+            role: r.type || 'tutor'
+          },
+          // Profile Data added to top level for convenience
+          nickname: r.nickname,
+          about_me: r.about_me,
+          education: r.education,
+          teaching_experience: r.teaching_experience,
+          phone: r.phone,
+          email: r.email,
+
+          meta: {
+            target_student_level: r.target_student_level || 'ไม่ระบุ',
+            teaching_days: r.teaching_days,
+            teaching_time: r.teaching_time,
+            location: r.location,
+            price: Number(r.price || 0),
+            contact_info: r.contact_info
+          },
+          is_expired: isExpired, // ✅ Add Flag
+          fav_count: Number(r.fav_count || 0),
+          favorited: !!r.favorited,
+          join_count: Number(r.join_count || 0),
+          joined: !!r.joined,
+          pending_me: !!r.pending_me,
+          rating: Number(r.avg_rating || 0),
+          reviews: Number(r.review_count || 0),
+          images: []
+        };
+      }),
       pagination: {
         page, limit, total,
         pages: Math.ceil(total / limit),
@@ -745,7 +892,7 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
     }
 
     const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 5, 50);
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const offset = (page - 1) * limit;
 
     const [rows] = await pool.execute(
@@ -753,7 +900,7 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
               teaching_days, teaching_time, location, price, contact_info,
               COALESCE(created_at, NOW()) AS created_at
        FROM tutor_posts
-       WHERE tutor_id = ? AND is_active = 1
+       WHERE tutor_id = ? AND COALESCE(is_active, 1) = 1
        ORDER BY tutor_post_id DESC
        LIMIT ? OFFSET ?`,
       [tutorId, limit, offset]
@@ -811,7 +958,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
         tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
         tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
-        r.name, r.lastname, tpro.profile_picture_url
+        r.name, r.lastname, r.username, tpro.profile_picture_url
       FROM tutor_posts tp
       LEFT JOIN register r       ON r.user_id = tp.tutor_id
       LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
@@ -860,7 +1007,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
           price: Number(r.price || 0),
           contact_info: r.contact_info
         },
-        user: { first_name: r.name || '', last_name: r.lastname || '', profile_image: r.profile_picture_url || '' },
+        user: { first_name: r.name || '', last_name: r.lastname || '', username: r.username, profile_image: r.profile_picture_url || '' },
         createdAt: r.created_at
       });
     }
@@ -870,30 +1017,56 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
   }
 });
 
-
-// สมัครสมาชิก
+// สมัครสมาชิก (มีระบบ OTP + Username)
 app.post('/api/register', async (req, res) => {
   let connection;
   try {
-    const { name, lastname, email, password, type } = req.body;
+    const { username, name, lastname, email, password, type, otp } = req.body;
 
-    const [dup] = await pool.execute('SELECT 1 FROM register WHERE email = ?', [email]);
-    if (dup.length > 0) {
-      return res.json({ success: false, message: 'อีเมลนี้ถูกใช้แล้ว' });
+    if (!username || !name || !lastname || !email || !password || !type || !otp) {
+      return res.status(400).json({ success: false, message: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
     }
 
+    // 1. ตรวจสอบ OTP
+    const [otpRows] = await pool.query(
+      'SELECT * FROM otp_codes WHERE email = ? AND code = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [email, otp]
+    );
+
+    if (otpRows.length === 0) {
+      return res.status(400).json({ success: false, message: 'รหัส OTP ไม่ถูกต้องหรือหมดอายุ' });
+    }
+
+    // 2. เช็คว่าอีเมลซ้ำไหม
+    const [dupEmail] = await pool.execute('SELECT 1 FROM register WHERE email = ?', [email]);
+    if (dupEmail.length > 0) {
+      return res.status(400).json({ success: false, message: 'อีเมลนี้ถูกใช้งานแล้ว' });
+    }
+
+    // 3. เช็คว่า Username ซ้ำไหม
+    const [dupUsername] = await pool.execute('SELECT 1 FROM register WHERE username = ?', [username]);
+    if (dupUsername.length > 0) {
+      return res.status(400).json({ success: false, message: 'Username นี้มีคนใช้แล้ว กรุณาใช้ชื่ออื่น' });
+    }
+
+    // 4. เริ่มบันทึกข้อมูล
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
+    // 4.1 ลบ OTP เก่าทิ้งหลังจากใช้สำเร็จ
+    await connection.query('DELETE FROM otp_codes WHERE email = ?', [email]);
+
+    // 4.2 บันทึกข้อมูลสมาชิกลง Database (เพิ่ม username และบังคับใส่ role ให้ตรงกับ type)
     const [result] = await connection.execute(
-      'INSERT INTO register (name, lastname, email, password, type) VALUES (?, ?, ?, ?, ?)',
-      [name, lastname, email, password, type]
+      'INSERT INTO register (username, name, lastname, email, password, type, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [username, name, lastname, email, password, type, type]
     );
 
     const newUserId = result.insertId;
 
+    // 4.3 ดึงข้อมูลที่เพิ่งสมัครกลับมาส่งให้ Frontend
     const [rows] = await connection.execute(
-      'SELECT user_id, name, lastname, email, type FROM register WHERE user_id = ?',
+      'SELECT user_id, username, name, lastname, email, type, role FROM register WHERE user_id = ?',
       [newUserId]
     );
     const newUser = rows[0];
@@ -936,6 +1109,28 @@ app.get('/api/student_posts', async (req, res) => {
       queryParams.push(ownerId);
     }
 
+    // --- Advanced Filters (Student Posts) ---
+    const minPrice = Number(req.query.minPrice) || 0;
+    const maxPrice = Number(req.query.maxPrice) || 999999;
+    const locFilter = (req.query.location || '').trim();
+    const gradeFilter = (req.query.gradeLevel || '').trim();
+
+    // Filter Budget (Price)
+    searchClause += ' AND sp.budget BETWEEN ? AND ?';
+    queryParams.push(minPrice, maxPrice);
+
+    // Filter Location
+    if (locFilter) {
+      searchClause += ' AND sp.location LIKE ?';
+      queryParams.push(`%${locFilter}%`);
+    }
+
+    // Filter Grade Level
+    if (gradeFilter) {
+      searchClause += ' AND sp.grade_level LIKE ?';
+      queryParams.push(`%${gradeFilter}%`);
+    }
+
     if (search) {
       // ใช้ฟังก์ชัน expandSearchTerm ที่มีอยู่แล้วเพื่อขยายคำค้น
       const keywords = expandSearchTerm(search);
@@ -960,8 +1155,9 @@ app.get('/api/student_posts', async (req, res) => {
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
         sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
         sp.grade_level,  /* ✅ เพิ่ม: ดึงระดับชั้นออกมาด้วย */
+        sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
         sp.grade_level,  /* ✅ เพิ่ม: ดึงระดับชั้นออกมาด้วย */
-        r.name, r.lastname, r.email, r.type,
+        r.name, r.lastname, r.email, r.username, r.type,
         spro.profile_picture_url, spro.phone,
         COALESCE(jc.join_count, 0) AS join_count,
         CASE WHEN (jme.user_id IS NOT NULL OR ome.tutor_id IS NOT NULL) THEN 1 ELSE 0 END AS joined,
@@ -1033,6 +1229,7 @@ app.get('/api/student_posts', async (req, res) => {
       user: {
         first_name: r.name || '',
         last_name: r.lastname || '',
+        username: r.username,
         profile_image: r.profile_picture_url || '/../blank_avatar.jpg',
         email: r.email || '',
         phone: r.phone || '',
@@ -1117,7 +1314,7 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
     const [rows] = await pool.query(
       `SELECT 
       tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description, tp.target_student_level, tp.teaching_days, tp.teaching_time,
-      tp.location, tp.group_size, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname
+      tp.location, tp.group_size, tp.price, tp.contact_info, tp.created_at, r.name, r.lastname, r.username
     FROM tutor_posts tp
     LEFT JOIN register r ON r.user_id = tp.tutor_id
     WHERE tp.tutor_post_id = ?`,
@@ -1143,7 +1340,7 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
         user: {
           first_name: r.name || '',
           last_name: r.lastname || '',
-
+          username: r.username
         },
         group_size: Number(r.group_size || 0),
         createdAt: r.created_at
@@ -1502,7 +1699,7 @@ app.get('/api/tutor_posts/:id/joiners', async (req, res) => {
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
 
     const [rows] = await pool.query(
-      `SELECT j.user_id, j.joined_at, r.name, r.lastname
+      `SELECT j.user_id, j.joined_at, r.name, r.lastname, r.username
        FROM tutor_post_joins j
        LEFT JOIN register r ON r.user_id = j.user_id
       WHERE j.tutor_post_id = ? AND j.status = 'approved'
@@ -1531,7 +1728,7 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     const sqlStudent = `
       SELECT 
         j.student_post_id, j.user_id, j.status, j.requested_at,
-        j.name, j.lastname, r.email,
+        j.name, j.lastname, r.email, r.username,
         'student' AS request_type
       FROM student_post_joins j
       LEFT JOIN register r ON r.user_id = j.user_id
@@ -1542,7 +1739,7 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     const sqlTutor = `
       SELECT 
         o.student_post_id, o.tutor_id AS user_id, o.status, o.requested_at,
-        o.name, o.lastname, r.email,
+        o.name, o.lastname, r.email, r.username,
         'tutor' AS request_type
       FROM student_post_offers o
       LEFT JOIN register r ON r.user_id = o.tutor_id
@@ -1588,8 +1785,12 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
           sp.student_id AS owner_id,
           sp.subject,
           sp.group_size,
+          sp.preferred_days,
+          sp.preferred_time,
+          sp.location,
           r.name AS owner_name,
-          r.lastname AS owner_lastname
+          r.lastname AS owner_lastname,
+          r.email AS owner_email
         FROM student_posts sp
         JOIN register r ON r.user_id = sp.student_id
         WHERE sp.student_post_id = ?
@@ -1661,8 +1862,35 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
       await conn.commit();
       conn.release();
 
-      // ------- หลัง commit: notify/calendar -------
+      // ------- หลัง commit: notify/calendar/EMAIL -------
       if (newStatus === 'approved') {
+
+        // 1. Fetch Joiner Email & Info for Email Sending
+        const [[joinerInfo]] = await pool.query('SELECT email, name, lastname FROM register WHERE user_id = ?', [targetUserId]);
+        const joinerName = joinerInfo ? `${joinerInfo.name} ${joinerInfo.lastname}` : 'ผู้เข้าร่วม';
+        const ownerNameFullName = `${sp.owner_name} ${sp.owner_lastname}`;
+
+        const emailDetails = {
+          courseName: sp.subject,
+          date: sp.preferred_days || 'ตามตกลง',
+          time: sp.preferred_time || 'ตามตกลง',
+          location: sp.location || 'ออนไลน์/ตามตกลง',
+        };
+
+        // Send to Owner (Student)
+        sendBookingConfirmationEmail(sp.owner_email, {
+          ...emailDetails,
+          partnerName: joinerName,
+          role: 'student'
+        });
+
+        // Send to Joiner (Tutor or Student)
+        sendBookingConfirmationEmail(joinerInfo?.email, {
+          ...emailDetails,
+          partnerName: ownerNameFullName,
+          role: isTutorTable ? 'tutor' : 'student'
+        });
+
         if (!isTutorTable) {
           await createCalendarEventsForStudentApproval(postId, targetUserId);
           await pool.query(
@@ -1817,7 +2045,7 @@ app.get('/api/calendar/:userId', async (req, res) => {
         event_id: `tp-${p.tutor_post_id}`,
         user_id: p.tutor_id,
         post_id: p.tutor_post_id,
-        title: `โพสต์ของคุณ (สอน): ${p.subject || 'วิชาทั่วไป'}`,
+        title: `โพสต์ของติวเตอร์ (สอน): ${p.subject || 'วิชาทั่วไป'}`,
         subject: p.subject || null,
         event_date,
         event_time,
@@ -1920,6 +2148,32 @@ app.get('/api/calendar/:userId', async (req, res) => {
       };
     });
 
+    // 5.5) [NEW] ดึงโพสต์ที่ "ติวเตอร์สอนเองและมีนักเรียนเข้าร่วม" (Owner + Has approved joiners)
+    const [rowsTutorSelfTeaching] = await pool.query(
+      `SELECT DISTINCT tp.tutor_post_id, tp.subject, tp.teaching_days, tp.teaching_time, tp.location, tp.created_at
+       FROM tutor_posts tp
+       JOIN tutor_post_joins j ON tp.tutor_post_id = j.tutor_post_id
+       WHERE tp.tutor_id = ? AND j.status = 'approved'`,
+      [userId]
+    );
+
+    const tutorSelfTeachingEvents = rowsTutorSelfTeaching.map(p => {
+      const event_date = parseDateFromPreferredDays(p.teaching_days);
+      const event_time = toSqlTimeMaybe(p.teaching_time);
+      return {
+        event_id: `teaching-sp-${p.tutor_post_id}`,
+        user_id: userId,
+        post_id: p.tutor_post_id,
+        title: `สอนพิเศษ (ของคุณ): ${p.subject || 'วิชาทั่วไป'}`,
+        subject: p.subject || null,
+        event_date,
+        event_time,
+        location: p.location || null,
+        created_at: p.created_at,
+        source: 'tutor_teaching_self_post',
+      };
+    });
+
     // รวมทั้งหมด
     // Note: Deduplicate might be needed if calendar_events already has it, but showing both is safer than missing it.
     // UI will render them.
@@ -1929,7 +2183,8 @@ app.get('/api/calendar/:userId', async (req, res) => {
       ...tutorPostsAsEvents,
       ...joinedStudentEvents,
       ...joinedTutorEvents,
-      ...offerEvents
+      ...offerEvents,
+      ...tutorSelfTeachingEvents
     ];
 
     // กรองเฉพาะที่มีวันที่ถูกต้อง และอยู่ในช่วงเวลา
@@ -1998,6 +2253,7 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
   let capacity = 0;
   let joinCountAfter = 0;
   let tutorId = null;
+  let tp = null; // [FIX] Declare outside to use in email logic
 
   try {
     const conn = await pool.getConnection();
@@ -2005,13 +2261,16 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
       await conn.beginTransaction();
 
       // ✅ ล็อกแถวโพสต์ + เอา group_size มาเช็ค
-      const [[tp]] = await conn.query(
-        `SELECT tutor_post_id, group_size, tutor_id
-         FROM tutor_posts
-         WHERE tutor_post_id = ?
+      const [[tpFound]] = await conn.query(
+        `SELECT tp.tutor_post_id, tp.group_size, tp.tutor_id, tp.subject, tp.teaching_days, tp.teaching_time, tp.location,
+                r.name AS tutor_name, r.lastname AS tutor_lastname, r.email AS tutor_email
+         FROM tutor_posts tp
+         JOIN register r ON r.user_id = tp.tutor_id
+         WHERE tp.tutor_post_id = ?
          FOR UPDATE`,
         [postId]
       );
+      tp = tpFound; // [FIX] Assign to outer variable
 
       if (tp) tutorId = tp.tutor_id;
 
@@ -2083,6 +2342,39 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
     if (newStatus === 'approved') {
       await createCalendarEventsForTutorApproval(postId, userId);
       console.log(`🔔 Sending Join Approved Notification: User=${userId}, Actor=${tutorId}, Post=${postId}`);
+
+      // 📧 Send Emails
+      try {
+        // Fetch Joiner (Student) Info
+        const [[joiner]] = await pool.query('SELECT email, name, lastname FROM register WHERE user_id=?', [userId]);
+        const joinerName = joiner ? `${joiner.name} ${joiner.lastname}` : 'นักเรียน';
+        const tutorName = `${tp.tutor_name} ${tp.tutor_lastname}`;
+
+        const emailConfig = {
+          courseName: tp.subject,
+          date: tp.teaching_days,
+          time: tp.teaching_time,
+          location: tp.location
+        };
+
+        // 1. Send to Tutor
+        sendBookingConfirmationEmail(tp.tutor_email, {
+          ...emailConfig,
+          partnerName: joinerName,
+          role: 'tutor'
+        });
+
+        // 2. Send to Student (Joiner)
+        sendBookingConfirmationEmail(joiner?.email, {
+          ...emailConfig,
+          partnerName: tutorName,
+          role: 'student'
+        });
+
+      } catch (emailErr) {
+        console.error("❌ Email Send Error:", emailErr);
+      }
+
       try {
         await pool.query(
           `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
@@ -2155,6 +2447,7 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         CASE
             WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'review_request', 'system_alert') THEN COALESCE(sp.subject, tp.subject)
             WHEN n.type IN ('tutor_join_request') THEN tp.subject
+            WHEN n.type LIKE 'schedule_%' THEN COALESCE(sp.subject, tp.subject)
             ELSE NULL
         END AS post_subject
 
@@ -2217,7 +2510,7 @@ app.get('/api/profile/:userId', async (req, res) => {
     const { userId } = req.params;
     const sql = `
       SELECT
-        r.name, r.lastname, r.email, r.type,
+        r.name, r.lastname, r.email, r.username, r.type, r.name_change_at,
         sp.*, r.created_at 
       FROM register r
       LEFT JOIN student_profiles sp ON r.user_id = sp.user_id
@@ -2312,7 +2605,7 @@ app.get('/api/tutor-profile/:userId', async (req, res) => {
     const { userId } = req.params;
     const sql = `
       SELECT
-        r.name, r.lastname, r.email, r.type,
+        r.name, r.lastname, r.email, r.username, r.type, r.name_change_at,
         tp.*, r.created_at 
       FROM register r
       LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
@@ -2329,17 +2622,32 @@ app.get('/api/tutor-profile/:userId', async (req, res) => {
     } catch (e) { }
 
     const [rRows] = await pool.execute(`
-        SELECT r.rating, r.comment, r.created_at, reg.name, reg.lastname, sp.profile_picture_url
+        SELECT 
+            r.rating, r.comment, r.created_at, 
+            reg.name, reg.lastname, reg.username, sp.profile_picture_url,
+            -- ดึงชื่อวิชา
+            COALESCE(tp.subject, stp.subject) AS subject
         FROM reviews r
         LEFT JOIN register reg ON r.student_id = reg.user_id
         LEFT JOIN student_profiles sp ON r.student_id = sp.user_id
-        WHERE r.tutor_id = ? ORDER BY r.created_at DESC
+        -- Join โพสต์ติวเตอร์
+        LEFT JOIN tutor_posts tp ON r.post_id = tp.tutor_post_id AND r.post_type = 'tutor_post'
+        -- Join โพสต์นักเรียน (เผื่อกรณีรีวิวจากโพสต์นักเรียน)
+        LEFT JOIN student_posts stp ON r.post_id = stp.student_post_id AND r.post_type = 'student_post'
+        WHERE r.tutor_id = ? 
+        ORDER BY r.created_at DESC
     `, [userId]);
 
     const reviews = rRows.map(r => ({
       rating: Number(r.rating),
       comment: r.comment,
-      reviewer: { name: `${r.name} ${r.lastname}`, avatar: r.profile_picture_url }
+      subject: r.subject || "วิชาทั่วไป", // ✅ ส่งชื่อวิชากลับไป
+      createdAt: r.created_at,
+      reviewer: {
+        name: `${r.name} ${r.lastname}`,
+        username: r.username,
+        avatar: r.profile_picture_url
+      }
     }));
 
     let avgRating = "0.0";
@@ -2397,9 +2705,9 @@ app.put('/api/tutor-profile/:userId', async (req, res) => {
         user_id, nickname, phone, address, about_me, 
         education, teaching_experience, 
         can_teach_subjects, can_teach_grades, 
-        hourly_rate, profile_picture_url
+        profile_picture_url
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         nickname=VALUES(nickname), 
         phone=VALUES(phone), 
@@ -2409,7 +2717,6 @@ app.put('/api/tutor-profile/:userId', async (req, res) => {
         teaching_experience=VALUES(teaching_experience),
         can_teach_subjects=VALUES(can_teach_subjects), 
         can_teach_grades=VALUES(can_teach_grades),
-        hourly_rate=VALUES(hourly_rate),
         profile_picture_url=VALUES(profile_picture_url)
     `;
 
@@ -2423,7 +2730,6 @@ app.put('/api/tutor-profile/:userId', async (req, res) => {
       jsonVal(body.teaching_experience),
       arrVal(body.can_teach_subjects || body.subjects),
       arrVal(body.can_teach_grades || body.grades),
-      v(body.hourly_rate || body.price),
       v(body.profile_picture_url || body.profile_image)
     ]);
 
@@ -2750,6 +3056,7 @@ app.get('/api/tutors/:tutorId/reviews', async (req, res) => {
         -- ข้อมูลนักเรียนจากตาราง register
         r.name AS student_name,
         r.lastname AS student_lastname,
+        r.username AS student_username,
         -- รูปโปรไฟล์จากตาราง student_profiles (ถ้ามี)
         sp.profile_picture_url
       FROM reviews rv
@@ -2771,6 +3078,7 @@ app.get('/api/tutors/:tutorId/reviews', async (req, res) => {
       createdAt: row.created_at,
       reviewer: {
         name: `${row.student_name} ${row.student_lastname || ''}`.trim(),
+        username: row.student_username,
         avatar: row.profile_picture_url || '/../blank_avatar.jpg'
       }
     }));
@@ -2824,42 +3132,58 @@ const getEmailTemplate = (otpCode) => {
   `;
 };
 
-// API ส่ง OTP
+// API ส่ง OTP (รองรับ Register, Change Email, Forgot Password)
 app.post('/api/auth/request-otp', async (req, res) => {
-  console.log("📨 Received OTP Request:", req.body.email);
-  const { email, type } = req.body;
+  console.log("📨 Received OTP Request:", req.body);
+  const { email, type, userId, username } = req.body; // userId needed for change_email check, username for register check
 
   try {
+    // 1. ตรวจสอบเงื่อนไขก่อนส่ง
     if (type === 'register') {
-      const [existing] = await pool.query('SELECT 1 FROM register WHERE email = ?', [email]);
-      if (existing.length > 0) {
-        return res.status(400).json({ success: false, message: 'อีเมลนี้ถูกใช้งานแล้ว' });
+      const [existingEmail] = await pool.query('SELECT 1 FROM register WHERE email = ?', [email]);
+      if (existingEmail.length > 0) return res.status(400).json({ success: false, message: 'อีเมลนี้ถูกใช้งานแล้ว' });
+
+      if (username) {
+        const [existingUser] = await pool.query('SELECT 1 FROM register WHERE username = ?', [username]);
+        if (existingUser.length > 0) return res.status(400).json({ success: false, message: 'Username นี้ถูกใช้งานแล้ว' });
       }
+    }
+    else if (type === 'change_email') {
+      // เช็คว่าอีเมลใหม่ซ้ำกับคนอื่นไหม (ยกเว้นตัวเอง)
+      // กรณีนี้ userId คือคนขอเปลี่ยน
+      if (!userId) return res.status(400).json({ success: false, message: 'User ID required for checking' });
+      const [existing] = await pool.query('SELECT 1 FROM register WHERE email = ? AND user_id != ?', [email, userId]);
+      if (existing.length > 0) return res.status(400).json({ success: false, message: 'อีเมลนี้มีผู้ใช้งานแล้ว' });
+    }
+    else if (type === 'forgot_password') {
+      // ต้องมีอีเมลในระบบถึงจะส่งได้
+      const [existing] = await pool.query('SELECT 1 FROM register WHERE email = ?', [email]);
+      if (existing.length === 0) return res.status(404).json({ success: false, message: 'ไม่พบอีเมลนี้ในระบบ' });
     }
 
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    // 1. บันทึก DB
+    // 2. บันทึก DB
     await pool.query('INSERT INTO otp_codes (email, code, expires_at) VALUES (?, ?, ?)', [email, otpCode, expiresAt]);
-    console.log("✅ OTP Saved to DB");
+    console.log(`✅ OTP Saved to DB for ${email} (${type})`);
 
-    // 2. เตรียมส่งเมล (ใช้รูปจาก URL เพื่อความเบา แต่ยังสวย)
+    // 3. เตรียม Subject ตามประเภท
+    let subject = '🔐 รหัสยืนยันตัวตน (OTP) - Tutor Web';
+    if (type === 'change_email') subject = '📧 รหัสยืนยันการเปลี่ยนอีเมล - Tutor Web';
+    if (type === 'forgot_password') subject = '🔑 รหัสรีเซ็ตรหัสผ่าน - Tutor Web';
+
     const mailOptions = {
       from: '"Finding TutorWeb" <findingtoturwebteam@gmail.com>',
       to: email,
-      subject: '🔐 รหัสยืนยันตัวตน (OTP) - Tutor Web',
-      html: getEmailTemplate(otpCode), // ใช้ฟังก์ชัน HTML ตัวล่าสุดของคุณ
-      // attachments: [] <-- ไม่ต้องใส่ attachments แล้ว
+      subject: subject,
+      html: getEmailTemplate(otpCode),
     };
 
-    // 3. ✅ ใส่ await กลับมา (เพื่อให้หน่วงรอจนกว่า Gmail จะบอกว่า "ส่งแล้วนะ")
-    // ตรงนี้จะใช้เวลาประมาณ 1-2 วินาที ซึ่งเป็นความหน่วงที่กำลังดีครับ
     console.log("⏳ กำลังเชื่อมต่อ Gmail...");
     await transporter.sendMail(mailOptions);
     console.log("🚀 ส่งเมลสำเร็จ!");
 
-    // 4. แจ้งหน้าเว็บ
     res.json({ success: true, message: 'ส่งรหัส OTP เรียบร้อยแล้ว' });
 
   } catch (err) {
@@ -2884,30 +3208,114 @@ app.post('/api/register', async (req, res) => {
   // 2. ถ้า OTP ถูกต้อง -> ลบ OTP เก่าทิ้ง (Optional แต่ควรทำ)
   await pool.query('DELETE FROM otp_codes WHERE email = ?', [email]);
 
-  // 3. ทำการสมัครสมาชิก (Logic เดิมของคุณ) ...
-  // ... (INSERT INTO register ...)
+  // 3. ทำการสมัครสมาชิก
+  // เช็คซ้ำอีกรอบกันเหนียว
+  const [existingUser] = await pool.query('SELECT 1 FROM register WHERE email = ? OR username = ?', [email, req.body.username]);
+  if (existingUser.length > 0) return res.status(400).json({ success: false, message: 'อีเมลหรือ Username ถูกใช้งานแล้ว' });
 
-  // (Copy โค้ดเดิมส่วน Insert มาใส่ตรงนี้)
+  // INSERT
+  const [result] = await pool.query(
+    'INSERT INTO register (name, lastname, email, password, type, username, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+    [name, lastname, email, password, type, req.body.username]
+  );
+
+  // สร้าง Profile ว่างๆ รอไว้เลยตามประเภท (Optional)
+  if (type === 'student') {
+    await pool.query('INSERT INTO student_profiles (user_id) VALUES (?)', [result.insertId]);
+  } else if (type === 'tutor') {
+    await pool.query('INSERT INTO tutor_profiles (user_id) VALUES (?)', [result.insertId]);
+  }
+
+  res.json({ success: true, message: 'สมัครสมาชิกสำเร็จ', userId: result.insertId });
 });
 
-// 1. API แก้ไขข้อมูลส่วนตัว (User Info)
+// 1. API แก้ไขข้อมูลส่วนตัว (User Info) - เพิ่ม Check 90 วัน + OTP Email Change
 app.put('/api/user/:id', async (req, res) => {
   try {
-    const { name, lastname, email } = req.body;
+    const { name, lastname, email, otp } = req.body; // รับ otp มาด้วยถ้าเปลี่ยนเมล
     const userId = req.params.id;
 
-    // เช็คว่าอีเมลซ้ำกับคนอื่นไหม (ถ้ามีการเปลี่ยนอีเมล)
-    const [existing] = await pool.query('SELECT user_id FROM register WHERE email = ? AND user_id != ?', [email, userId]);
-    if (existing.length > 0) {
-      return res.status(400).json({ success: false, message: 'อีเมลนี้มีผู้ใช้งานแล้ว' });
+    // --- Logic 90 Days Limit ---
+    const [[currentUser]] = await pool.query('SELECT name, lastname, email, name_change_at FROM register WHERE user_id = ?', [userId]);
+    if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
+
+    // 1. Check Name Change Limit
+    const isNameChanged = (name && name !== currentUser.name) || (lastname && lastname !== currentUser.lastname);
+    let shouldUpdateDate = false;
+
+    if (isNameChanged) {
+      const lastChange = currentUser.name_change_at ? new Date(currentUser.name_change_at) : null;
+      if (lastChange) {
+        const diffTime = Math.abs(new Date() - lastChange);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays < 90) {
+          const nextDate = new Date(lastChange);
+          nextDate.setDate(nextDate.getDate() + 90);
+          return res.status(400).json({ success: false, message: `เปลี่ยนชื่อได้อีกครั้งวันที่ ${nextDate.toLocaleDateString('th-TH')}` });
+        }
+      }
+      shouldUpdateDate = true;
     }
 
-    await pool.query(
-      'UPDATE register SET name = ?, lastname = ?, email = ? WHERE user_id = ?',
-      [name, lastname, email, userId]
-    );
+    // 2. Check Email Change & OTP
+    if (email && email !== currentUser.email) {
+      // เช็คว่าอีเมลใหม่ซ้ำไหม
+      const [existing] = await pool.query('SELECT user_id FROM register WHERE email = ? AND user_id != ?', [email, userId]);
+      if (existing.length > 0) return res.status(400).json({ success: false, message: 'อีเมลนี้มีผู้ใช้งานแล้ว' });
+
+      if (!otp) {
+        return res.status(400).json({ success: false, message: 'กรุณาระบุรหัส OTP เพื่อยืนยันการเปลี่ยนอีเมล' });
+      }
+      // Verify OTP
+      const [otpRows] = await pool.query(
+        'SELECT * FROM otp_codes WHERE email = ? AND code = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+        [email, otp] // check OTP ของอีเมลใหม่
+      );
+      if (otpRows.length === 0) {
+        return res.status(400).json({ success: false, message: 'รหัส OTP ไม่ถูกต้องหรือหมดอายุ' });
+      }
+      // ลบ OTP ที่ใช้แล้ว
+      await pool.query('DELETE FROM otp_codes WHERE email = ?', [email]);
+    }
+
+    // Update Query
+    let sql = 'UPDATE register SET name = ?, lastname = ?, email = ?';
+    const params = [name, lastname, email];
+
+    if (shouldUpdateDate) sql += ', name_change_at = NOW()';
+
+    sql += ' WHERE user_id = ?';
+    params.push(userId);
+
+    await pool.query(sql, params);
 
     res.json({ success: true, message: 'Updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Database error' });
+  }
+});
+
+// ✅ API รีเซ็ตรหัสผ่านด้วย OTP (Forgot Password)
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+  try {
+    // 1. ตรวจสอบ OTP
+    const [otpRows] = await pool.query(
+      'SELECT * FROM otp_codes WHERE email = ? AND code = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [email, otp]
+    );
+    if (otpRows.length === 0) {
+      return res.status(400).json({ success: false, message: 'รหัส OTP ไม่ถูกต้องหรือหมดอายุ' });
+    }
+
+    // 2. เปลี่ยนรหัสผ่าน
+    await pool.query('UPDATE register SET password = ? WHERE email = ?', [newPassword, email]);
+
+    // 3. ลบ OTP
+    await pool.query('DELETE FROM otp_codes WHERE email = ?', [email]);
+
+    res.json({ success: true, message: 'เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Database error' });
@@ -3537,13 +3945,12 @@ app.post('/api/reviews', async (req, res) => {
 app.put('/api/student_posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
-    const {
-      subject, description, preferred_days, preferred_time,
-      grade_level, location, group_size, budget, contact_info
-    } = req.body;
+    const b = req.body;
 
-    // Validate ownership? We assume frontend checks or we can check here.
-    // For now simple update.
+    // 🔥 FIX: ดักจับชื่อตัวแปร
+    const gradeLevel = b.grade_level || b.level || b.target_student_level;
+    const groupSize = parseInt(b.group_size || b.capacity) || 1;
+    const budget = Number(b.budget || b.price || 0);
 
     await pool.query(
       `UPDATE student_posts SET 
@@ -3551,8 +3958,15 @@ app.put('/api/student_posts/:id', async (req, res) => {
         grade_level=?, location=?, group_size=?, budget=?, contact_info=?
        WHERE student_post_id=?`,
       [
-        subject, description, preferred_days, preferred_time,
-        grade_level, location, group_size, budget, contact_info,
+        b.subject,
+        b.description,
+        b.preferred_days,
+        b.preferred_time,
+        gradeLevel, // ✅ ใช้ตัวแปรที่ดักจับแล้ว
+        b.location,
+        groupSize,
+        budget,
+        b.contact_info,
         postId
       ]
     );
@@ -3568,10 +3982,18 @@ app.put('/api/student_posts/:id', async (req, res) => {
 app.put('/api/tutor-posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
-    const {
-      subject, description, teaching_days, teaching_time,
-      target_student_level, location, price, group_size, contact_info
-    } = req.body;
+    const b = req.body; // ใช้ตัวแปรสั้นๆ จะได้เช็คหลายชื่อง่ายๆ
+
+    // 🔥 FIX: ดักจับชื่อตัวแปรให้ครบ (เผื่อ Frontend ส่งมาไม่ตรง)
+    // รับทั้ง target_student_level, grade_level, level
+    const targetLevel = b.target_student_level || b.grade_level || b.level;
+
+    // รับทั้ง group_size, capacity
+    const rawGroup = b.group_size || b.capacity || b.maxStudents;
+    const groupSize = parseInt(rawGroup) || 1;
+
+    // รับทั้ง price, hourly_rate
+    const price = Number(b.price || b.hourly_rate || 0);
 
     await pool.query(
       `UPDATE tutor_posts SET 
@@ -3579,8 +4001,15 @@ app.put('/api/tutor-posts/:id', async (req, res) => {
         target_student_level=?, location=?, price=?, group_size=?, contact_info=?
        WHERE tutor_post_id=?`,
       [
-        subject, description, teaching_days, teaching_time,
-        target_student_level, location, price, group_size, contact_info,
+        b.subject,
+        b.description,
+        b.teaching_days,
+        b.teaching_time,
+        targetLevel, // ✅ ใช้ตัวแปรที่ดักจับแล้ว
+        b.location,
+        price,       // ✅ ใช้ตัวแปรที่แปลงแล้ว
+        groupSize,   // ✅ ใช้ตัวแปรที่แปลงแล้ว
+        b.contact_info,
         postId
       ]
     );

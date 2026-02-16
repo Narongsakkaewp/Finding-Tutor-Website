@@ -7,11 +7,11 @@ const SUBJECT_KNOWLEDGE_BASE = {
     'คอม': ['com', 'it', 'program', 'excel', 'word', 'powerpoint'],
     'คณิต': ['math', 'cal', 'เลข', 'algebra', 'stat'],
     'math': ['คณิต', 'cal', 'เลข'],
-    'phy': ['ฟิสิกส์', 'sci', 'กลศาสตร์'],
+    'phy': ['ฟิสิกส์', 'mechanics', 'กลศาสตร์', 'ไฟฟ้า'],
     'eng': ['อังกฤษ', 'english', 'toefl', 'ielts', 'toeic', 'conversation'],
     'jap': ['ญี่ปุ่น', 'japanese', 'n5', 'n4', 'n3'],
     'จีน': ['chinese', 'hsk'],
-    'sci': ['วิทย์', 'bio', 'chem', 'phy', 'ดาราศาสตร์'],
+    'sci': ['วิทยาศาสตร์', 'วิทย์พื้นฐาน', 'วิทย์', 'bio', 'chem', 'phy', 'ดาราศาสตร์'],
     'chem': ['เคมี', 'sci'],
     'bio': ['ชีว', 'sci']
 };
@@ -19,18 +19,17 @@ const SUBJECT_KNOWLEDGE_BASE = {
 // Function to expand search keywords
 const expandKeywords = (text) => {
     if (!text) return [];
-    let keywords = new Set([text.toLowerCase()]);
-    const lowerText = text.toLowerCase();
+    const lowerText = text.toLowerCase().trim();
+    let keywords = new Set([lowerText]);
 
     Object.keys(SUBJECT_KNOWLEDGE_BASE).forEach(key => {
         const values = SUBJECT_KNOWLEDGE_BASE[key];
-        // 1. Forward: Search "Program" -> Get "Python"
-        if (lowerText.includes(key)) {
-            values.forEach(v => keywords.add(v));
-        }
-        // 2. Reverse: Search "Python" -> Get "Program"
-        if (values.some(v => lowerText.includes(v))) {
+
+        // 1. ตรวจสอบว่าคำค้นหา "ตรงกับ" Key หรือไม่ (Exact Match)
+        if (lowerText === key || values.includes(lowerText)) {
+            // เพิ่มคำในกลุ่มเดียวกันเข้าไป
             keywords.add(key);
+            values.forEach(v => keywords.add(v));
         }
     });
     return Array.from(keywords);
@@ -63,7 +62,7 @@ const calculateSmartScore = (keyword, targetSubject, targetPrice, targetLocation
         // 1. Subject Score (เน้นความแม่นยำ)
         if (cleanKeyword === cleanTarget) {
             score += WEIGHTS.SUBJECT_EXACT + 20; // ตรงเป๊ะ 100%
-        } 
+        }
         else if (new RegExp(`(?:^|\\s)${escapedKw}(?:$|\\s)`, 'i').test(cleanTarget)) {
             score += WEIGHTS.SUBJECT_EXACT; // ตรงแบบเต็มคำ (Word Boundary)
         }
@@ -71,10 +70,11 @@ const calculateSmartScore = (keyword, targetSubject, targetPrice, targetLocation
             score += WEIGHTS.SUBJECT_PARTIAL; // เป็นส่วนประกอบ (เช่น Java ใน JavaScript)
         }
         else {
-            // เช็คคำที่เกี่ยวข้อง (Knowledge Base)
             const expanded = expandKeywords(cleanKeyword);
-            if (expanded.some(kw => cleanTarget.includes(kw))) {
+            if (expanded.some(kw => cleanTarget === kw)) {
                 score += WEIGHTS.SUBJECT_RELATED;
+            } else if (expanded.some(kw => cleanTarget.includes(kw))) {
+                score += (WEIGHTS.SUBJECT_RELATED / 2);
             }
         }
     }
@@ -112,31 +112,53 @@ exports.getRecommendations = async (req, res) => {
         const [candidates] = await pool.query(`
             SELECT tp.*, r.name, r.lastname, r.email, 
                    tpro.profile_picture_url, tpro.phone, tpro.nickname, 
-                   tpro.education, tpro.teaching_experience, tpro.about_me AS profile_bio
+                   tpro.education, tpro.teaching_experience, tpro.about_me AS profile_bio,
+                   COALESCE(rv.avg_rating, 0) AS avg_rating,
+                   COALESCE(rv.review_count, 0) AS review_count
             FROM tutor_posts tp
             LEFT JOIN register r ON tp.tutor_id = r.user_id
             LEFT JOIN tutor_profiles tpro ON tp.tutor_id = tpro.user_id
+            LEFT JOIN (
+                SELECT tutor_id, AVG(rating) as avg_rating, COUNT(*) as review_count
+                FROM reviews
+                GROUP BY tutor_id
+            ) rv ON tp.tutor_id = rv.tutor_id
             ORDER BY tp.created_at DESC LIMIT 100
         `);
 
         // ถ้าเป็น Guest หรือไม่มี UserID ให้ส่งกลับเลยแบบเรียงตามเวลา
         if (!userId || userId === '0') {
-            return res.json({ items: candidates.slice(0, 24), based_on: "" });
+            return res.json({
+                items: candidates.slice(0, 24).map(c => ({
+                    ...c,
+                    rating: Number(c.avg_rating || 0),
+                    reviews: Number(c.review_count || 0)
+                })),
+                based_on: ""
+            });
         }
 
         // 2. รวบรวมความสนใจ (Interests)
         let allInterests = [];
         const [history] = await pool.query('SELECT keyword, created_at FROM search_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 5', [userId]);
-        history.forEach(h => allInterests.push({ subject: h.keyword, date: new Date(h.created_at), weight: 1.0 }));
+        history.forEach(h => allInterests.push({ subject: h.keyword, date: new Date(h.created_at), weight: 0.8 })); // [MOD] Reduce search weight slightly
 
-        const [myPosts] = await pool.query('SELECT subject, budget, location, created_at FROM student_posts WHERE student_id = ? ORDER BY created_at DESC LIMIT 3', [userId]);
-        myPosts.forEach(p => allInterests.push({ subject: p.subject, budget: p.budget, location: p.location, date: new Date(p.created_at), weight: 1.2 }));
+        // [MOD] Increase LIMIT to 10 to capture more preferences, and Increase Weight to 2.5
+        const [myPosts] = await pool.query('SELECT subject, budget, location, created_at FROM student_posts WHERE student_id = ? ORDER BY created_at DESC LIMIT 10', [userId]);
+        myPosts.forEach(p => allInterests.push({ subject: p.subject, budget: p.budget, location: p.location, date: new Date(p.created_at), weight: 2.5 }));
 
         allInterests.sort((a, b) => b.date - a.date); // เรียงตามเวลา (ใหม่สุดอยู่หน้า)
 
         // ถ้าไม่มีความสนใจเลย -> ส่งแบบล่าสุดกลับไป
         if (allInterests.length === 0) {
-            return res.json({ items: candidates.slice(0, 12), based_on: "โพสต์ล่าสุด" });
+            return res.json({
+                items: candidates.slice(0, 12).map(c => ({
+                    ...c,
+                    rating: Number(c.avg_rating || 0),
+                    reviews: Number(c.review_count || 0)
+                })),
+                based_on: "โพสต์ล่าสุด"
+            });
         }
 
         // 3. ให้คะแนน (Scoring)
@@ -155,27 +177,74 @@ exports.getRecommendations = async (req, res) => {
                 }
             });
 
-            return { ...tutor, relevance_score: maxScore, matched_topic: bestMatchReason };
+            return {
+                ...tutor,
+                relevance_score: maxScore,
+                matched_topic: bestMatchReason,
+                rating: Number(tutor.avg_rating || 0),
+                reviews: Number(tutor.review_count || 0)
+            };
         });
 
         // 4. แยกกลุ่ม "ตรงใจ" (Recommended)
         // กรองเอาเฉพาะที่มีคะแนน > 0 (หรือกำหนด Threshold ต่ำๆ เช่น 10 เพื่อความเข้มข้น)
-        let recommended = scoredTutors
-            .filter(t => t.relevance_score > 10) 
-            .sort((a, b) => b.relevance_score - a.relevance_score);
+
+        // [MOD] - Date Parsing Logic
+        const parseDate = (dStr) => {
+            if (!dStr) return null;
+            // 1. ISO Format (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss)
+            if (dStr.match(/^\d{4}-\d{2}-\d{2}/)) return new Date(dStr);
+
+            // 2. Thai Format (e.g. 8 กันยายน 2568)
+            const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+            const parts = dStr.split(" ");
+            if (parts.length >= 3) {
+                const day = parseInt(parts[0]);
+                const monthIdx = thaiMonths.indexOf(parts[1]);
+                let year = parseInt(parts[2]);
+                if (year > 2400) year -= 543; // Convert BE to CE
+                if (monthIdx !== -1 && !isNaN(day) && !isNaN(year)) {
+                    return new Date(year, monthIdx, day);
+                }
+            }
+            return null; // Cannot parse
+        };
+
+        const now = new Date();
+        now.setHours(0, 0, 0, 0); // Reset time to start of day
+
+        let processedTutors = scoredTutors.map(t => {
+            const tDate = parseDate(t.teaching_days);
+            const isExpired = tDate && tDate < now;
+            return { ...t, is_expired: isExpired, tDate }; // Attach parsed date
+        });
+
+        // Sort: Non-Expired First, then High Score
+        let recommended = processedTutors
+            .filter(t => t.relevance_score > 10)
+            .sort((a, b) => {
+                // 1. Expired Last
+                if (a.is_expired !== b.is_expired) return a.is_expired ? 1 : -1;
+                // 2. High Score First
+                return b.relevance_score - a.relevance_score;
+            });
 
         const topMatch = recommended.length > 0 ? recommended[0].matched_topic : null;
 
         // 🔥 5. ระบบเติมเต็ม (Smart Fill): ถ้าได้ผลลัพธ์น้อยกว่า 6 ให้หาอย่างอื่นมาเติม
-        const MIN_DISPLAY = 6; 
-        
+        const MIN_DISPLAY = 6;
+
         if (recommended.length < MIN_DISPLAY) {
             // หา ID ที่มีอยู่แล้ว เพื่อไม่ให้ซ้ำ
             const existingIds = recommended.map(t => t.tutor_post_id);
-            
+
             // ดึงโพสต์ที่เหลือ (ที่คะแนนน้อย หรือเป็น 0) มาเติม
-            const fillers = candidates
+            const fillers = processedTutors // Use processed candidates (with is_expired)
                 .filter(t => !existingIds.includes(t.tutor_post_id)) // ต้องไม่ซ้ำกับที่มีแล้ว
+                .sort((a, b) => {
+                    if (a.is_expired !== b.is_expired) return a.is_expired ? 1 : -1;
+                    return b.avg_rating - a.avg_rating; // Fallback sort
+                })
                 .slice(0, MIN_DISPLAY - recommended.length); // ตัดมาเติมให้ครบจำนวน
 
             // เอามาต่อท้าย
@@ -210,25 +279,25 @@ exports.getStudentRequestsForTutor = async (req, res) => {
         let tutorRate = 0;
         let tutorAddr = "";
 
-        const [profile] = await pool.query('SELECT can_teach_subjects, hourly_rate, address FROM tutor_profiles WHERE user_id = ?', [userId]);
+        const [profile] = await pool.query('SELECT can_teach_subjects, address FROM tutor_profiles WHERE user_id = ?', [userId]);
         if (profile.length) {
-            tutorRate = Number(profile[0].hourly_rate) || 0;
+            tutorRate = 0; // Removed hourly_rate from profile
             tutorAddr = profile[0].address || "";
             if (profile[0].can_teach_subjects) {
-                tutorSkills.push(...profile[0].can_teach_subjects.split(',').map(s=>s.trim()));
+                tutorSkills.push(...profile[0].can_teach_subjects.split(',').map(s => s.trim()));
             }
         }
 
         const [myPosts] = await pool.query('SELECT subject FROM tutor_posts WHERE tutor_id = ? ORDER BY created_at DESC LIMIT 5', [userId]);
         myPosts.forEach(p => tutorSkills.push(p.subject));
-        
+
         // ตัดคำซ้ำ
         tutorSkills = [...new Set(tutorSkills.filter(s => s))];
 
         if (tutorSkills.length === 0) {
             // Fallback
-             const [latest] = await pool.query(`SELECT sp.*, r.name, r.lastname, spro.profile_picture_url FROM student_posts sp LEFT JOIN register r ON sp.student_id = r.user_id LEFT JOIN student_profiles spro ON sp.student_id = spro.user_id ORDER BY sp.created_at DESC LIMIT 30`);
-             return res.json({ items: latest, based_on: "โพสต์ล่าสุด (กรุณากรอกวิชาที่สอน)" });
+            const [latest] = await pool.query(`SELECT sp.*, r.name, r.lastname, spro.profile_picture_url FROM student_posts sp LEFT JOIN register r ON sp.student_id = r.user_id LEFT JOIN student_profiles spro ON sp.student_id = spro.user_id ORDER BY sp.created_at DESC LIMIT 30`);
+            return res.json({ items: latest, based_on: "โพสต์ล่าสุด (กรุณากรอกวิชาที่สอน)" });
         }
 
         // 2. ดึง Student Posts มาเทียบ
@@ -243,12 +312,12 @@ exports.getStudentRequestsForTutor = async (req, res) => {
         // 3. Scoring (ใช้ Smart Logic แบบเดียวกัน)
         const scoredPosts = candidates.map(post => {
             let maxScore = 0;
-            
+
             tutorSkills.forEach(skill => {
                 // ใช้ฟังก์ชัน calculateSmartScore ตัวเดียวกับข้างบน เพื่อความฉลาดเท่ากัน
                 // Note: สลับตำแหน่ง price/budget เล็กน้อยตามบริบท
                 let score = calculateSmartScore(skill, post.subject, post.budget, post.location, tutorRate, tutorAddr);
-                
+
                 if (score > maxScore) maxScore = score;
             });
 
@@ -281,7 +350,7 @@ exports.getStudentRequestsForTutor = async (req, res) => {
 
 exports.getRecommendedCourses = async (req, res) => {
     // ... (ใช้โค้ดเดิมจาก Turn 18 ได้เลยครับ ส่วนนี้ไม่มีปัญหาเรื่อง Time Decay) ...
-     try {
+    try {
         const userId = req.query.user_id;
         const pool = req.db;
         let gradeLevel = "";
@@ -348,10 +417,88 @@ exports.getStudyBuddyRecommendations = async (req, res) => {
             if (myProfile[0]?.institution && friend.institution) { if (friend.institution === myProfile[0].institution) score += 20; }
             return { ...friend, match_score: score };
         });
+
         const buddies = scoredFriends.filter(f => f.match_score > 0).sort((a, b) => b.match_score - a.match_score).slice(0, 5);
         res.json(buddies);
     } catch (err) {
         console.error("Study Buddy Error:", err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+
+// --- 🔥 3. Get Trending Subjects (Dynamic Stats) ---
+exports.getTrendingSubjects = async (req, res) => {
+    try {
+        const pool = req.db;
+
+        // 1. Fetch data sources
+        const [searches] = await pool.query(`
+            SELECT keyword, COUNT(*) as count 
+            FROM search_history 
+            WHERE created_at > DATE_SUB(NOW(), INTERVAL 30 DAY) 
+            GROUP BY keyword
+        `);
+
+        const [studentPosts] = await pool.query(`
+            SELECT subject, COUNT(*) as count 
+            FROM student_posts 
+            WHERE created_at > DATE_SUB(NOW(), INTERVAL 30 DAY) 
+            GROUP BY subject
+        `);
+
+        const normalizeMap = {
+            'eng': 'ภาษาอังกฤษ', 'english': 'ภาษาอังกฤษ', 'อังกฤษ': 'ภาษาอังกฤษ',
+            'math': 'คณิตศาสตร์', 'maths': 'คณิตศาสตร์', 'mathematics': 'คณิตศาสตร์', 'คณิต': 'คณิตศาสตร์',
+            'phy': 'ฟิสิกส์', 'physics': 'ฟิสิกส์', 'ฟิสิก': 'ฟิสิกส์',
+            'chem': 'เคมี', 'chemistry': 'เคมี',
+            'bio': 'ชีววิทยา', 'biology': 'ชีววิทยา', 'ชีวะ': 'ชีววิทยา',
+            'sci': 'วิทยาศาสตร์', 'science': 'วิทยาศาสตร์', 'วิทย์': 'วิทยาศาสตร์',
+            'prog': 'เขียนโปรแกรม', 'program': 'เขียนโปรแกรม', 'programming': 'เขียนโปรแกรม', 'code': 'เขียนโปรแกรม', 'coding': 'เขียนโปรแกรม', 'คอม': 'คอมพิวเตอร์', 'computer': 'คอมพิวเตอร์',
+            'social': 'สังคมศึกษา', 'soc': 'สังคมศึกษา', 'สังคม': 'สังคมศึกษา',
+            'thai': 'ภาษาไทย', 'th': 'ภาษาไทย', 'ไทย': 'ภาษาไทย'
+        };
+
+        const scores = {};
+
+        const processTerm = (rawTerm, count, weight) => {
+            if (!rawTerm) return;
+            // Clean string: remove emojis, special chars, extra spaces, lowercase
+            let clean = rawTerm.trim().toLowerCase().replace(/[^a-zA-Z0-9\u0E00-\u0E7F\s]/g, '');
+            if (clean.length < 2) return; // Skip too short
+
+            // Check map
+            let key = normalizeMap[clean] || clean;
+
+            // Standardize capitalization for Thai/English mixed display if needed, 
+            // but for aggregation use the mapped key.
+
+            if (!scores[key]) scores[key] = 0;
+            scores[key] += (count * weight);
+        };
+
+        searches.forEach(s => processTerm(s.keyword, s.count, 1.0));
+        studentPosts.forEach(s => processTerm(s.subject, s.count, 3.0)); // Weight actual posts higher
+
+        // Convert to array
+        let trending = Object.entries(scores)
+            .map(([key, score]) => {
+                // Formatting Title for Display (Capitalize English)
+                let title = key.charAt(0).toUpperCase() + key.slice(1);
+                return {
+                    key: key,
+                    title: title,
+                    score: score,
+                    tutorCount: Math.ceil(score) // Estimate 'stats' based on score
+                };
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 6);
+
+        res.json(trending);
+
+    } catch (err) {
+        console.error("Trending Error:", err);
         res.status(500).json({ error: err.message });
     }
 };

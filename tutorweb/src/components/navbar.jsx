@@ -13,6 +13,7 @@ const Navbar = ({
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [displayName, setDisplayName] = useState("User");
+  const [username, setUsername] = useState("");
   const [avatar, setAvatar] = useState(null);
   const ddRef = useRef(null);
 
@@ -28,6 +29,9 @@ const Navbar = ({
         userId = localUser.user_id;
         const name = localUser.nickname || localUser.name || "User";
         setDisplayName(String(name));
+        if (localUser.username) {
+          setUsername(localUser.username);
+        }
 
         if (localUser.profile_picture_url) {
           setAvatar(localUser.profile_picture_url);
@@ -132,8 +136,9 @@ const Navbar = ({
                     <span className="text-md font-semibold text-gray-700 max-w-[120px] truncate leading-tight">
                       {displayName}
                     </span>
-                    {/* Mobile view role fallback */}
-                    {/* <span className="text-[10px] text-gray-400 leading-tight capitalize">{userType}</span> */}
+                    {username && (
+                      <span className="text-[11px] text-gray-500 font-medium">@{username}</span>
+                    )}
                   </div>
                   <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
                 </div>
@@ -147,8 +152,7 @@ const Navbar = ({
                 >
                   {/* Mobile Role Badge (Shown inside dropdown on mobile) */}
                   <div className="px-4 py-2 border-b border-gray-50 md:hidden">
-                    <p className="text-xs text-gray-500 font-medium mb-1">เข้าสู่ระบบ</p>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${userType === 'student' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium justify-end ${userType === 'student' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
                       }`}>
                       {userType === "student" ? "นักเรียน" : "ติวเตอร์"}
                     </span>
@@ -175,7 +179,7 @@ const Navbar = ({
                     >
                       <Settings size={16} /> ตั้งค่า
                     </button>
-                    
+
                     {/* ✅ 2. แก้ปุ่มรายงานปัญหา ให้เรียก onReport */}
                     <button
                       onClick={() => {

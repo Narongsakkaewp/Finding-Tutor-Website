@@ -1,3 +1,39 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Custom Calendar Highlights */
+.calendar-dot-highlight {
+    position: relative;
+    background-color: #f0f4ff !important;
+    color: #4f46e5 !important;
+    font-weight: 700 !important;
+    border-radius: 12px !important;
+}
+
+.calendar-dot-highlight::after {
+    content: "";
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    background-color: #4f46e5;
+    border-radius: 50%;
+}
+
+.react-calendar {
+    border: none !important;
+    font-family: inherit !important;
+}
+
+.react-calendar__tile--active {
+    background: #4f46e5 !important;
+    color: white !important;
+    border-radius: 12px !important;
+}
+
+.react-calendar__tile:hover {
+    border-radius: 12px !important;
+}

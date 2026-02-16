@@ -279,7 +279,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           onClick={onBack}
           className="mb-4 px-3 py-1 rounded border hover:bg-gray-50"
         >
-          {backLabel}
+          ← กลับไปการแจ้งเตือน
         </button>
 
         <div className="bg-white border rounded-2xl p-5 shadow-sm">

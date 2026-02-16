@@ -70,7 +70,20 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
 
   // Logic จัดกลุ่ม
   const groups = useMemo(() => {
-    const sorted = [...notifications].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    // [FIX] Create a Set of keys from scheduleAlerts to filter duplicates
+    // We match by related_id and roughly the type (since scheduleAlerts might use specific types)
+    const alertKeys = new Set(scheduleAlerts.map(a => `${a.related_id}`));
+
+    // Filter out notifications that are already shown in Schedule Alerts (Top Section)
+    // Only filter if it's a schedule type notification
+    const filtered = notifications.filter(n => {
+      if (n.type.includes('schedule') && alertKeys.has(String(n.related_id))) {
+        return false;
+      }
+      return true;
+    });
+
+    const sorted = [...filtered].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     // [FIX] Group by Unread status
     const latest = sorted.filter(x => !x.is_read);
@@ -92,7 +105,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     });
 
     return { latest, today, yesterday, older };
-  }, [notifications]);
+  }, [notifications, scheduleAlerts]);
 
   // --- ส่วนจัดการการแสดงผล ---
 
@@ -493,7 +506,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
               </div>
             </div>
 
-            {/* ✅ Show Buttons or Status */} 
+            {/* ✅ Show Buttons or Status */}
             <div className="flex gap-3 mt-6">
               {offer_status === 'approved' ? (
                 <div className="w-full py-2.5 rounded-xl bg-green-50 text-green-700 font-bold border border-green-200">

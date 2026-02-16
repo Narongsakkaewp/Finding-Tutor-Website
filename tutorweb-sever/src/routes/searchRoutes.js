@@ -12,4 +12,7 @@ router.get('/history', searchController.getMySearchHistory);
 // DELETE /api/search/history?user_id=...&keyword=...
 router.delete('/history', searchController.deleteSearchHistory);
 
+// GET /api/search/popular (High Priority)
+router.get('/popular', searchController.getPopularSubjects);
+
 module.exports = router;

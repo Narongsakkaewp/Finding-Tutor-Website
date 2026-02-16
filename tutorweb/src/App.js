@@ -16,6 +16,7 @@ import Settings from './components/Settings';
 import ReportIssueModal from './components/ReportIssueModal';
 import UserProfilePage from './pages/UserProfilePage'; // [NEW]
 import AdminDashboard from './components/AdminDashboard'; // [NEW]
+import ManageMyPosts from './components/ManageMyPosts';
 
 // ✅ 1. Import Icons from lucide-react
 import {
@@ -181,7 +182,7 @@ function App() {
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'home': return <Home />;
+      case 'home': return <Home setCurrentPage={setCurrentPage} user={user} />;
       case 'notification':
         return (
           <Notification
@@ -218,7 +219,14 @@ function App() {
         if (userType === 'tutor') {
           return <TutorProfile setCurrentPage={setCurrentPage} onEditProfile={handleEditProfile} />;
         } else {
-          return <Profile setCurrentPage={setCurrentPage} user={user} onEditProfile={handleEditProfile} />;
+          return <Profile
+            setCurrentPage={setCurrentPage}
+            user={user}
+            onEditProfile={handleEditProfile}
+            onOpenPost={(id, type) => openPostDetails(id, 'profile', type)}
+            onViewProfile={handleViewProfile}
+          />;
+
         }
       case 'tutor_layout': return <TutorLayout />;
       case 'student_calendar': return <StudentCalendar />;
@@ -231,6 +239,7 @@ function App() {
           />
         );
       case 'admin_dashboard': return <AdminDashboard />;
+      case 'manage_posts': return <ManageMyPosts onBack={() => setCurrentPage('home')} />;
       default: return <Home />;
     }
   };
