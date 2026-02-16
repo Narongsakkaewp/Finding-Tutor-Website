@@ -332,56 +332,60 @@ app.post('/api/login', async (req, res) => {
 });
 
 // ✅ API: Get Single Student Post
-app.get('/api/student-posts/:id', async (req, res) => {
+app.get('/api/student_posts/:id', async (req, res) => {
+  const postId = Number(req.params.id);
+  if (!Number.isFinite(postId)) {
+    return res.status(400).json({ message: 'invalid post id' });
+  }
+
+  const conn = await pool.getConnection();
   try {
-    const postId = req.params.id;
-    const [rows] = await pool.query(`
-      SELECT
-        sp.student_post_id, sp.student_id, sp.subject, sp.description,
-        sp.preferred_days, sp.preferred_time, sp.location, sp.group_size, sp.budget, sp.contact_info,
-        sp.grade_level, sp.created_at,
-        r.name, r.lastname, r.email, r.type,
-        spro.profile_picture_url, spro.phone,
-        (SELECT COUNT(*) FROM student_post_joins WHERE student_post_id = sp.student_post_id AND status = 'approved') AS join_count
+    // 1. ดึงโพสต์
+    const [[post]] = await conn.query(`
+      SELECT sp.*, r.name, r.lastname, r.profile_image
       FROM student_posts sp
-      LEFT JOIN register r ON r.user_id = sp.student_id
-      LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
+      JOIN register r ON r.user_id = sp.student_id
       WHERE sp.student_post_id = ?
     `, [postId]);
 
-    if (!rows.length) {
-      return res.status(404).json({ message: 'Post not found' });
+    if (!post) {
+      conn.release();
+      return res.status(404).json({ message: 'post not found' });
     }
 
-    const post = rows[0];
+    // 2. ดึงผู้เข้าร่วม (approved)
+    const [joiners] = await conn.query(`
+      SELECT j.user_id, r.name, r.lastname, j.joined_at
+      FROM student_post_joins j
+      JOIN register r ON r.user_id = j.user_id
+      WHERE j.student_post_id = ? AND j.status = 'approved'
+      ORDER BY j.joined_at ASC
+    `, [postId]);
 
-    // Normalize response for MyPostDetails
-    const result = {
-      id: post.student_post_id,
-      owner_id: post.student_id,
-      subject: post.subject,
-      description: post.description,
-      location: post.location,
-      group_size: post.group_size,
-      budget: post.budget,
-      preferred_days: post.preferred_days,
-      preferred_time: post.preferred_time,
-      contact_info: post.contact_info,
-      createdAt: post.created_at,
-      join_count: Number(post.join_count || 0),
-      user: {
-        first_name: post.name,
-        last_name: post.lastname,
-        profile_image: post.profile_picture_url || '/../blank_avatar.jpg'
-      }
-    };
+    // 3. ดึงติวเตอร์ (ถ้ามี)
+    const [[tutor]] = await conn.query(`
+      SELECT r.user_id, r.name, r.lastname
+      FROM student_post_offers o
+      JOIN register r ON r.user_id = o.tutor_id
+      WHERE o.student_post_id = ? AND o.status = 'approved'
+      LIMIT 1
+    `, [postId]);
 
-    res.json(result);
+    conn.release();
+
+    return res.json({
+      post,
+      //joiners,
+      tutor: tutor || null
+    });
+
   } catch (err) {
-    console.error("Get Single Student Post Error:", err);
-    res.status(500).json({ message: 'Server Error' });
+    conn.release();
+    console.error(err);
+    return res.status(500).json({ message: 'server error' });
   }
 });
+
 
 // ---------- โพสต์นักเรียนตามวิชา ----------
 app.get('/api/subjects/:subject/posts', async (req, res) => {
@@ -1463,16 +1467,33 @@ app.delete('/api/tutor-posts/:id', async (req, res) => {
 
 // >>> ใหม่: API ดึงรายชื่อผู้เข้าร่วมของโพสต์นักเรียน
 app.get('/api/student_posts/:id/joiners', async (req, res) => {
+  const postId = Number(req.params.id);
+
+  const conn = await pool.getConnection();
   try {
-    const postId = Number(req.params.id);
-    if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
-    const rows = await getJoiners(postId);
+    const [rows] = await conn.query(`
+      SELECT 
+        j.user_id,
+        r.name,
+        r.lastname,
+        j.joined_at,
+        j.status
+      FROM student_post_joins j
+      JOIN register r ON r.user_id = j.user_id
+      WHERE j.student_post_id = ? 
+      ORDER BY j.joined_at ASC
+    `, [postId]);
+
     res.json(rows);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: 'Server error' });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json([]);
+  } finally {
+    conn.release();
   }
 });
+
 
 // >>> ดึงรายชื่อผู้เข้าร่วมโพสต์ติวเตอร์ (approved เท่านั้น)
 app.get('/api/tutor_posts/:id/joiners', async (req, res) => {

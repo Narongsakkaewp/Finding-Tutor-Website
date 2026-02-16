@@ -1,6 +1,7 @@
 // src/components/MyPostDetails.jsx
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 
+
 const API_BASE = "http://localhost:5000";
 
 const ProfileImage = ({ src, alt, className }) => {
@@ -41,6 +42,7 @@ const normalizePost = (p = {}) => ({
   contact_info: p.contact_info || p.contact || p.email || "",
   join_count: Number(p.join_count ?? 0),
   joined: !!p.joined,
+  tutor: p.tutor || null,
   user: p.user || {
     first_name: p.first_name || p.name || "",
     last_name: p.last_name || "",
@@ -79,6 +81,10 @@ function mapTutorToUnified(t = {}) {
 }
 
 function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, postType = null }) {
+  const backLabel =
+    (localStorage.getItem("backPage") === "notification")
+      ? "← กลับไปการแจ้งเตือน"
+      : "← กลับหน้าโพสต์";
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -113,7 +119,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
         else {
           try {
             // Try direct fetch first (New API)
-            const rs = await fetch(`${API_BASE}/api/student-posts/${postId}`);
+            const rs = await fetch(`${API_BASE}/api/student_posts/${postId}`);
             if (rs.ok) {
               const s = await rs.json();
               single = normalizePost(s);
@@ -146,7 +152,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           // If we tried tutor and failed, maybe it's student?
           else {
             try {
-              const rs = await fetch(`${API_BASE}/api/student-posts/${postId}`);
+              const rs = await fetch(`${API_BASE}/api/student_posts/${postId}`);
               if (rs.ok) {
                 const s = await rs.json();
                 single = normalizePost(s);
@@ -240,7 +246,8 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
   const contactText = post?.contact_info || post?.meta?.contact_info || "-";
   const money = Number(post?.budget ?? post?.meta?.price ?? 0) || 0;
   const capacity = Number(post?.group_size ?? post?.meta?.group_size ?? 0) || 0;
-  const joinedCount = Number(post?.join_count ?? 0) || 0;
+  const joinedCount = (Number(post?.join_count ?? 0) || 0) + 1;
+  //const joinedCount = Number(post?.join_count ?? 0) || 0;
 
   if (loading) {
     return (
@@ -272,7 +279,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           onClick={onBack}
           className="mb-4 px-3 py-1 rounded border hover:bg-gray-50"
         >
-          ← กลับไปการแจ้งเตือน
+          {backLabel}
         </button>
 
         <div className="bg-white border rounded-2xl p-5 shadow-sm">
@@ -309,39 +316,89 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
             <div>✉️ ติดต่อ: {contactText}</div>
           </div>
 
+          {/* ติวเตอร์ */}
+          {post.tutor && (
+            <div className="mt-4 p-3 rounded-lg border bg-blue-50 border-blue-200">
+              <div className="text-sm text-blue-800 font-medium">
+                👨‍🏫 ติวเตอร์:
+                <span className="ml-1 font-semibold">
+                  {post.tutor.name} {post.tutor.lastname}
+                </span>
+              </div>
+            </div>
+          )}
+
+
           {/* ✅ แสดงผู้เข้าร่วมเป็น 2/2 ถ้ามีจำนวนคน */}
-          <div className="mt-4 text-sm text-gray-600 border-t pt-3">
+          <div
+            className="mt-4 text-sm text-gray-600 border-t pt-3 cursor-pointer hover:text-blue-600"
+            onClick={() => {
+              const el = document.getElementById("joiners-section");
+              if (!el) return;
+
+              // เลื่อนหน้าจอลงไป
+              el.scrollIntoView({ behavior: "smooth", block: "start" });
+
+              // ไฮไลต์ให้เห็นชัดว่ามาถึงตรงไหน
+              el.classList.add("bg-yellow-100");
+              setTimeout(() => {
+                el.classList.remove("bg-yellow-100");
+              }, 800);
+            }}
+          >
             {capacity > 0 ? (
               <>
-                ผู้เข้าร่วม: <b>{joinedCount + (isTutorPost ? 0 : 1)} / {capacity}</b> คน
-                {post.joined ? " • คุณเข้าร่วมแล้ว" : ""}
+                ผู้เข้าร่วม:{" "}
+                <b className="underline">
+                  {joinedCount} / {capacity}
+                </b>{" "}
+                คน
+                {post.joined && (
+                  <span className="ml-2 text-emerald-600 font-medium">
+                    • คุณเข้าร่วมแล้ว
+                  </span>
+                )}
               </>
             ) : (
               <>
-                ผู้เข้าร่วม: <b>{joinedCount + (isTutorPost ? 0 : 1)}</b> คน
-                {post.joined ? " • คุณเข้าร่วมแล้ว" : ""}
+                ผู้เข้าร่วม:{" "}
+                <b className="underline">{joinedCount}</b> คน
+                {post.joined && (
+                  <span className="ml-2 text-emerald-600 font-medium">
+                    • คุณเข้าร่วมแล้ว
+                  </span>
+                )}
               </>
             )}
           </div>
 
-          {/* แสดงบล็อคคำขอ */}
-          <JoinRequestsManager
-            postId={Number(postId)}
-            canModerate={canModerate}
-            isTutor={isTutorPost}
-            onJoinChange={(newCount) => {
-              setPost((p) => ({ ...p, join_count: Number(newCount ?? p.join_count) }));
-              if (typeof setPostsCache === "function") {
-                setPostsCache((arr) =>
-                  Array.isArray(arr)
-                    ? arr.map((pp) =>
-                      pp.id === post.id ? { ...pp, join_count: Number(newCount ?? pp.join_count) } : pp
-                    )
-                    : arr
-                );
-              }
-            }}
-          />
+
+
+          {/* แสดงบล็อคคำขอ — เฉพาะเจ้าของโพสต์ */}
+          {Number(post.owner_id) === Number(me) && (
+            <JoinRequestsManager
+              postId={Number(postId)}
+              canModerate={canModerate}
+              isTutor={isTutorPost}
+              me={me}
+              postOwnerId={post.owner_id}
+              onJoinChange={(newCount) => {
+                setPost((p) => ({ ...p, join_count: Number(newCount ?? p.join_count) }));
+                if (typeof setPostsCache === "function") {
+                  setPostsCache((arr) =>
+                    Array.isArray(arr)
+                      ? arr.map((pp) =>
+                        pp.id === post.id
+                          ? { ...pp, join_count: Number(newCount ?? pp.join_count) }
+                          : pp
+                      )
+                      : arr
+                  );
+                }
+              }}
+            />
+          )}
+
         </div>
       </div>
     </div>
@@ -351,7 +408,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
 /* ---------------------------------------------------------
    JoinRequestsManager
 --------------------------------------------------------- */
-function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChange }) {
+function JoinRequestsManager({ postId, postOwnerId, me,canModerate, isTutor = false, onJoinChange }) {
   const [requests, setRequests] = useState([]);
   const [joiners, setJoiners] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -379,20 +436,37 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
   }, [postId, isTutor]);
 
   const loadJoiners = useCallback(async () => {
-    if (!postId) return;
-    setJoinersLoading(true);
-    try {
-      const base = isTutor ? "tutor_posts" : "student_posts";
-      const res = await fetch(`${API_BASE}/api/${base}/${postId}/joiners`, { cache: "no-store" });
+  if (!postId) return;
+
+  setJoinersLoading(true);
+
+  try {
+    // ลอง route joiners ก่อน
+    let res = await fetch(`${API_BASE}/api/student_posts/${postId}/joiners`);
+
+    if (res.ok) {
       const data = await res.json();
+      console.log("JOINERS via /joiners:", data);
       setJoiners(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("load joiners error:", e);
-      setJoiners([]);
-    } finally {
-      setJoinersLoading(false);
+      return;
     }
-  }, [postId, isTutor]);
+
+    // fallback → route หลัก
+    res = await fetch(`${API_BASE}/api/student_posts/${postId}`);
+    const data = await res.json();
+
+    console.log("JOINERS via post:", data.joiners);
+
+    setJoiners(Array.isArray(data.joiners) ? data.joiners : []);
+
+  } catch (e) {
+    console.error("load joiners error:", e);
+    setJoiners([]);
+  } finally {
+    setJoinersLoading(false);
+  }
+}, [postId]);
+
 
   useEffect(() => {
     loadRequests();
@@ -467,10 +541,14 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
 
   return (
     <div className="mt-6 border-t pt-4">
-      {/* =======================
-        ผู้เข้าร่วม (Approved)
-    ======================= */}
-      <h2 className="font-semibold mb-3">ชื่อผู้เข้าร่วม</h2>
+
+      {/* ผู้เข้าร่วม */}
+      <h2
+        id="joiners-section"
+        className="font-semibold mb-3 scroll-mt-20 transition-colors"
+      >
+        ชื่อผู้เข้าร่วม
+      </h2>
 
       {joinersLoading ? (
         <div className="text-sm text-gray-500">กำลังโหลดผู้เข้าร่วม…</div>
@@ -481,61 +559,74 @@ function JoinRequestsManager({ postId, canModerate, isTutor = false, onJoinChang
               key={`joined-${j.user_id}`}
               className="flex items-center justify-between border rounded-lg p-3 bg-emerald-50 border-emerald-200"
             >
-              <div className="text-sm text-gray-800 font-medium">
-                {j.name} {j.lastname}{" "}
-                <span className="text-gray-400 text-xs font-normal">#{j.user_id}</span>
-              </div>
-              <div className="text-xs text-gray-500">
-                {j.joined_at ? new Date(j.joined_at).toLocaleDateString() : ""}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-sm text-gray-500 mb-5">ยังไม่มีผู้เข้าร่วม</div>
-      )}
-
-      {/* คำขอเข้าร่วม (Pending) */}
-
-      <h2 className="font-semibold mb-3">คำขอเข้าร่วม</h2>
-
-      {pendingRequests.length === 0 ? (
-        <div className="text-sm text-gray-500">ยังไม่มีคำขอเข้าร่วม</div>
-      ) : (
-        <div className="space-y-2">
-          {pendingRequests.map((r) => (
-            <div
-              key={`pending-${r.user_id}`}
-              className="flex justify-between items-center border rounded-lg p-3 bg-white"
-            >
-              <div className="text-sm text-gray-700">
-                {r.name} {r.lastname}{" "}
-                <span className="text-gray-400 text-xs">#{r.user_id}</span>
-                <span className="ml-2 text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                  pending
+              <div className="text-sm font-medium">
+                {j.name} {j.lastname}
+                <span className="text-gray-400 text-xs ml-1">
+                  #{j.user_id}
                 </span>
               </div>
 
-              {canModerate && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => approve(r)}
-                    className="px-3 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 text-sm"
-                  >
-                    อนุมัติ
-                  </button>
-                  <button
-                    onClick={() => reject(r)}
-                    className="px-3 py-1.5 rounded border text-sm hover:bg-gray-50"
-                  >
-                    ปฏิเสธ
-                  </button>
-                </div>
-              )}
+              <div className="text-xs text-gray-500">
+                {j.joined_at
+                  ? new Date(j.joined_at).toLocaleDateString()
+                  : ""}
+              </div>
             </div>
           ))}
         </div>
+      ) : (
+        <div className="text-sm text-gray-500 mb-5">
+          ยังไม่มีผู้เข้าร่วม
+        </div>
       )}
+
+      {/* คำขอเข้าร่วม — เฉพาะเจ้าของโพสต์ */}
+      {Number(me) === Number(postOwnerId) && (
+        <>
+          <h2 className="font-semibold mb-3">คำขอเข้าร่วม</h2>
+
+          {pendingRequests.length === 0 ? (
+            <div className="text-sm text-gray-500">
+              ยังไม่มีคำขอเข้าร่วม
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {pendingRequests.map((r) => (
+                <div
+                  key={`pending-${r.user_id}`}
+                  className="flex justify-between items-center border rounded-lg p-3 bg-white"
+                >
+                  <div className="text-sm">
+                    {r.name} {r.lastname}
+                    <span className="text-gray-400 text-xs ml-1">
+                      #{r.user_id}
+                    </span>
+                  </div>
+
+                  {canModerate && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => approve(r)}
+                        className="px-3 py-1.5 rounded bg-emerald-600 text-white"
+                      >
+                        อนุมัติ
+                      </button>
+
+                      <button
+                        onClick={() => reject(r)}
+                        className="px-3 py-1.5 rounded border"
+                      >
+                        ปฏิเสธ
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
     </div>
   );
 }

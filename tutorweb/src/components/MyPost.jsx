@@ -230,7 +230,7 @@ function PostActionMenu({ isOpen, onClose, isOwner, onEdit, onDelete, onReport }
 }
 
 /* ---------- Main Component ---------- */
-function MyPost({ setPostsCache, onViewProfile }) {
+function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
   const user = pickUser();
   const userType = pickUserType();
   const isTutor = userType === "tutor";
@@ -1036,27 +1036,21 @@ function MyPost({ setPostsCache, onViewProfile }) {
                   )}
 
                   <div className="mt-4 flex items-center justify-between pt-3">
-                    <div className="text-sm text-gray-600">
-                      {post.post_type === "student" ? (
-                        <>
-                          เข้าร่วมแล้ว : <b>{(post.join_count || 0) + 1}</b> / {post.group_size} คน
-                          {/* [NEW] Badge shown to everyone */}
-                          {post.has_tutor && <span className="ml-2 px-2 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded-full font-bold border border-indigo-200">ได้ติวเตอร์แล้ว</span>}
-
-                          {post.joined && (
-                            isTutor
-                              ? <span className="ml-2 px-2 py-0.5 text-xs bg-indigo-50 text-indigo-700 rounded-full">คุณได้รับเลือกสอน</span>
-                              : <span className="ml-2 px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 rounded-full">คุณเข้าร่วมแล้ว</span>
-                          )}
-                          {post.pending_me && !post.joined && <span className="ml-2 px-2 py-0.5 text-xs bg-amber-50 text-amber-700 rounded-full">รออนุมัติ</span>}
-                        </>
-                      ) : (
-                        <>
-                          <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full mr-2">โพสต์รับสอน</span>
-                          <span className="text-gray-600">ผู้เข้าร่วม: {post.group_size ? (<b>{Number(post.join_count || 0)} / {post.group_size} คน</b>) : (<b>{Number(post.join_count || 0)} คน</b>)}</span>
-                        </>
-                      )}
+                    <div
+                      className="text-sm text-gray-600 cursor-pointer hover:text-blue-600"
+                      onClick={() => {
+                        if (onOpenDetails) {
+                          onOpenDetails(post.id, 'mypost', 'student');
+                        }
+                      }}
+                    >
+                      เข้าร่วมแล้ว :{" "}
+                      <b className="underline">
+                        {(post.join_count || 0) + 1} / {post.group_size}
+                      </b>{" "}
+                      คน
                     </div>
+
 
                     <div className="flex items-center gap-2">
                       <button disabled={favBusy} onClick={() => toggleFavorite(post)} className={`flex items-center gap-1 px-3 py-1.5 rounded-full border transition ${post.favorited ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-white border-gray-200 text-gray-600'} disabled:opacity-60`}>

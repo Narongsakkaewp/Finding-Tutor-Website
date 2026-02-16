@@ -196,8 +196,8 @@ function App() {
       case 'mypost':
         return (
           <MyPost
-            onOpenDetails={(id) => openPostDetails(id, 'mypost')}
-            onViewProfile={handleViewProfile} // [NEW]
+            onOpenDetails={openPostDetails}
+            onViewProfile={handleViewProfile}
             postsCache={postsCache}
             setPostsCache={setPostsCache}
           />
