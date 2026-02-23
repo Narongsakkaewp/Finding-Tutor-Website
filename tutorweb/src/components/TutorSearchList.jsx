@@ -117,9 +117,18 @@ export default function TutorSearchList({ searchKey, onOpen }) {
                     </div>
 
                     <div className="mt-auto space-y-3 pt-4 border-t border-gray-50">
-                        <div className="flex items-center text-gray-600 gap-2">
-                            <MapPin size={16} className="text-gray-400" />
-                            <span className="truncate max-w-[120px]">{tutor.city || "Online"}</span>
+                        <div className="flex items-center gap-2">
+                            {(tutor.city?.startsWith("Online:") || tutor.city === "Online") ? (
+                                <>
+                                    <User size={16} className="text-indigo-500" />
+                                    <span className="truncate max-w-[120px] text-indigo-600 font-medium">{tutor.city}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <MapPin size={16} className="text-gray-400" />
+                                    <span className="truncate max-w-[120px] text-gray-600">{tutor.city || "Online"}</span>
+                                </>
+                            )}
                         </div>
                     </div>
 

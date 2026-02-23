@@ -84,7 +84,8 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
   const backLabel =
     (localStorage.getItem("backPage") === "notification")
       ? "← กลับไปการแจ้งเตือน"
-      : "← กลับหน้าโพสต์";
+      : "← กลับหน้าโพสต์"
+      ;
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -246,8 +247,13 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
   const contactText = post?.contact_info || post?.meta?.contact_info || "-";
   const money = Number(post?.budget ?? post?.meta?.price ?? 0) || 0;
   const capacity = Number(post?.group_size ?? post?.meta?.group_size ?? 0) || 0;
-  const joinedCount = (Number(post?.join_count ?? 0) || 0) + 1;
-  //const joinedCount = Number(post?.join_count ?? 0) || 0;
+
+  // ✅ จำนวนคนเข้าร่วม: 
+  // - ถ้าเป็น Student Post: นับเจ้าของ (1) + คนที่เข้าร่วมแล้ว
+  // - ถ้าเป็น Tutor Post: นับเฉพาะนักเรียนที่เข้าร่วม (ไม่นับติวเตอร์)
+  const joinedCount = isTutorPost
+    ? (Number(post?.join_count ?? 0) || 0)
+    : (Number(post?.join_count ?? 0) || 0) + 1;
 
   if (loading) {
     return (
@@ -279,7 +285,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           onClick={onBack}
           className="mb-4 px-3 py-1 rounded border hover:bg-gray-50"
         >
-          ← กลับไปการแจ้งเตือน
+          {backLabel}
         </button>
 
         <div className="bg-white border rounded-2xl p-5 shadow-sm">
@@ -317,12 +323,12 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           </div>
 
           {/* ติวเตอร์ */}
-          {post.tutor && (
+          {(post.tutor || isTutorPost) && (
             <div className="mt-4 p-3 rounded-lg border bg-blue-50 border-blue-200">
               <div className="text-sm text-blue-800 font-medium">
-                👨‍🏫 ติวเตอร์:
+                👨‍🏫 ติวเตอร์ที่สอน:
                 <span className="ml-1 font-semibold">
-                  {post.tutor.name} {post.tutor.lastname}
+                  {isTutorPost ? ownerName : `${post.tutor?.name || ''} ${post.tutor?.lastname || ''}`.trim()}
                 </span>
               </div>
             </div>
@@ -374,30 +380,29 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
 
 
 
-          {/* แสดงบล็อคคำขอ — เฉพาะเจ้าของโพสต์ */}
-          {Number(post.owner_id) === Number(me) && (
-            <JoinRequestsManager
-              postId={Number(postId)}
-              canModerate={canModerate}
-              isTutor={isTutorPost}
-              me={me}
-              postOwnerId={post.owner_id}
-              onJoinChange={(newCount) => {
-                setPost((p) => ({ ...p, join_count: Number(newCount ?? p.join_count) }));
-                if (typeof setPostsCache === "function") {
-                  setPostsCache((arr) =>
-                    Array.isArray(arr)
-                      ? arr.map((pp) =>
-                        pp.id === post.id
-                          ? { ...pp, join_count: Number(newCount ?? pp.join_count) }
-                          : pp
-                      )
-                      : arr
-                  );
-                }
-              }}
-            />
-          )}
+          {/* แสดงผู้เข้าร่วมและคำขอ (คำขอจะเห็นเฉพาะเจ้าของโพสต์) */}
+          <JoinRequestsManager
+            postId={Number(postId)}
+            canModerate={canModerate}
+            isTutor={isTutorPost}
+            me={me}
+            postOwnerId={post.owner_id}
+            ownerName={ownerName}
+            onJoinChange={(newCount) => {
+              setPost((p) => ({ ...p, join_count: Number(newCount ?? p.join_count) }));
+              if (typeof setPostsCache === "function") {
+                setPostsCache((arr) =>
+                  Array.isArray(arr)
+                    ? arr.map((pp) =>
+                      pp.id === post.id
+                        ? { ...pp, join_count: Number(newCount ?? pp.join_count) }
+                        : pp
+                    )
+                    : arr
+                );
+              }
+            }}
+          />
 
         </div>
       </div>
@@ -408,7 +413,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
 /* ---------------------------------------------------------
    JoinRequestsManager
 --------------------------------------------------------- */
-function JoinRequestsManager({ postId, postOwnerId, me,canModerate, isTutor = false, onJoinChange }) {
+function JoinRequestsManager({ postId, postOwnerId, ownerName, me, canModerate, isTutor = false, onJoinChange }) {
   const [requests, setRequests] = useState([]);
   const [joiners, setJoiners] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -436,36 +441,53 @@ function JoinRequestsManager({ postId, postOwnerId, me,canModerate, isTutor = fa
   }, [postId, isTutor]);
 
   const loadJoiners = useCallback(async () => {
-  if (!postId) return;
+    if (!postId) return;
 
-  setJoinersLoading(true);
+    setJoinersLoading(true);
 
-  try {
-    // ลอง route joiners ก่อน
-    let res = await fetch(`${API_BASE}/api/student_posts/${postId}/joiners`);
+    try {
+      let loadedJoiners = [];
+      const base = isTutor ? "tutor_posts" : "student_posts";
 
-    if (res.ok) {
-      const data = await res.json();
-      console.log("JOINERS via /joiners:", data);
-      setJoiners(Array.isArray(data) ? data : []);
-      return;
+      // ลอง route joiners ก่อน
+      let res = await fetch(`${API_BASE}/api/${base}/${postId}/joiners`);
+
+      if (res.ok) {
+        const data = await res.json();
+        console.log("JOINERS via /joiners:", data);
+        loadedJoiners = Array.isArray(data) ? data : [];
+      } else {
+        // fallback → route หลัก
+        res = await fetch(`${API_BASE}/api/${base}/${postId}`);
+        if (res.ok) {
+          const data = await res.json();
+          console.log("JOINERS via post:", data.joiners);
+          loadedJoiners = Array.isArray(data.joiners) ? data.joiners : [];
+        }
+      }
+
+      // If it's a student post, add the owner to the joiners list
+      if (!isTutor && postOwnerId && ownerName) {
+        const owner = {
+          user_id: postOwnerId,
+          name: ownerName.split(' ')[0], // Assuming first name
+          lastname: ownerName.split(' ').slice(1).join(' '), // Assuming rest is last name
+          joined_at: new Date().toISOString(), // Or a more appropriate date if available
+          is_owner: true, // Custom flag to identify the owner
+        };
+        // Prepend owner to the list
+        loadedJoiners = [owner, ...loadedJoiners];
+      }
+
+      setJoiners(loadedJoiners);
+
+    } catch (e) {
+      console.error("load joiners error:", e);
+      setJoiners([]);
+    } finally {
+      setJoinersLoading(false);
     }
-
-    // fallback → route หลัก
-    res = await fetch(`${API_BASE}/api/student_posts/${postId}`);
-    const data = await res.json();
-
-    console.log("JOINERS via post:", data.joiners);
-
-    setJoiners(Array.isArray(data.joiners) ? data.joiners : []);
-
-  } catch (e) {
-    console.error("load joiners error:", e);
-    setJoiners([]);
-  } finally {
-    setJoinersLoading(false);
-  }
-}, [postId]);
+  }, [postId, isTutor, postOwnerId, ownerName]);
 
 
   useEffect(() => {
@@ -561,9 +583,14 @@ function JoinRequestsManager({ postId, postOwnerId, me,canModerate, isTutor = fa
             >
               <div className="text-sm font-medium">
                 {j.name} {j.lastname}
-                <span className="text-gray-400 text-xs ml-1">
-                  #{j.user_id}
-                </span>
+                {j.is_owner && (
+                  <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-xs ml-2">เจ้าของโพสต์</span>
+                )}
+                {!j.is_owner && (
+                  <span className="text-gray-400 text-xs ml-1">
+                    #{j.user_id}
+                  </span>
+                )}
               </div>
 
               <div className="text-xs text-gray-500">

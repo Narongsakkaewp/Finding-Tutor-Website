@@ -67,7 +67,9 @@ function SectionHeader({ title, subtitle, actionLabel = "ดูทั้งห�
 }
 
 function TutorCard({ item, onOpen, onToggleSave }) {
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(!!item.is_favorited);
+  useEffect(() => { setLiked(!!item.is_favorited); }, [item.is_favorited]);
+
   const toggle = (e) => { e.stopPropagation(); setLiked((v) => !v); onToggleSave?.(item); };
 
   return (
@@ -92,8 +94,17 @@ function TutorCard({ item, onOpen, onToggleSave }) {
           <div className="text-sm font-semibold text-indigo-600">฿{priceText(item.price)}/ชม.</div>
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-500">
-          <MapPin size={14} />
-          <span className="truncate">{item.city || "ไม่พบสถานที่"}</span>
+          {(item.city?.startsWith("Online:") || item.city === "Online") ? (
+            <>
+              <Users size={14} className="text-indigo-500" />
+              <span className="truncate text-indigo-600 font-medium">{item.city}</span>
+            </>
+          ) : (
+            <>
+              <MapPin size={14} />
+              <span className="truncate">{item.city || "ไม่พบสถานที่"}</span>
+            </>
+          )}
         </div>
         <div className="mt-auto pt-2">
           <button className="w-full py-2.5 rounded-xl bg-gray-50 text-gray-900 font-medium text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors">ดูโปรไฟล์</button>
@@ -218,10 +229,10 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
   return (
     <div className={`grid grid-cols-1 ${type === 'tutor_profile' ? '' : 'sm:grid-cols-2 lg:grid-cols-3'} gap-4`}>
       {posts.map(p => {
-        const isStudent = (type === "student" || type === "tutor_recommendation" || type === "recommended_courses"); // ✅ Fix logic
+        const isStudent = (type === "student" || type === "tutor_recommendation" || type === "recommended_courses");
         const userImg = p.user?.profile_image || p.authorId?.avatarUrl || p.profile_picture_url || "../blank_avatar.jpg";
         const userName = p.user?.first_name || p.authorId?.name || (p.name ? `${p.name} ${p.lastname || ""}` : "User");
-        const userUsername = p.user?.username || p.authorId?.username || p.username || ""; // ✅ Get Username
+        const userUsername = p.user?.username || p.authorId?.username || p.username || "";
         const date = p.createdAt || p.created_at;
         const subject = p.subject;
         const desc = p.description || p.content;
@@ -231,8 +242,37 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
         const days = isStudent ? p.preferred_days : p.meta?.teaching_days;
         const time = isStudent ? p.preferred_time : p.meta?.teaching_time;
 
-        // Expired Logic
-        const isExpired = p.is_expired;
+        // ✅ Expired Logic (คำนวณสดใน Frontend)
+        let isExpired = p.is_expired || false;
+
+        if (!isExpired) {
+          try {
+            let dateStr = "";
+            let timeStr = "";
+
+            if (isStudent) {
+              dateStr = p.preferred_days;
+              timeStr = p.preferred_time;
+            } else {
+              dateStr = p.meta?.teaching_days || p.teaching_days;
+              timeStr = p.meta?.teaching_time || p.teaching_time;
+            }
+
+            if (dateStr) {
+              if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+                const targetDateTimeStr = timeStr ? `${dateStr}T${timeStr}` : `${dateStr}T23:59:59`;
+                const targetDate = new Date(targetDateTimeStr);
+                const now = new Date();
+
+                if (now > targetDate) {
+                  isExpired = true;
+                }
+              }
+            }
+          } catch (e) {
+            console.error("Date check error in Home", e);
+          }
+        }
 
         return (
           <div
@@ -265,14 +305,17 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
             <p className="text-sm text-gray-600 line-clamp-2 mb-3 flex-1">{desc}</p>
 
             <div className="flex flex-wrap gap-2 mt-auto">
-              <Badge icon={MapPin} text={loc || "Online"} color={isExpired ? "gray" : "amber"} />
+              {(() => {
+                const isOnline = loc && (loc.startsWith("Online:") || loc === "Online" || loc === "ออนไลน์");
+                return <Badge icon={isOnline ? Users : MapPin} text={loc || "Online"} color={isExpired ? "gray" : (isOnline ? "indigo" : "amber")} />;
+              })()}
               {price > 0 && <Badge icon={DollarSign} text={`฿${price}`} color={isExpired ? "gray" : "emerald"} />}
               {/* {days && <Badge icon={Calendar} text={days} color="blue" />} */}
             </div>
 
             {isExpired ? (
               <div className="mt-3 pt-3 border-t border-gray-200 text-center">
-                <span className="text-red-500 text-xs font-bold">ติดต่อติวเตอร์โดยตรง</span>
+                <span className="text-red-500 text-xs font-bold">{isStudent ? "โพสต์นี้หมดระยะเวลาแล้ว" : "ติดต่อติวเตอร์โดยตรง"}</span>
               </div>
             ) : (
               <>
@@ -385,9 +428,13 @@ function HomeStudent() {
   const [query, setQuery] = useState("");
   const [preview, setPreview] = useState(null);
   const [previewType, setPreviewType] = useState(null);
+  // ✅ New State: จำนวนติวเตอร์ที่แสดง (สำหรับ Show More)
+  const [visibleCount, setVisibleCount] = useState(4);
+
   const [recKey, setRecKey] = useState(0);
 
   const [tutors, setTutors] = useState([]);
+
   const [loadErr, setLoadErr] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -406,12 +453,11 @@ function HomeStudent() {
   const user = JSON.parse(localStorage.getItem('user'));
   const userId = user?.user_id;
 
-  const handleSearch = async (keyword) => {
+  const handleSearch = async (keyword, tab = "courses") => {
     if (typeof keyword !== 'string') return; // Safety check
     setQuery(keyword);
-    // Switch to 'courses' tab automatically if searching? Or stick to tutors?
-    // User requested improved relevance, usually implies courses/posts.
-    setSearchTab("courses");
+    // Switch to specified tab (default: courses)
+    setSearchTab(tab);
 
     // Log history
     if (keyword.trim()) {
@@ -434,7 +480,7 @@ function HomeStudent() {
         // The /api/tutors endpoint in server.js doesn't support advanced filters yet (only basic search).
         // Focusing on PostList (Courses) for now as prioritized.
 
-        const res = await fetch(`${API_BASE}/api/tutors?page=1&limit=12${searchParam}`);
+        const res = await fetch(`${API_BASE}/api/tutors?page=1&limit=100${searchParam}&user_id=${userId || 0}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!ignore) setTutors(data.items || []);
@@ -449,6 +495,23 @@ function HomeStudent() {
     })();
     return () => { ignore = true; };
   }, [query]);
+
+  // ✅ Hanlde Toggle Favorite
+  const handleToggleFavorite = async (tutor) => {
+    // 1. Optimistic Update
+    setTutors(prev => prev.map(t => t.id === tutor.id ? { ...t, is_favorited: !t.is_favorited } : t));
+
+    // 2. Call API
+    try {
+      await fetch(`${API_BASE}/api/favorites/tutor/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, tutor_id: tutor.dbTutorId })
+      });
+    } catch (err) {
+      console.error("Fav Error", err);
+    }
+  };
 
   // Handlers for Filters
   const handleFilterChange = (key, val) => {
@@ -538,11 +601,12 @@ function HomeStudent() {
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {tutors.length > 0 ? (
-                  tutors.slice(0, 4).map((t) => (
+                  tutors.slice(0, visibleCount).map((t) => (
                     <TutorCard
                       key={t.id}
                       item={t}
                       onOpen={(i) => { setPreview(i); setPreviewType("tutor_only"); }}
+                      onToggleSave={handleToggleFavorite}
                     />
                   ))
                 ) : (
@@ -551,6 +615,18 @@ function HomeStudent() {
                   </div>
                 )}
               </div>
+
+              {/* Show More Button (Bottom) */}
+              {visibleCount < tutors.length && (
+                <div className="mt-8 text-center">
+                  <button
+                    onClick={() => setVisibleCount(prev => prev + 8)}
+                    className="px-6 py-2.5 rounded-full bg-white border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:text-indigo-600 hover:border-indigo-100 shadow-sm transition-all active:scale-95 flex items-center gap-2 mx-auto"
+                  >
+                    แสดงเพิ่มเติม <ChevronRight size={16} className="rotate-90" />
+                  </button>
+                </div>
+              )}
             </section>
           </div>
         )}
@@ -700,7 +776,7 @@ function HomeStudent() {
                   <h5 className="text-xl font-bold text-gray-900">
                     {preview.name || preview.authorId?.name} {preview.nickname ? `(${preview.nickname})` : ""}
                   </h5>
-                  {preview.username && <div className="text-sm text-gray-500 font-medium">@{preview.username}</div>}
+                  {(preview.username || preview.user?.username || preview.authorId?.username) && <div className="text-sm text-gray-500 font-medium">@{preview.username || preview.user?.username || preview.authorId?.username}</div>}
                   {/* แสดงรีวิวถ้ามี */}
                   {preview.reviews > 0 && (
                     <div className="flex items-center gap-2 mt-1">

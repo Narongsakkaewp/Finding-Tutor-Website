@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import LongdoLocationPicker from './LongdoLocationPicker';
 
@@ -20,11 +20,39 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
         target_student_level: [],
         teaching_days: "",
         teaching_time: "",
-        location: "",
         group_size: "",
         price: "",
         contact_info: ""
     });
+
+    // ✅ New State for Online/Onsite
+    const [teachingMode, setTeachingMode] = useState("onsite"); // onsite | online
+    const [platform, setPlatform] = useState("");
+    const [customPlatform, setCustomPlatform] = useState("");
+
+    const platformOptions = ["Zoom", "Google Meet", "Microsoft Teams", "Discord", "Line Call", "Other"];
+
+    // ✅ Initialize Online/Onsite state when editing
+    useEffect(() => {
+        if (initialData && initialData.location) {
+            if (initialData.location.startsWith("Online:") || initialData.location === "Online" || initialData.location === "ออนไลน์") {
+                setTeachingMode("online");
+                const parts = initialData.location.split("Online:");
+                const p = parts[1]?.trim() || "";
+                if (platformOptions.includes(p)) {
+                    setPlatform(p);
+                    setCustomPlatform("");
+                } else if (p) {
+                    setPlatform("Other");
+                    setCustomPlatform(p);
+                } else {
+                    setPlatform("Google Meet"); // Default
+                }
+            } else {
+                setTeachingMode("onsite");
+            }
+        }
+    }, [initialData]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -50,10 +78,22 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
         e.preventDefault();
         if (!tutorId) return alert("กรุณาเข้าสู่ระบบก่อนโพสต์");
 
-        const required = ["subject", "description", "teaching_days", "teaching_time", "location", "price", "contact_info"];
+        const required = ["subject", "description", "teaching_days", "teaching_time", "price", "contact_info"];
         for (const k of required) {
             if (!String(formData[k] || "").trim()) return alert(`กรุณากรอกข้อมูลให้ครบ (${k})`);
         }
+
+        // Validate Location (Online vs Onsite)
+        if (teachingMode === "onsite" && !formData.location?.trim()) {
+            return alert("กรุณาระบุสถานที่");
+        }
+        if (teachingMode === "online" && !platform) {
+            return alert("กรุณาระบุแพลตฟอร์ม");
+        }
+        if (teachingMode === "online" && platform === "Other" && !customPlatform.trim()) {
+            return alert("กรุณาระบุชื่อแพลตฟอร์ม");
+        }
+
         if (formData.target_student_level.length === 0) {
             return alert("กรุณาเลือกระดับชั้นที่สอนอย่างน้อย 1 ระดับ");
         }
@@ -73,7 +113,11 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
                 target_student_level: formData.target_student_level.join(','),
                 teaching_days: formData.teaching_days,
                 teaching_time: formData.teaching_time,
-                location: formData.location.trim(),
+                teaching_days: formData.teaching_days,
+                teaching_time: formData.teaching_time,
+                location: teachingMode === 'online'
+                    ? `Online: ${platform === 'Other' ? customPlatform : platform}`
+                    : formData.location.trim(),
                 group_size: Number(formData.group_size) || 1,
                 price: Number(formData.price),
                 contact_info: formData.contact_info.trim(),
@@ -146,14 +190,73 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
                 </div>
             </div>
 
-            {/* สถานที่ */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">สถานที่สอน</label>
-                <LongdoLocationPicker
-                    onLocationSelect={handleLocationSelect}
-                    defaultLocation={formData.location}
-                    showMap={false}
-                />
+            {/* สถานที่ (With Toggle) */}
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                <label className="block text-sm font-bold text-gray-700 mb-3">รูปแบบการสอน</label>
+                <div className="flex gap-4 mb-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="radio"
+                            name="teaching_mode"
+                            value="onsite"
+                            checked={teachingMode === "onsite"}
+                            onChange={() => setTeachingMode("onsite")}
+                            className="w-4 h-4 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="text-gray-900">สอนที่สถานที่ (On-site)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="radio"
+                            name="teaching_mode"
+                            value="online"
+                            checked={teachingMode === "online"}
+                            onChange={() => {
+                                setTeachingMode("online");
+                                if (!platform) setPlatform("Google Meet"); // Default
+                            }}
+                            className="w-4 h-4 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="text-gray-900">สอนออนไลน์ (Online)</span>
+                    </label>
+                </div>
+
+                {teachingMode === "onsite" ? (
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ปักหมุดสถานที่</label>
+                        <LongdoLocationPicker
+                            onLocationSelect={handleLocationSelect}
+                            defaultLocation={formData.location?.startsWith("Online:") ? "" : formData.location}
+                            showMap={false}
+                        />
+                    </div>
+                ) : (
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">แพลตฟอร์มที่ใช้</label>
+                            <select
+                                value={platform}
+                                onChange={(e) => setPlatform(e.target.value)}
+                                className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                            >
+                                {platformOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                            </select>
+                        </div>
+                        {platform === "Other" && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">ระบุแพลตฟอร์มอื่น ๆ</label>
+                                <input
+                                    type="text"
+                                    value={customPlatform}
+                                    onChange={(e) => setCustomPlatform(e.target.value)}
+                                    className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    placeholder="เช่น Skype"
+                                    required
+                                />
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* ราคาและจำนวนคน */}

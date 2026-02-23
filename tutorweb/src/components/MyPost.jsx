@@ -59,6 +59,7 @@ const normalizeStudentPost = (p = {}) => ({
     phone: p.phone || "",
     username: p.username || p.user?.username || "",
   },
+  cancel_requested: !!p.cancel_requested, // [NEW]
 });
 
 const normalizeTutorPost = (p = {}) => {
@@ -103,6 +104,7 @@ const normalizeTutorPost = (p = {}) => {
       phone: p.phone || "",
       username: p.username || p.user?.username || "",
     },
+    cancel_requested: !!p.cancel_requested, // [NEW]
   };
 };
 
@@ -119,15 +121,32 @@ const today = new Date().toISOString().split("T")[0];
 // --- Helper: ลิงก์สถานที่ไป Google Maps ---
 const LocationLink = ({ value }) => {
   if (!value) return <span>-</span>;
+
+  // ✅ เช็คว่าถ้าขึ้นต้นด้วยคำว่า "Online" หรือ "ออนไลน์" ให้แสดงเป็น Badge สีเขียว
+  const lowerValue = value.toLowerCase();
+  if (lowerValue.includes("online") || lowerValue.includes("ออนไลน์")) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-bold bg-green-100 text-green-800 border border-green-200">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+        </span>
+        {value}
+      </span>
+    );
+  }
+
+  // ถ้าเป็นสถานที่จริง ค่อยทำเป็นลิงก์ Google Maps
   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
   return (
     <a
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-blue-600 hover:underline hover:text-blue-800 break-words"
+      className="text-blue-600 hover:underline hover:text-blue-800 break-words font-medium flex items-center gap-1"
       title="เปิดใน Google Maps"
     >
+      <MapPin size={14} className="shrink-0" />
       {value}
     </a>
   );
@@ -239,13 +258,33 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
   const meId = user.user_id || 0;
   const tutorId = useMemo(() => pickTutorId(), []);
 
-  const [feedType, setFeedType] = useState("student");
-  const [filterLevel, setFilterLevel] = useState("all");
+  const [feedType, setFeedType] = useState(() => {
+    return localStorage.getItem("myPostFeedType") || "student";
+  });
+  const [filterLevel, setFilterLevel] = useState(() => {
+    return localStorage.getItem("myPostFilterLevel") || "all";
+  });
+
+  // Sync state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem("myPostFeedType", feedType);
+  }, [feedType]);
+
+  useEffect(() => {
+    localStorage.setItem("myPostFilterLevel", filterLevel);
+  }, [filterLevel]);
 
   const [posts, setPosts] = useState([]);
   const [expanded, setExpanded] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [reportingPost, setReportingPost] = useState(null);
+
+  // ✅ New State for Online/Onsite
+  const [teachingMode, setTeachingMode] = useState("onsite"); // onsite | online
+  const [platform, setPlatform] = useState("");
+  const [customPlatform, setCustomPlatform] = useState("");
+
+  const platformOptions = ["Zoom", "Google Meet", "Microsoft Teams", "Discord", "Line Call", "Other"];
 
   // [NEW] Edit Mode State
   const [editMode, setEditMode] = useState(false);
@@ -288,6 +327,28 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
     });
   }, [posts, filterLevel]);
 
+  // ✅ Initialize Online/Onsite state when editing
+  useEffect(() => {
+    if (expanded && formData.location) {
+      if (formData.location.startsWith("Online:") || formData.location === "Online" || formData.location === "ออนไลน์") {
+        setTeachingMode("online");
+        const parts = formData.location.split("Online:");
+        const p = parts[1]?.trim() || "";
+        if (platformOptions.includes(p)) {
+          setPlatform(p);
+          setCustomPlatform("");
+        } else if (p) {
+          setPlatform("Other");
+          setCustomPlatform(p);
+        } else {
+          setPlatform("Google Meet"); // Default
+        }
+      } else {
+        setTeachingMode("onsite");
+      }
+    }
+  }, [expanded, formData.id]); // Run only when opening modal or changing post
+
   const fetchPosts = useCallback(async () => {
     try {
       setError("");
@@ -318,6 +379,20 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
   useEffect(() => {
     fetchPosts();
   }, [fetchPosts]);
+
+  // ✅ Restore Scroll Position after posts are loaded
+  useEffect(() => {
+    if (posts.length > 0) {
+      const savedScroll = localStorage.getItem("myPostScrollPosition");
+      if (savedScroll) {
+        // Delay to ensure the DOM has painted the list of posts
+        setTimeout(() => {
+          window.scrollTo(0, parseInt(savedScroll, 10));
+          localStorage.removeItem("myPostScrollPosition");
+        }, 150);
+      }
+    }
+  }, [posts]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -354,8 +429,19 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
       const idPart = editMode ? `/${editingPostId}` : "";
 
       if (feedType === "student") {
-        const required = ["subject", "description", "preferred_days", "preferred_time", "location", "group_size", "budget", "contact_info", "grade_level"];
+        const required = ["subject", "description", "preferred_days", "preferred_time", "group_size", "budget", "contact_info", "grade_level"];
         for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
+
+        // Validate Location (Online vs Onsite)
+        if (teachingMode === "onsite" && !formData.location.trim()) {
+          return alert("กรุณาระบุสถานที่");
+        }
+        if (teachingMode === "online" && !platform) {
+          return alert("กรุณาระบุแพลตฟอร์ม");
+        }
+        if (teachingMode === "online" && platform === "Other" && !customPlatform.trim()) {
+          return alert("กรุณาระบุชื่อแพลตฟอร์ม");
+        }
 
         const payload = {
           user_id: meId,
@@ -364,7 +450,9 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
           preferred_days: formData.preferred_days,
           preferred_time: formData.preferred_time,
           grade_level: formData.grade_level,
-          location: formData.location.trim(),
+          location: teachingMode === 'online'
+            ? `Online: ${platform === 'Other' ? customPlatform : platform}`
+            : formData.location.trim(),
           group_size: Number(formData.group_size),
           budget: Number(formData.budget),
           contact_info: formData.contact_info.trim(),
@@ -377,8 +465,15 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
         if (!res.ok) throw new Error("เกิดข้อผิดพลาด");
 
       } else {
-        const required = ["subject", "description", "teaching_days", "teaching_time", "location", "price", "contact_info"];
+        const required = ["subject", "description", "teaching_days", "teaching_time", "price", "contact_info"];
         for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
+
+        // Validate Location (Online vs Onsite)
+        if (teachingMode === "onsite" && !formData.location.trim()) {
+          return alert("กรุณาระบุสถานที่");
+        }
+        if (teachingMode === "online" && !platform) return alert("กรุณาระบุแพลตฟอร์ม");
+
         if (formData.target_student_level.length === 0) {
           return alert("กรุณาเลือกระดับชั้นที่สอนอย่างน้อย 1 ระดับ");
         }
@@ -393,7 +488,10 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
           target_student_level: formData.target_student_level.join(','),
           teaching_days: formData.teaching_days,
           teaching_time: formData.teaching_time,
-          location: formData.location.trim(),
+          teaching_days: formData.teaching_days,
+          location: teachingMode === 'online'
+            ? `Online: ${platform === 'Other' ? customPlatform : platform}`
+            : formData.location.trim(),
           group_size: Number(formData.group_size) || 1,
           price: Number(formData.price),
           contact_info: formData.contact_info.trim(),
@@ -460,14 +558,24 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
 
       if (!res.ok) return alert(data?.message);
 
-      // อัปเดต state: ถ้ากดเลิก สถานะ pending_me และ joined จะเป็น false
-      const updater = (arr) => arr.map(p => {
+      // อัปเดต state
+      // อัปเดต state
+      setPosts(arr => arr.map(p => {
         if (p.id === post.id) {
-          return { ...p, joined: false, pending_me: false, join_count: Number(data.join_count ?? 0) };
+          if (data.cancel_requested) {
+            return { ...p, cancel_requested: true, joined: true }; // Keep joined=true
+          }
+          // Normal unjoin
+          return { ...p, joined: false, pending_me: false, join_count: Number(data.join_count ?? 0), cancel_requested: false };
         }
         return p;
-      });
-      setPosts(updater);
+      }));
+
+      if (data.cancel_requested) {
+        alert(data.message || "ส่งคำขอยกเลิกแล้ว รอการอนุมัติ");
+      } else {
+        alert("ยกเลิกการเข้าร่วมเรียบร้อยแล้ว");
+      }
     } catch (e) {
       console.error("handleUnjoin error:", e);
       alert(e.message);
@@ -493,9 +601,29 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
     try {
       const res = await fetch(`${API_BASE}/api/posts/tutor/${post.id}/join?user_id=${meId}`, { method: "DELETE" });
       const data = await res.json();
-      if (!res.ok) throw new Error();
-      setPosts(arr => arr.map(p => p.id === post.id ? { ...p, joined: !!data.joined, pending_me: !!data.pending_me, join_count: data.join_count ?? (p.join_count - 1) } : p));
-    } catch { alert("Error"); } finally { setJoinLoading((s) => ({ ...s, [post.id]: false })); }
+      if (!res.ok) {
+        alert(data.message || "เกิดข้อผิดพลาด");
+        return;
+      }
+      setPosts(arr => arr.map(p => {
+        if (p.id === post.id) {
+          if (data.cancel_requested) {
+            return { ...p, cancel_requested: true, joined: true }; // Keep joined=true
+          }
+          return { ...p, joined: !!data.joined, pending_me: !!data.pending_me, join_count: data.join_count ?? (p.join_count - 1), cancel_requested: false };
+        }
+        return p;
+      }));
+
+      if (data.cancel_requested) {
+        alert(data.message || "ส่งคำขอยกเลิกแล้ว รอการอนุมัติ");
+      } else {
+        alert("ยกเลิกการเข้าร่วมเรียบร้อยแล้ว");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("เกิดข้อผิดพลาดในการเชื่อมต่อ");
+    } finally { setJoinLoading((s) => ({ ...s, [post.id]: false })); }
   };
 
   const toggleFavorite = async (post) => {
@@ -771,14 +899,73 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                         </select>
                       </div>
 
-                      {/* สถานที่ */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">สถานที่เรียน</label>
-                        <LongdoLocationPicker
-                          onLocationSelect={handleLocationSelect}
-                          defaultLocation={formData.location}
-                          showMap={false}
-                        />
+                      {/* สถานที่ (With Toggle) */}
+                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <label className="block text-sm font-bold text-gray-700 mb-3">รูปแบบการเรียน</label>
+                        <div className="flex gap-4 mb-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="teaching_mode"
+                              value="onsite"
+                              checked={teachingMode === "onsite"}
+                              onChange={() => setTeachingMode("onsite")}
+                              className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-gray-900">เรียนที่สถานที่ (On-site)</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="teaching_mode"
+                              value="online"
+                              checked={teachingMode === "online"}
+                              onChange={() => {
+                                setTeachingMode("online");
+                                if (!platform) setPlatform("Google Meet"); // Default
+                              }}
+                              className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-gray-900">เรียนออนไลน์ (Online)</span>
+                          </label>
+                        </div>
+
+                        {teachingMode === "onsite" ? (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">ปักหมุดสถานที่</label>
+                            <LongdoLocationPicker
+                              onLocationSelect={handleLocationSelect}
+                              defaultLocation={formData.location?.startsWith("Online:") ? "" : formData.location}
+                              showMap={false}
+                            />
+                          </div>
+                        ) : (
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">แพลตฟอร์มที่ใช้</label>
+                              <select
+                                value={platform}
+                                onChange={(e) => setPlatform(e.target.value)}
+                                className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                              >
+                                {platformOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                            </div>
+                            {platform === "Other" && (
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">ระบุแพลตฟอร์มอื่น ๆ</label>
+                                <input
+                                  type="text"
+                                  value={customPlatform}
+                                  onChange={(e) => setCustomPlatform(e.target.value)}
+                                  className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none"
+                                  placeholder="เช่น Skype"
+                                  required
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* จำนวนคนและงบประมาณ */}
@@ -839,13 +1026,72 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                       </div>
 
                       <div className="grid md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">สถานที่สอน</label>
-                          <LongdoLocationPicker
-                            onLocationSelect={handleLocationSelect}
-                            defaultLocation={formData.location}
-                            showMap={false}
-                          />
+                        <div className="md:col-span-2 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                          <label className="block text-sm font-bold text-gray-700 mb-3">รูปแบบการสอน</label>
+                          <div className="flex gap-4 mb-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name="tutor_teaching_mode"
+                                value="onsite"
+                                checked={teachingMode === "onsite"}
+                                onChange={() => setTeachingMode("onsite")}
+                                className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-gray-900">สอนที่สถานที่ (On-site)</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name="tutor_teaching_mode"
+                                value="online"
+                                checked={teachingMode === "online"}
+                                onChange={() => {
+                                  setTeachingMode("online");
+                                  if (!platform) setPlatform("Google Meet");
+                                }}
+                                className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-gray-900">สอนออนไลน์ (Online)</span>
+                            </label>
+                          </div>
+
+                          {teachingMode === "onsite" ? (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">ปักหมุดสถานที่</label>
+                              <LongdoLocationPicker
+                                onLocationSelect={handleLocationSelect}
+                                defaultLocation={formData.location?.startsWith("Online:") ? "" : formData.location}
+                                showMap={false}
+                              />
+                            </div>
+                          ) : (
+                            <div className="grid md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">แพลตฟอร์มที่ใช้</label>
+                                <select
+                                  value={platform}
+                                  onChange={(e) => setPlatform(e.target.value)}
+                                  className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                >
+                                  {platformOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                              </div>
+                              {platform === "Other" && (
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">ระบุแพลตฟอร์มอื่น ๆ</label>
+                                  <input
+                                    type="text"
+                                    value={customPlatform}
+                                    onChange={(e) => setCustomPlatform(e.target.value)}
+                                    className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="เช่น Skype"
+                                    required
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <div>
@@ -1012,6 +1258,14 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                         <span className="font-bold shrink-0">✉️ ข้อมูลติดต่อ: </span>
                         <ContactLink value={post.contact_info} />
                       </p>
+
+                      {/* แสดงชื่อติวเตอร์ที่สอน (ถ้ามี) */}
+                      {post.tutor && (
+                        <p className="md:col-span-2 flex items-start gap-1 mt-1 p-2 bg-blue-50 border border-blue-100 rounded-lg">
+                          <span className="font-bold text-blue-800 shrink-0">👨‍🏫 ติวเตอร์ที่สอน: </span>
+                          <span className="text-blue-900 font-semibold">{post.tutor.name} {post.tutor.lastname}</span>
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="text-sm text-gray-600 grid md:grid-cols-2 gap-y-1">
@@ -1043,13 +1297,14 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                       className="text-sm text-gray-600 cursor-pointer hover:text-blue-600"
                       onClick={() => {
                         if (onOpenDetails) {
-                          onOpenDetails(post.id, 'mypost', 'student');
+                          localStorage.setItem("myPostScrollPosition", window.scrollY);
+                          onOpenDetails(post.id, 'mypost', post.post_type);
                         }
                       }}
                     >
                       เข้าร่วมแล้ว :{" "}
                       <b className="underline">
-                        {(post.join_count || 0) + 1} / {post.group_size}
+                        {post.post_type === "tutor" ? (post.join_count || 0) : (post.join_count || 0) + 1} / {post.group_size}
                       </b>{" "}
                       คน
                     </div>
@@ -1071,11 +1326,11 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                           (post.joined || post.pending_me) ? (
                             // 1. ถ้าเคยกดไปแล้ว (ไม่ว่า Joined หรือ Pending) ให้แสดงปุ่มยกเลิก
                             <button
-                              disabled={busy}
+                              disabled={busy || post.cancel_requested}
                               onClick={() => handleUnjoin(post)}
-                              className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50"
+                              className={`px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50 ${post.cancel_requested ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
                             >
-                              {busy ? "..." : (isTutor ? "ยกเลิกข้อเสนอ" : "ยกเลิกคำขอ")}
+                              {post.cancel_requested ? "รออนุมัติยกเลิก" : (busy ? "..." : (isTutor ? "ยกเลิกข้อเสนอ" : (post.joined ? "ยกเลิกการเข้าร่วม" : "ยกเลิกคำขอ")))}
                             </button>
                           ) : (
                             // 2. ถ้ายังไม่เคยกด
@@ -1104,8 +1359,8 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                         ) : isTutor ? (
                           <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">สำหรับนักเรียน</span>
                         ) : (post.joined || post.pending_me) ? (
-                          <button disabled={busy} onClick={() => handleUnjoinTutor(post)} className="px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50">
-                            {busy ? "..." : "เลิกร่วม"}
+                          <button disabled={busy || post.cancel_requested} onClick={() => handleUnjoinTutor(post)} className={`px-4 py-2 rounded-xl border text-gray-700 hover:bg-gray-50 ${post.cancel_requested ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}>
+                            {post.cancel_requested ? "รออนุมัติยกเลิก" : (busy ? "..." : (post.joined ? "ยกเลิกการเข้าร่วม" : "ยกเลิกคำขอ"))}
                           </button>
                         ) : (
                           <button

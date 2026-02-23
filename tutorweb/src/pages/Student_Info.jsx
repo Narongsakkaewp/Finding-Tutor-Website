@@ -5,6 +5,8 @@ import {
   Camera, Save, X, ChevronLeft
 } from 'lucide-react';
 import UniversityPicker from '../components/UniversityPicker'; // ✅ Import
+import ImageCropper from '../components/ImageCropper';
+
 
 // Helper function
 const getCurrentUser = () => {
@@ -33,6 +35,8 @@ export default function StudentInfoPage({ setCurrentPage }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [cropImageSrc, setCropImageSrc] = useState(null);
+
 
   useEffect(() => {
     if (!currentUser?.user_id) {
@@ -71,13 +75,27 @@ export default function StudentInfoPage({ setCurrentPage }) {
   };
 
   const handleImageChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setImageFile(file);
-      const previewUrl = URL.createObjectURL(file);
-      setFormData(prev => ({ ...prev, profile_picture_url: previewUrl }));
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.addEventListener('load', () => {
+        setCropImageSrc(reader.result);
+      });
+      reader.readAsDataURL(file);
+      e.target.value = '';
     }
   };
+
+  const onCropComplete = (croppedBlob) => {
+    setImageFile(croppedBlob);
+    setFormData(prev => ({ ...prev, profile_picture_url: URL.createObjectURL(croppedBlob) }));
+    setCropImageSrc(null);
+  };
+
+  const onCropCancel = () => {
+    setCropImageSrc(null);
+  };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -163,6 +181,16 @@ export default function StudentInfoPage({ setCurrentPage }) {
             <ChevronLeft size={20} /> <span className="ml-1 font-medium">ย้อนกลับ</span>
           </button>
         </div>
+
+        {/* Cropper Modal */}
+        {cropImageSrc && (
+          <ImageCropper
+            imageSrc={cropImageSrc}
+            onCropComplete={onCropComplete}
+            onCancel={onCropCancel}
+          />
+        )}
+
 
         <form onSubmit={handleSubmit} className="space-y-8">
 

@@ -64,6 +64,8 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
     const isReminder = notiType.startsWith('schedule_');
     const roleMap = { owner: 'student', joiner: 'tutor' }; // Default assumption (Student Post)
 
+    const dateStr = targetDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+
     // --- A. Student Posts (Student requests Tutor, Join Approved) ---
     // Owner = Student, Joiner = Tutor (usually, unless study buddy)
     const [studentPosts] = await conn.query(`
@@ -90,7 +92,8 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
             if (isReminder) {
                 const commonDetails = {
                     courseName: post.subject,
-                    time: post.preferred_time
+                    time: post.preferred_time,
+                    date: dateStr
                 };
 
                 // Send to Owner (Student)
@@ -139,7 +142,8 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
             if (isReminder) {
                 const commonDetails = {
                     courseName: post.subject,
-                    time: post.teaching_time
+                    time: post.teaching_time,
+                    date: dateStr
                 };
 
                 // Send to Owner (Tutor)
@@ -189,7 +193,8 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
             if (isReminder) {
                 const commonDetails = {
                     courseName: post.subject,
-                    time: post.preferred_time
+                    time: post.preferred_time,
+                    date: dateStr
                 };
 
                 // Send to Owner (Student)

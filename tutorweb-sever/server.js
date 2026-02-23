@@ -483,8 +483,10 @@ app.get('/api/tutors', async (req, res) => {
 
     const searchQuery = (req.query.search || '').trim();
 
+    const userId = Number(req.query.user_id) || 0;
+
     let whereClause = `WHERE LOWER(r.type) IN ('tutor','teacher')`;
-    const params = [];
+    const params = [userId]; // Init with userId for LEFT JOIN param
 
     if (searchQuery) {
       const searchTerms = expandSearchTerm(searchQuery);
@@ -552,9 +554,12 @@ app.get('/api/tutors', async (req, res) => {
           tp.teaching_experience,
           -- เพิ่ม review stats
           COALESCE(rv.avg_rating, 0) AS avg_rating,
-          COALESCE(rv.review_count, 0) AS review_count
+          COALESCE(rv.review_count, 0) AS review_count,
+          -- เพิ่ม favorite stats
+          CASE WHEN tf.tutor_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorited
        FROM register r
        LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+       LEFT JOIN tutor_favorites tf ON r.user_id = tf.tutor_id AND tf.user_id = ?
        LEFT JOIN (
           SELECT tutor_id, AVG(rating) as avg_rating, COUNT(*) as review_count
           FROM reviews
@@ -597,6 +602,7 @@ app.get('/api/tutors', async (req, res) => {
         teaching_experience: (() => { try { return JSON.parse(r.teaching_experience) || []; } catch { return []; } })(),
         rating: Number(r.avg_rating || 0),
         reviews: Number(r.review_count || 0),
+        is_favorited: !!r.is_favorited
       };
     });
 
@@ -757,6 +763,7 @@ app.get('/api/tutor-posts', async (req, res) => {
         COALESCE(jc.c,0) AS join_count,
         CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined,
         CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me,
+        CASE WHEN jme_cancel.user_id IS NULL THEN 0 ELSE 1 END AS cancel_requested,
         -- Reviews
         COALESCE(rv.avg_rating, 0) AS avg_rating,
         COALESCE(rv.review_count, 0) AS review_count
@@ -786,11 +793,14 @@ app.get('/api/tutor-posts', async (req, res) => {
         ON jme.tutor_post_id = tp.tutor_post_id AND jme.user_id = ? AND jme.status='approved'
       LEFT JOIN tutor_post_joins jme_pending
         ON jme_pending.tutor_post_id = tp.tutor_post_id AND jme_pending.user_id = ? AND jme_pending.status='pending'
+      -- [FIX] Check cancellation request
+      LEFT JOIN tutor_post_joins jme_cancel
+        ON jme_cancel.tutor_post_id = tp.tutor_post_id AND jme_cancel.user_id = ? AND jme_cancel.cancel_requested = 1
       ${whereSql}
       ${orderBy}
       LIMIT ${limit} OFFSET ${offset}
       `,
-      [me, me, me, ...params]
+      [me, me, me, me, ...params]
     );
 
     const [[{ total }]] = await pool.query(
@@ -866,6 +876,7 @@ app.get('/api/tutor-posts', async (req, res) => {
           join_count: Number(r.join_count || 0),
           joined: !!r.joined,
           pending_me: !!r.pending_me,
+          cancel_requested: !!r.cancel_requested, // [NEW] send to frontend
           rating: Number(r.avg_rating || 0),
           reviews: Number(r.review_count || 0),
           images: []
@@ -1099,8 +1110,8 @@ app.get('/api/student_posts', async (req, res) => {
     // 1. สร้างเงื่อนไขการค้นหา (Smart Search)
     // ✅ Add Soft Delete Filter
     let searchClause = 'WHERE sp.is_active = 1';
-    // params: [join_me, pending_me, fav_me, offer_me (approved), offer_me (pending)]
-    const queryParams = [me, me, me, me, me];
+    // params: [join_me, pending_me, cancel_me, fav_me, offer_me (approved), offer_me (pending)]
+    const queryParams = [me, me, me, me, me, me];
 
     // Filter by student_id (owner)
     const ownerId = Number(req.query.student_id);
@@ -1155,16 +1166,17 @@ app.get('/api/student_posts', async (req, res) => {
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
         sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
         sp.grade_level,  /* ✅ เพิ่ม: ดึงระดับชั้นออกมาด้วย */
-        sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
-        sp.grade_level,  /* ✅ เพิ่ม: ดึงระดับชั้นออกมาด้วย */
         r.name, r.lastname, r.email, r.username, r.type,
         spro.profile_picture_url, spro.phone,
         COALESCE(jc.join_count, 0) AS join_count,
         CASE WHEN (jme.user_id IS NOT NULL OR ome.tutor_id IS NOT NULL) THEN 1 ELSE 0 END AS joined,
         CASE WHEN (jme_pending.user_id IS NOT NULL OR ome_pending.tutor_id IS NOT NULL) THEN 1 ELSE 0 END AS pending_me,
+        CASE WHEN jme_cancel.user_id IS NOT NULL THEN 1 ELSE 0 END AS cancel_requested,
         COALESCE(fvc.c,0) AS fav_count,
         CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited,
-        CASE WHEN has_tutor.cnt > 0 THEN 1 ELSE 0 END AS has_approved_tutor
+        CASE WHEN has_tutor.cnt > 0 THEN 1 ELSE 0 END AS has_approved_tutor,
+        approved_tutor_info.name AS approved_tutor_name,
+        approved_tutor_info.lastname AS approved_tutor_lastname
       FROM student_posts sp
       LEFT JOIN register r ON r.user_id = sp.student_id
       LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
@@ -1178,6 +1190,10 @@ app.get('/api/student_posts', async (req, res) => {
         ON jme.student_post_id = sp.student_post_id AND jme.user_id = ? AND jme.status='approved'
       LEFT JOIN student_post_joins jme_pending
         ON jme_pending.student_post_id = sp.student_post_id AND jme_pending.user_id = ? AND jme_pending.status='pending'
+      
+      -- [FIX] Check for cancellation request
+      LEFT JOIN student_post_joins jme_cancel
+        ON jme_cancel.student_post_id = sp.student_post_id AND jme_cancel.user_id = ? AND jme_cancel.cancel_requested = 1
       LEFT JOIN (
         SELECT post_id, COUNT(*) AS c
         FROM posts_favorites
@@ -1200,6 +1216,16 @@ app.get('/api/student_posts', async (req, res) => {
         WHERE status='approved'
         GROUP BY student_post_id
       ) has_tutor ON has_tutor.student_post_id = sp.student_post_id
+      
+      -- [NEW] Get the approved tutor's details (picking the first one if multiple, though usually 1)
+      LEFT JOIN (
+        SELECT o.student_post_id, t_reg.name, t_reg.lastname
+        FROM student_post_offers o
+        JOIN register t_reg ON o.tutor_id = t_reg.user_id
+        WHERE o.status = 'approved'
+        -- Use GROUP BY to ensure we only get one row per post in case of edge cases
+        GROUP BY o.student_post_id
+      ) approved_tutor_info ON approved_tutor_info.student_post_id = sp.student_post_id
       
       ${searchClause} /* ✅ ใส่เงื่อนไขค้นหาตรงนี้ */
       
@@ -1225,7 +1251,12 @@ app.get('/api/student_posts', async (req, res) => {
       pending_me: !!r.pending_me,
       fav_count: Number(r.fav_count || 0),
       favorited: !!r.favorited,
+      cancel_requested: !!r.cancel_requested, // [NEW]
       has_tutor: !!r.has_approved_tutor, // ✅ Send status to frontend
+      tutor: r.has_approved_tutor && r.approved_tutor_name ? {
+        name: r.approved_tutor_name,
+        lastname: r.approved_tutor_lastname
+      } : null,
       user: {
         first_name: r.name || '',
         last_name: r.lastname || '',
@@ -1366,6 +1397,7 @@ const JOIN_CONFIG = {
     notifyType: 'join_request',
     notifyMessage: id => `มีคำขอเข้าร่วมโพสต์ #${id}`,
     countApprovedOnly: true,
+    dateCol: 'preferred_days' // [NEW] for cancellation check
   },
   tutor: {
     postsTable: 'tutor_posts',
@@ -1378,6 +1410,7 @@ const JOIN_CONFIG = {
     notifyType: 'tutor_join_request',
     notifyMessage: id => `มีคำขอเข้าร่วมโพสต์ติวเตอร์ #${id}`,
     countApprovedOnly: true,
+    dateCol: 'teaching_days' // [NEW] for cancellation check
   },
 };
 
@@ -1431,7 +1464,7 @@ async function doJoinUnified(type, postId, me) {
       }
     }
 
-    // ✅ insert/update เป็น pending (เหมือนเดิม แต่ใช้ conn)
+    // ✅ insert/update เป็น pending (แก้ปัญหา ambiguous column name)
     if (cfg.joinsTable === 'tutor_post_joins') {
       await conn.query(
         `INSERT INTO tutor_post_joins
@@ -1440,7 +1473,7 @@ async function doJoinUnified(type, postId, me) {
          FROM register r
          WHERE r.user_id = ?
          ON DUPLICATE KEY UPDATE
-           status = IF(VALUES(status)='pending' AND status <> 'approved', 'pending', status),
+           status = IF(tutor_post_joins.status='pending' AND tutor_post_joins.status <> 'approved', 'pending', tutor_post_joins.status),
            requested_at = VALUES(requested_at),
            name = VALUES(name),
            lastname = VALUES(lastname)
@@ -1456,7 +1489,7 @@ async function doJoinUnified(type, postId, me) {
          FROM register r
          WHERE r.user_id = ?
          ON DUPLICATE KEY UPDATE
-           status = IF(VALUES(status)='pending' AND status <> 'approved', 'pending', status),
+           status = IF(student_post_joins.status='pending' AND student_post_joins.status <> 'approved', 'pending', student_post_joins.status),
            requested_at = VALUES(requested_at),
            name = VALUES(name),
            lastname = VALUES(lastname)
@@ -1501,21 +1534,118 @@ async function doJoinUnified(type, postId, me) {
   }
 }
 
+// Helper for cancellation check
+function parseDateForCancel(dStr) {
+  if (!dStr) return null;
+  // YYYY-MM-DD
+  const ymd = dStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymd) return new Date(ymd[1], ymd[2] - 1, ymd[3]);
+
+  // Thai format: DD Month YYYY
+  const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+  const parts = dStr.split(" ");
+  if (parts.length >= 3) {
+    const day = parseInt(parts[0]);
+    const monthIdx = thaiMonths.indexOf(parts[1]);
+    let year = parseInt(parts[2]);
+    if (year > 2400) year -= 543;
+    if (monthIdx !== -1 && !isNaN(day) && !isNaN(year)) {
+      return new Date(year, monthIdx, day);
+    }
+  }
+  return null;
+}
+
 async function doUnjoinUnified(type, postId, me) {
   const cfg = JOIN_CONFIG[type];
   if (!cfg) throw new Error('invalid post type');
 
-  await pool.query(
+  console.log(`[doUnjoinUnified] Start: Type=${type}, Post=${postId}, User=${me}`);
+
+  // Fetch Post Data (Date & Owner)
+  let postData = null;
+  if (cfg.dateCol) {
+    // Select date AND owner in one go
+    const [[pd]] = await pool.query(
+      `SELECT ${cfg.dateCol} AS dateStr, ${cfg.ownerCol} AS ownerId FROM ${cfg.postsTable} WHERE ${cfg.postIdCol} = ?`,
+      [postId]
+    );
+    postData = pd;
+
+    if (postData && postData.dateStr) {
+      const sessionDate = parseDateForCancel(postData.dateStr);
+      if (sessionDate) {
+        sessionDate.setHours(0, 0, 0, 0);
+        const now = new Date();
+        const diffMs = sessionDate - now;
+        const diffHours = diffMs / (1000 * 60 * 60);
+
+        const isOwnerHere = (Number(me) === Number(postData.ownerId));
+        console.log(`[doUnjoinUnified] TimeCheck: Diff=${diffHours}h, IsOwner=${isOwnerHere}`);
+
+        // [CHANGED] Rule: Must be > 48 hours (2 days) to cancel.
+        if (!isOwnerHere && diffHours < 48) {
+          console.warn(`[doUnjoinUnified] Blocked by 48h rule (Diff=${diffHours}h)`);
+          return {
+            http: 400,
+            body: { success: false, message: 'ไม่สามารถยกเลิกได้ เนื่องจากต้องยกเลิกล่วงหน้าอย่างน้อย 2 วัน (48 ชม.) ก่อนวันเรียน' }
+          };
+        }
+      }
+    }
+  }
+
+  // Ensure we have ownerId if not fetched yet
+  if (!postData) {
+    const [[p]] = await pool.query(`SELECT ${cfg.ownerCol} AS ownerId FROM ${cfg.postsTable} WHERE ${cfg.postIdCol} = ?`, [postId]);
+    postData = p;
+  }
+
+  if (!postData) throw new Error('Post not found');
+
+  const isOwner = (Number(me) === Number(postData.ownerId));
+  console.log(`[doUnjoinUnified] Owner Check: Me=${me}, Owner=${postData.ownerId} => IsOwner=${isOwner}`);
+
+  // 2. ACTION: DELETE (Immediate Cancellation)
+  // Both Owner (kicking) and Member (leaving) now result in DELETE.
+
+  console.log(`[doUnjoinUnified] Executing DELETE for user ${me} from post ${postId}`);
+  const [delRes] = await pool.query(
     `DELETE FROM ${cfg.joinsTable} WHERE ${cfg.joinPostIdCol} = ? AND user_id = ?`,
     [postId, me]
   );
-  await deleteCalendarEventForUser(me, postId);
 
-  let countSql = `SELECT COUNT(*) AS c FROM ${cfg.joinsTable} WHERE ${cfg.joinPostIdCol} = ?`;
-  if (cfg.countApprovedOnly) countSql += ` AND status='approved'`;
-  const [[cntRow]] = await pool.query(countSql, [postId]);
+  // Also remove from calendar if present
+  await pool.query('DELETE FROM calendar_events WHERE post_id = ? AND user_id = ?', [postId, me]);
 
-  return { http: 200, body: { success: true, joined: false, pending_me: false, join_count: Number(cntRow.c || 0) } };
+  // Notify Owner if Member left (and Member acting effectively)
+  if (!isOwner && postData.ownerId && delRes.affectedRows > 0) {
+    const [[actor]] = await pool.query('SELECT name, lastname FROM register WHERE user_id = ?', [me]);
+    const ActorName = actor ? `${actor.name} ${actor.lastname}` : 'ผู้ใช้งาน';
+
+    // Fetch Subject
+    const [[pSub]] = await pool.query(`SELECT subject FROM ${cfg.postsTable} WHERE ${cfg.postIdCol} = ?`, [postId]);
+    const subject = pSub?.subject || `#${postId}`;
+
+    const msg = `ผู้เรียน ${ActorName} ได้ยกเลิกการเข้าร่วม (โพสต์: ${subject})`;
+
+    await pool.query(
+      'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
+      [postData.ownerId, me, 'cancel_alert', msg, postId]
+    );
+    console.log(`[doUnjoinUnified] Notification sent to Owner=${postData.ownerId}`);
+  }
+
+  // Common response
+  return {
+    http: 200,
+    body: {
+      success: true,
+      message: isOwner ? 'ลบสมาชิกเรียบร้อยแล้ว' : 'ยกเลิกการเข้าร่วมเรียบร้อยแล้ว',
+      joined: false,
+      post_id: postId
+    }
+  };
 }
 
 // ---------- Unified Join/Unjoin ----------
@@ -1552,6 +1682,60 @@ app.delete('/api/posts/:type/:id/join', async (req, res) => {
     return sendDbError(res, err);
   }
 });
+
+// [NEW] Owner Approve/Reject Cancellation
+app.post('/api/posts/:type/:id/cancel-action', async (req, res) => {
+  const type = String(req.params.type || '').toLowerCase();
+  if (!JOIN_CONFIG[type]) return res.status(400).json({ success: false, message: 'invalid post type' });
+
+  const postId = Number(req.params.id);
+  const { user_id, action, owner_id } = req.body; // user_id = Member requesting cancel, owner_id = Me (Owner)
+
+  if (!['approve', 'reject'].includes(action)) return res.status(400).json({ message: 'invalid action' });
+
+  const cfg = JOIN_CONFIG[type];
+  const conn = await pool.getConnection();
+  try {
+    // Verify Owner
+    const [[post]] = await conn.query(`SELECT ${cfg.ownerCol} AS owner_id FROM ${cfg.postsTable} WHERE ${cfg.postIdCol} = ?`, [postId]);
+    if (!post || Number(post.owner_id) !== Number(owner_id)) {
+      return res.status(403).json({ message: 'Not authorized (Not owner)' });
+    }
+
+    if (action === 'approve') {
+      // Delete member
+      await conn.query(`DELETE FROM ${cfg.joinsTable} WHERE ${cfg.joinPostIdCol} = ? AND user_id = ?`, [postId, user_id]);
+
+      // Notify Member
+      await conn.query(
+        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
+        [user_id, owner_id, 'system', `คำขอยกเลิกการเข้าร่วมโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId]
+      );
+
+      // Remove Calendar
+      await deleteCalendarEventForUser(user_id, postId);
+
+    } else {
+      // Reject -> Reset cancel_requested = 0
+      await conn.query(`UPDATE ${cfg.joinsTable} SET cancel_requested = 0 WHERE ${cfg.joinPostIdCol} = ? AND user_id = ?`, [postId, user_id]);
+
+      // Notify Member
+      await conn.query(
+        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
+        [user_id, owner_id, 'system', `คำขอยกเลิกการเข้าร่วมโพสต์ #${postId} ถูกปฏิเสธ`, postId]
+      );
+    }
+
+    res.json({ success: true, action });
+
+  } catch (e) {
+    console.error("Cancel Action Error", e);
+    res.status(500).json({ message: 'Server error' });
+  } finally {
+    conn.release();
+  }
+});
+
 
 // ---------- Alias สำหรับ tutor ----------
 // JOIN (snake-case)
@@ -1971,8 +2155,8 @@ app.get('/api/calendar/:userId', async (req, res) => {
     // รับช่วงเวลา
     let { start, end } = req.query;
     const today = localDateStr();
-    if (!start) { const d = new Date(); d.setDate(d.getDate() - 30); start = localDateStr(d); }
-    if (!end) { const d = new Date(); d.setDate(d.getDate() + 30); end = localDateStr(d); }
+    if (!start) { const d = new Date(); d.setDate(d.getDate() - 365); start = localDateStr(d); }
+    if (!end) { const d = new Date(); d.setDate(d.getDate() + 365); end = localDateStr(d); }
 
     // 1) ดึงอีเวนต์นัดหมาย (Calendar Events)
     // ใช้ uniqueCalMap เพื่อกรองเฉพาะ event ที่ id ซ้ำกันเองในตาราง (ป้องกัน error DB)
@@ -2379,7 +2563,7 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
         await pool.query(
           `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
            VALUES (?,?,?,?,?)`,
-          [userId, tutorId, 'join_approved', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ได้รับการอนุมัติแล้ว`, postId]
+          [userId, tutorId, 'tutor_join_approved', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ได้รับการอนุมัติแล้ว`, postId]
         );
         console.log("✅ Notification inserted successfully");
       } catch (notifErr) {
@@ -2387,6 +2571,15 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
       }
     } else {
       await deleteCalendarEventForUser(userId, postId);
+      try {
+        await pool.query(
+          `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
+           VALUES (?,?,?,?,?)`,
+          [userId, tutorId, 'tutor_join_rejected', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ถูกปฏิเสธ`, postId]
+        );
+      } catch (notifErr) {
+        console.error("❌ Notification Insert Error (Reject):", notifErr);
+      }
     }
 
     // ส่งรายชื่อผู้เข้าร่วม (approved) กลับไปด้วย
@@ -2446,7 +2639,7 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         -- ข้อมูลวิชา (Subject) จากโพสต์ที่เกี่ยวข้อง
         CASE
             WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'review_request', 'system_alert') THEN COALESCE(sp.subject, tp.subject)
-            WHEN n.type IN ('tutor_join_request') THEN tp.subject
+            WHEN n.type IN ('tutor_join_request', 'tutor_join_approved', 'tutor_join_rejected') THEN tp.subject
             WHEN n.type LIKE 'schedule_%' THEN COALESCE(sp.subject, tp.subject)
             ELSE NULL
         END AS post_subject
@@ -3502,7 +3695,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
           SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
           FROM register r WHERE r.user_id = ?
           ON DUPLICATE KEY UPDATE
-            status = IF(status = 'approved', status, 'pending'),
+            status = IF(student_post_offers.status = 'approved', student_post_offers.status, 'pending'),
             requested_at = NOW()
          `,
         [postId, me, me]
@@ -3521,7 +3714,7 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
           SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
           FROM register r WHERE r.user_id = ?
           ON DUPLICATE KEY UPDATE
-            status = IF(status = 'approved', status, 'pending'),
+            status = IF(student_post_joins.status = 'approved', student_post_joins.status, 'pending'),
             requested_at = NOW()
          `,
         [postId, me, me]
@@ -3552,57 +3745,19 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
 app.delete('/api/student_posts/:id/join', async (req, res) => {
   try {
     const postId = Number(req.params.id);
-    const me = Number(req.query.user_id || req.body?.user_id); // รับค่าให้ครบ
+    const me = Number(req.query.user_id || req.body?.user_id);
 
     if (!Number.isFinite(postId) || !Number.isFinite(me)) {
       return res.status(400).json({ success: false, message: 'Invalid IDs' });
     }
 
-    const conn = await pool.getConnection();
-    try {
-      // 1. ลบออกจากตาราง Joins (สำหรับนักเรียน) และ Offers (สำหรับติวเตอร์)
-      console.log(`🗑️ Unjoining: Post=${postId}, User=${me}`);
-
-      const [resJoin] = await conn.query(
-        'DELETE FROM student_post_joins WHERE student_post_id = ? AND user_id = ?',
-        [postId, me]
-      );
-
-      const [resOffer] = await conn.query(
-        'DELETE FROM student_post_offers WHERE student_post_id = ? AND tutor_id = ?',
-        [postId, me]
-      );
-
-      console.log("✅ Delete Result (Joins):", resJoin);
-      console.log("✅ Delete Result (Offers):", resOffer);
-
-      // 2. ลบออกจากปฏิทินด้วย (ถ้ามี)
-      await conn.query(
-        'DELETE FROM calendar_events WHERE post_id = ? AND user_id = ?',
-        [postId, me]
-      );
-
-      // 3. ส่งข้อมูลจำนวนคนล่าสุดกลับไป
-      const [[cnt]] = await conn.query(
-        'SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status="approved"',
-        [postId]
-      );
-
-      conn.release();
-      return res.json({
-        success: true,
-        message: 'Unjoined successfully',
-        join_count: Number(cnt?.c || 0)
-      });
-
-    } catch (dbErr) {
-      conn.release();
-      throw dbErr;
-    }
+    // Use Unified Logic
+    const out = await doUnjoinUnified('student', postId, me);
+    return res.status(out.http).json(out.body);
 
   } catch (err) {
-    console.error("❌ UNJOIN ERROR:", err);
-    return res.status(500).json({ success: false, message: 'Server error during unjoin' });
+    console.error("❌ /api/student_posts/:id/join error:", err);
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
 });
 
@@ -3636,32 +3791,53 @@ app.delete('/api/search/history', async (req, res) => {
   }
 });
 
-// ✅ API: แนะนำคอร์สเรียน (Based on Search History)
+// API: แนะนำคอร์สเรียน (Based on Search History & Relevance Score)
 app.get('/api/recommendations/courses', async (req, res) => {
   try {
     const userId = Number(req.query.user_id) || 0;
 
-    // 1. ดึงคำค้นหาล่าสุด 3 รายการของผู้ใช้
+    // 1. ดึงประวัติค้นหาล่าสุด 3 รายการของผู้ใช้
     const [history] = await pool.query(
       'SELECT DISTINCT keyword FROM search_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 3',
       [userId]
     );
 
     let rows = [];
+    let basedOnKeywords = []; // เก็บคำที่ใช้แนะนำส่งไปให้ Frontend
 
-    // 2. ถ้ามีประวัติค้นหา -> หาโพสต์ที่ตรงกับ Keyword
+    // 2. ถ้ามีประวัติค้นหา
     if (history.length > 0) {
-      const keywords = history.map(h => h.keyword);
+      const rawKeywords = history.map(h => h.keyword);
+      basedOnKeywords = rawKeywords;
 
-      // สร้าง Query แบบ Dynamic OR (subject LIKE %k1% OR subject LIKE %k2% ...)
-      const likeConditions = keywords.map(() => 'tp.subject LIKE ? OR tp.description LIKE ?').join(' OR ');
-      const params = [];
-      keywords.forEach(k => params.push(`%${k}%`, `%${k}%`));
+      // ขยายคำค้นหาผ่าน Keyword Map
+      let allKeywords = [];
+      rawKeywords.forEach(kw => {
+        allKeywords = allKeywords.concat(expandSearchTerm(kw));
+      });
+      allKeywords = [...new Set(allKeywords)]; // ลบคำซ้ำ
 
-      // เพิ่ม user_id เข้าไปใน params สำหรับเช็ค Favorites/Joins
-      const sqlParams = [userId, userId, userId, ...params];
+      // สร้างเงื่อนไข LIKE
+      const likeParams = [];
+      const likeConditions = allKeywords.map(k => {
+        likeParams.push(`%${k}%`, `%${k}%`);
+        return `(tp.subject LIKE ? OR tp.description LIKE ?)`;
+      }).join(' OR ');
 
-      const [results] = await pool.query(`
+      // สร้าง Relevance Score: ให้คะแนนโพสต์ที่ชื่อวิชา (subject) ตรงกับคำค้นหาล่าสุดมากที่สุด ให้คะแนนเยอะสุด (ขึ้นก่อน)
+      const primaryKw = rawKeywords[0].replace(/'/g, "''"); // คำค้นหาล่าสุดอันดับ 1
+      const orderClause = `
+        (CASE 
+          WHEN tp.subject LIKE '%${primaryKw}%' THEN 100 
+          WHEN tp.description LIKE '%${primaryKw}%' THEN 50
+          ELSE 0 
+        END) DESC, tp.created_at DESC
+      `;
+
+      // ใส่ param สำหรับ LEFT JOIN (userId 3 ตัว) ตามด้วย param ของเงื่อนไขค้นหา
+      const sqlParams = [userId, userId, userId, ...likeParams];
+
+      const sql = `
         SELECT 
           tp.*, 
           r.name, r.lastname, tpro.profile_picture_url,
@@ -3674,15 +3850,19 @@ app.get('/api/recommendations/courses', async (req, res) => {
         LEFT JOIN posts_favorites fme ON fme.post_id = tp.tutor_post_id AND fme.post_type='tutor' AND fme.user_id = ?
         LEFT JOIN tutor_post_joins jme ON jme.tutor_post_id = tp.tutor_post_id AND jme.user_id = ? AND jme.status='approved'
         LEFT JOIN tutor_post_joins jme_pending ON jme_pending.tutor_post_id = tp.tutor_post_id AND jme_pending.user_id = ? AND jme_pending.status='pending'
-        WHERE ${likeConditions}
-        ORDER BY tp.created_at DESC LIMIT 6
-      `, sqlParams);
+        WHERE COALESCE(tp.is_active, 1) = 1 AND (${likeConditions})
+        ORDER BY ${orderClause}
+        LIMIT 12
+      `;
 
+      const [results] = await pool.query(sql, sqlParams);
       rows = results;
     }
 
-    // 3. ถ้าไม่มีประวัติค้นหา หรือค้นแล้วไม่เจอ -> เอาโพสต์ล่าสุดมาแสดง (Fallback)
+    // 3. Fallback: ถ้าไม่มีประวัติ หรือ ค้นจากประวัติแล้วไม่เจอโพสต์เลย ให้ดึงโพสต์ล่าสุดมาแสดงแทน
     if (rows.length === 0) {
+      basedOnKeywords = []; // ล้างค่าออก เพื่อบอก Frontend ว่านี่คือโพสต์ล่าสุดทั่วไป
+
       const [latest] = await pool.query(`
         SELECT 
           tp.*, 
@@ -3694,17 +3874,20 @@ app.get('/api/recommendations/courses', async (req, res) => {
         LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
         LEFT JOIN (SELECT post_id, COUNT(*) as c FROM posts_favorites WHERE post_type='tutor' GROUP BY post_id) fvc ON fvc.post_id = tp.tutor_post_id
         LEFT JOIN posts_favorites fme ON fme.post_id = tp.tutor_post_id AND fme.post_type='tutor' AND fme.user_id = ?
-        ORDER BY tp.created_at DESC LIMIT 6
+        WHERE COALESCE(tp.is_active, 1) = 1
+        ORDER BY tp.created_at DESC 
+        LIMIT 12
       `, [userId]);
       rows = latest;
     }
 
-    // Map ข้อมูลส่งกลับ
+    // 4. Map ข้อมูลส่งกลับ
     const items = rows.map(r => ({
       _id: r.tutor_post_id,
       subject: r.subject,
-      content: r.description,
+      description: r.description, // เพิ่ม description ส่งไปด้วย
       createdAt: r.created_at,
+      group_size: Number(r.group_size || 0),
       authorId: {
         id: r.tutor_id,
         name: `${r.name || ''} ${r.lastname || ''}`.trim(),
@@ -3722,14 +3905,18 @@ app.get('/api/recommendations/courses', async (req, res) => {
       favorited: !!r.favorited
     }));
 
-    res.json(items);
+    // ส่ง basedOn กลับไปให้ Frontend จัดการข้อความ
+    res.json({
+      success: true,
+      basedOn: basedOnKeywords,
+      items: items
+    });
 
   } catch (err) {
     console.error('Recommended Courses API Error:', err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
-
 // ---------- Health ----------
 app.get('/health', (req, res) => res.json({ ok: true, time: new Date() }));
 
@@ -4021,163 +4208,176 @@ app.put('/api/tutor-posts/:id', async (req, res) => {
   }
 });
 
-// ✅ API: Submit Report
+// ==========================================
+// 🛡️ RE-IMPLEMENTED REPORTING & ADMIN APIS
+// ==========================================
+
+// 1. Submit Report (Robust Logic)
 app.post('/api/reports', async (req, res) => {
   try {
-    const { reporter_id, post_id, post_type, reason } = req.body;
+    console.log("📝 [API] Report Received:", req.body);
+    const { reporter_id, post_id, post_type, reason, reported_user_id } = req.body;
+
+    let targetUserId = reported_user_id;
+
+    // 🕵️ AUTO-DETECT Target User (If missing from frontend)
+    if (!targetUserId && post_id) {
+      if (post_type === 'student_post' || post_type === 'student') {
+        const [rows] = await pool.query('SELECT student_id FROM student_posts WHERE student_post_id = ?', [post_id]);
+        if (rows.length) targetUserId = rows[0].student_id;
+      } else if (post_type === 'tutor_post' || post_type === 'tutor') {
+        const [rows] = await pool.query('SELECT tutor_id FROM tutor_posts WHERE tutor_post_id = ?', [post_id]);
+        if (rows.length) targetUserId = rows[0].tutor_id;
+      }
+    }
+
+    if (!targetUserId && !post_id) {
+      // Allow reporting just a user (profilereport) if implemented later
+    }
+
     await pool.query(
-      `INSERT INTO reports (reporter_id, post_id, post_type, reason, created_at) VALUES (?, ?, ?, ?, NOW())`,
-      [reporter_id, post_id, post_type, reason]
+      `INSERT INTO user_reports (reporter_id, reported_user_id, post_id, post_type, reason, created_at)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [reporter_id, targetUserId || null, post_id || null, post_type || 'other', reason]
     );
+
     res.json({ success: true, message: 'Report submitted successfully' });
+
   } catch (err) {
-    console.error("Report Error:", err);
-    res.status(500).json({ success: false, message: 'Server Error' });
+    console.error("❌ Report Error:", err);
+    res.status(500).json({ success: false, message: 'Server Error: ' + err.message });
   }
 });
 
-// ✅ API: Admin - Get All Reports
+// 2. Admin: Get Reports
 app.get('/api/admin/reports', async (req, res) => {
   try {
-    const { user_id } = req.query; // Security check
-    const [u] = await pool.query('SELECT role FROM register WHERE user_id = ?', [user_id]);
-    if (!u.length || u[0].role !== 'admin') {
+    const { user_id, admin_id } = req.query;
+    const uid = admin_id || user_id;
+
+    // Verify Admin
+    const [u] = await pool.query('SELECT role, type FROM register WHERE user_id = ?', [uid]);
+    if (!u.length || (u[0].role !== 'admin' && u[0].type !== 'admin')) {
       return res.status(403).json({ success: false, message: 'Unauthorized' });
     }
 
     const [rows] = await pool.query(`
       SELECT 
-        r.report_id, r.reporter_id, r.post_id, r.reason, r.status, r.created_at,
-        u.name as reporter_name, u.lastname as reporter_lastname,
+        r.report_id, r.reporter_id, r.reported_user_id, r.post_id, r.reason, r.status, r.created_at,
+        reporter.name as reporter_name, reporter.lastname as reporter_lastname,
         
-        /* ✅ Smart Type Detection: Priority to existing type, fallback to auto-detect */
+        /* Resolve Post Title/Type */
         CASE 
-           WHEN r.post_type IN ('student_post', 'student') THEN 'student'
-           WHEN r.post_type IN ('tutor_post', 'tutor') THEN 'tutor'
-           WHEN sp.student_post_id IS NOT NULL THEN 'student'
-           WHEN tp.tutor_post_id IS NOT NULL THEN 'tutor'
+           WHEN r.post_type IN ('student_post', 'student') THEN 'student_post'
+           WHEN r.post_type IN ('tutor_post', 'tutor') THEN 'tutor_post'
+           WHEN r.post_type = 'profile' THEN 'profile'
            ELSE r.post_type
         END as post_type,
 
         CASE 
-          WHEN r.post_type IN ('student_post', 'student') THEN COALESCE(sp.subject, 'โพสต์ถูกลบไปแล้ว')
-          WHEN r.post_type IN ('tutor_post', 'tutor') THEN COALESCE(tp.subject, 'โพสต์ถูกลบไปแล้ว')
-          WHEN sp.student_post_id IS NOT NULL THEN CONCAT('(กู้คืนอัตโนมัติ) ', sp.subject)
-          WHEN tp.tutor_post_id IS NOT NULL THEN CONCAT('(กู้คืนอัตโนมัติ) ', tp.subject)
-          ELSE CONCAT('ไม่พบข้อมูลโพสต์ (Type: ', COALESCE(r.post_type, 'ว่าง'), ')')
+          WHEN r.post_type IN ('student_post', 'student') THEN COALESCE(sp.subject, 'Post Deleted')
+          WHEN r.post_type IN ('tutor_post', 'tutor') THEN COALESCE(tp.subject, 'Post Deleted')
+          WHEN r.post_type = 'profile' THEN CONCAT('User: ', COALESCE(reported.name, 'Unknown'), ' ', COALESCE(reported.lastname, ''))
+          ELSE 'Unknown'
         END as post_title,
-        
+
         CASE 
-          WHEN r.post_type IN ('student_post', 'student') THEN COALESCE(sp.description, '-')
-          WHEN r.post_type IN ('tutor_post', 'tutor') THEN COALESCE(tp.description, '-')
-          WHEN sp.student_post_id IS NOT NULL THEN sp.description
-          WHEN tp.tutor_post_id IS NOT NULL THEN tp.description
-          ELSE '' 
+          WHEN r.post_type IN ('student_post', 'student') THEN sp.description
+          WHEN r.post_type IN ('tutor_post', 'tutor') THEN tp.description
+          WHEN r.post_type = 'profile' THEN CONCAT('Reported User ID: ', r.reported_user_id)
+          ELSE ''
         END as post_content
 
-      FROM reports r
-      LEFT JOIN register u ON r.reporter_id = u.user_id
-      -- ✅ Unconditional Join to find post even if type is wrong
-      LEFT JOIN student_posts sp ON r.post_id = sp.student_post_id 
+      FROM user_reports r
+      LEFT JOIN register reporter ON r.reporter_id = reporter.user_id
+      LEFT JOIN register reported ON r.reported_user_id = reported.user_id
+      LEFT JOIN student_posts sp ON r.post_id = sp.student_post_id
       LEFT JOIN tutor_posts tp ON r.post_id = tp.tutor_post_id
       ORDER BY r.created_at DESC
     `);
-    console.log("Admin Reports Data (Smart Fix):", rows);
+
     res.json(rows);
   } catch (err) {
-    console.error("Admin Reports Error:", err);
-    res.status(500).json({ success: false, message: 'Server Error' });
+    console.error(err);
+    res.status(500).json({ message: 'Server Error' });
   }
 });
 
-// ✅ API: Admin - Update Report Status
+// 3. Admin: Update Report Status
 app.patch('/api/admin/reports/:id', async (req, res) => {
   try {
     const { status } = req.body;
-    const reportId = req.params.id;
-    console.log(`[Admin] Updating report ${reportId} to status: ${status}`);
-
-    // 1. Get reporter ID before update
-    const [rows] = await pool.query('SELECT reporter_id, post_id FROM reports WHERE report_id = ?', [reportId]);
-    console.log(`[Admin] Fetch report result:`, rows);
-
-    // 2. Update status
-    await pool.query('UPDATE reports SET status = ? WHERE report_id = ?', [status, reportId]);
-
-    // 3. Notify Reporter (If status is resolved or ignored/cancelled)
-    if (rows.length > 0 && (status === 'resolved' || status === 'ignored')) {
-      const reporterId = rows[0].reporter_id;
-      console.log(`[Admin] Notifying reporter ${reporterId}`);
-
-      const msg = status === 'resolved'
-        ? "ขอบคุณสำหรับการรายงานของคุณ ทางเราได้ตรวจสอบและดำเนินการเรียบร้อยแล้วครับ"
-        : "ขอบคุณสำหรับการรายงานของคุณ ทางเราตรวจสอบแล้วไม่พบการกระทำผิดกฎ จึงขอยกเลิกการรายงานครับ";
-
-      await pool.query(
-        `INSERT INTO notifications (user_id, type, message, related_id, created_at, is_read, actor_id) 
-          VALUES (?, 'system_alert', ?, ?, NOW(), 0, NULL)`,
-        [reporterId, msg, rows[0].post_id]
-      );
-    }
-
+    await pool.query('UPDATE user_reports SET status = ? WHERE report_id = ?', [status, req.params.id]);
     res.json({ success: true });
   } catch (err) {
-    console.error("Update Report Status Error:", err);
-    res.status(500).json({ success: false, message: 'Server Error' });
+    res.status(500).json({ message: 'Error' });
   }
 });
 
-// ✅ API: Admin - Delete Post (and resolve reports)
+// 4. Admin: Get Users
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const { search, user_id, admin_id } = req.query;
+    const uid = admin_id || user_id;
+
+    // Verify Admin
+    const [u] = await pool.query('SELECT role, type FROM register WHERE user_id = ?', [uid]);
+    if (!u.length || (u[0].role !== 'admin' && u[0].type !== 'admin')) {
+      return res.status(403).json([]);
+    }
+
+    let sql = `SELECT user_id, name, lastname, email, role, type, status, suspended_until FROM register`;
+    let params = [];
+
+    if (search) {
+      sql += ` WHERE name LIKE ? OR email LIKE ?`;
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    const [rows] = await pool.query(sql, params);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json([]);
+  }
+});
+
+// 5. Admin: Delete Post (and Resolve Reports)
 app.delete('/api/admin/posts', async (req, res) => {
   try {
-    const id = req.body.id || req.body.post_id;
-    const type = req.body.type || req.body.post_type; // 'student' or 'tutor'
+    const { post_id, post_type } = req.body;
 
-    if (!id || !type) {
-      return res.status(400).json({ success: false, message: 'Missing id or type' });
+    if (post_type === 'student_post' || post_type === 'student') {
+      await pool.query('DELETE FROM student_posts WHERE student_post_id = ?', [post_id]);
+    } else if (post_type === 'tutor_post' || post_type === 'tutor') {
+      await pool.query('DELETE FROM tutor_posts WHERE tutor_post_id = ?', [post_id]);
     }
 
-    console.log(`[Admin] Deleting post ${id} (${type})`);
-
-    // 1. Get all reporters for this post to notify them
-    // Note: Matches logic in reports (post_type might be 'student_post' or 'student')
-    // Also handle cases where post_type might be empty or null due to frontend bugs
-    const [reporters] = await pool.query(
-      `SELECT DISTINCT reporter_id FROM reports
-         WHERE post_id = ? AND (post_type = ? OR post_type = ? OR post_type = '' OR post_type IS NULL)`,
-      [id, type, type + '_post']
-    );
-    console.log(`[Admin] Found reporters to notify:`, reporters);
-
-    // 2. Soft Delete Post (Set is_active = 0) to avoid FK constraints
-    if (type === 'student' || type === 'student_post') {
-      await pool.query('UPDATE student_posts SET is_active = 0 WHERE student_post_id = ?', [id]);
-    } else {
-      await pool.query('UPDATE tutor_posts SET is_active = 0 WHERE tutor_post_id = ?', [id]);
-    }
-
-    // 3. Mark reports as resolved
-    await pool.query(
-      `UPDATE reports SET status = 'resolved'
-         WHERE post_id = ? AND (post_type = ? OR post_type = ? OR post_type = '' OR post_type IS NULL)`,
-      [id, type, type + '_post']
-    );
-
-    // 4. Notify Reporters
-    for (const r of reporters) {
-      console.log(`[Admin] Sending notification to reporter ${r.reporter_id}`);
-      await pool.query(
-        `INSERT INTO notifications (user_id, type, message, related_id, created_at, is_read, actor_id)
-             VALUES (?, 'system_alert', ?, ?, NOW(), 0, NULL)`,
-        [r.reporter_id, "ขอบคุณสำหรับการรายงานของคุณ โพสต์ดังกล่าวได้ถูกลบออกจากระบบแล้วครับ", id]
-      );
-    }
+    // Auto-resolve reports for this post
+    await pool.query('UPDATE user_reports SET status = "resolved" WHERE post_id = ?', [post_id]);
 
     res.json({ success: true });
   } catch (err) {
-    console.error("Admin Delete Post Error:", err);
-    res.status(500).json({ success: false, message: 'Server Error' });
+    res.status(500).json({ message: err.message });
   }
+});
+
+// 6. Admin: Manage User (Suspend/Ban)
+app.put('/api/admin/users/:id/status', async (req, res) => {
+  const { status, suspendDays } = req.body; // status: 'active', 'suspended', 'banned'
+  let until = null;
+  if (status === 'suspended' && suspendDays) {
+    const d = new Date();
+    d.setDate(d.getDate() + suspendDays);
+    until = d;
+  }
+
+  await pool.query('UPDATE register SET status = ?, suspended_until = ? WHERE user_id = ?', [status, until, req.params.id]);
+  res.json({ success: true });
+});
+
+app.delete('/api/admin/users/:id', async (req, res) => {
+  await pool.query('DELETE FROM register WHERE user_id = ?', [req.params.id]);
+  res.json({ success: true });
 });
 
 // ****** Server Start ******

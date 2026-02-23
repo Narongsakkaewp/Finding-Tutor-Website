@@ -1,4 +1,4 @@
-// src/controllers/favoriteController.js
+// tutorweb-sever/src/controllers/favoriteController.js
 const pool = require('../../db'); // ✅ Path นี้ถูกแล้ว ถ้าไฟล์อยู่ที่ src/controllers/
 console.log("FavoriteController loaded/updated at " + new Date().toISOString());
 
@@ -173,5 +173,112 @@ exports.getRecommendedFeed = async (req, res) => {
     } catch (err) {
         console.error('Recommendation Error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// 4. กดติดตามติวเตอร์ (Follow/Favorite Tutor)
+exports.toggleTutorLike = async (req, res) => {
+    const { user_id, tutor_id } = req.body;
+
+    if (!user_id || !tutor_id) {
+        return res.status(400).json({ success: false, message: 'Invalid data' });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        // 1. Check existing
+        const [have] = await conn.query(
+            'SELECT * FROM tutor_favorites WHERE user_id = ? AND tutor_id = ?',
+            [user_id, tutor_id]
+        );
+
+        let action = 'added';
+        if (have.length > 0) {
+            // Remove
+            await conn.query(
+                'DELETE FROM tutor_favorites WHERE user_id = ? AND tutor_id = ?',
+                [user_id, tutor_id]
+            );
+            action = 'removed';
+        } else {
+            // Add
+            await conn.query(
+                'INSERT INTO tutor_favorites (user_id, tutor_id, created_at) VALUES (?, ?, NOW())',
+                [user_id, tutor_id]
+            );
+            action = 'added';
+        }
+
+        await conn.commit();
+        res.json({ success: true, action });
+
+    } catch (err) {
+        await conn.rollback();
+        console.error('Toggle Tutor Like Error:', err);
+        res.status(500).json({ success: false, message: 'Database error', error: err.message });
+    } finally {
+        conn.release();
+    }
+};
+
+// 5. ดึงรายชื่อติวเตอร์ที่ติดตาม
+exports.getMyTutorFavorites = async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const [rows] = await pool.query(`
+            SELECT 
+                r.user_id, r.name, r.lastname, r.email, r.username,
+                tp.nickname, tp.can_teach_subjects, tp.profile_picture_url, 
+                tp.address as location, tp.phone,
+                tp.can_teach_grades, tp.about_me,
+                tf.created_at as liked_at,
+                -- Review stats
+                COALESCE(rv.avg_rating, 0) AS avg_rating,
+                COALESCE(rv.review_count, 0) AS review_count
+            FROM tutor_favorites tf
+            JOIN register r ON tf.tutor_id = r.user_id
+            LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+            LEFT JOIN (
+                SELECT tutor_id, AVG(rating) as avg_rating, COUNT(*) as review_count
+                FROM reviews
+                GROUP BY tutor_id
+            ) rv ON r.user_id = rv.tutor_id
+            WHERE tf.user_id = ?
+            ORDER BY tf.created_at DESC
+        `, [userId]);
+
+        const items = rows.map(r => {
+            const contactParts = [];
+            if (r.phone) contactParts.push(`Tel: ${r.phone}`);
+            if (r.email) contactParts.push(`Email: ${r.email}`);
+
+            return {
+                post_type: 'tutor_profile',
+                uniqueId: `tutor-${r.user_id}`,
+                post_id: r.user_id,
+                authorName: `${r.name} ${r.lastname}`.trim(),
+                username: r.username,
+                nickname: r.nickname,
+                title: r.can_teach_subjects || "ติวเตอร์",
+                body: r.about_me || "ไม่ได้ระบุข้อมูลแนะนำตัว",
+                profile_picture_url: r.profile_picture_url || '/../blank_avatar.jpg',
+                location: r.location,
+                priceDisplay: 0, // ไม่มี col price ใน tutor_profiles
+                contact_info: contactParts.join('\n') || "ไม่ระบุข้อมูลติดต่อ",
+                rating: Number(r.avg_rating || 0),
+                reviews: Number(r.review_count || 0),
+                likedAt: r.liked_at,
+                grade: r.can_teach_grades, // Map to grade
+                preferred_days: "-", // ไม่มีข้อมูล
+                preferred_time: "-"  // ไม่มีข้อมูล
+            };
+        });
+
+        res.json({ success: true, items });
+    } catch (err) {
+        console.error('Get Tutor Favorites Error:', err);
+        res.status(500).json({ success: false, message: 'Database error', error: err.message });
     }
 };

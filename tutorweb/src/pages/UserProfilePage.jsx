@@ -1,6 +1,7 @@
 // tutorweb/src/pages/UserProfilePage.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { Mail, Phone, MapPin, Clock, ArrowLeft, Star, Users, DollarSign, User, GraduationCap, BookOpen, Briefcase, Lightbulb, Calendar, MoreVertical, X, Eye, EyeOff } from 'lucide-react'; // ✅ เพิ่ม Eye, EyeOff
+import { Mail, Phone, MapPin, Clock, ArrowLeft, Star, Users, DollarSign, User, GraduationCap, BookOpen, Briefcase, Lightbulb, Calendar, MoreVertical, X, Eye, EyeOff, Flag } from 'lucide-react';
+import ReportModal from '../components/ReportModal';
 
 const API_BASE = "http://localhost:5000";
 
@@ -11,10 +12,11 @@ function UserProfilePage({ userId, onBack }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    // ✅ State สำหรับเปิด/ปิดรูปใหญ่
+    // State
     const [isImageOpen, setIsImageOpen] = useState(false);
     const [showPhone, setShowPhone] = useState(false);
     const [showEmail, setShowEmail] = useState(false);
+    const [isReportOpen, setIsReportOpen] = useState(false);
 
     useEffect(() => {
         if (!userId) return;
@@ -26,7 +28,7 @@ function UserProfilePage({ userId, onBack }) {
             setLoading(true);
             setError("");
 
-            // 1. ดึงข้อมูลพื้นฐาน
+            // 1. Fetch Basic Info
             let res = await fetch(`${API_BASE}/api/profile/${userId}`);
             if (!res.ok) throw new Error("ไม่พบข้อมูลผู้ใช้นี้");
 
@@ -74,7 +76,7 @@ function UserProfilePage({ userId, onBack }) {
         }
     };
 
-    // ✅ Hooks (useMemo)
+    // Hooks (useMemo)
     const derivedInterests = useMemo(() => {
         if (!user || user.role === 'tutor') return [];
         const subjects = userPosts
@@ -98,7 +100,7 @@ function UserProfilePage({ userId, onBack }) {
 
         if (!isTutor || !Array.isArray(user.education) || user.education.length === 0) return "-";
 
-        // Clone อาร์เรย์มา Sort
+        // Clone & Sort
         const sortedEdu = [...user.education].sort((a, b) => {
             return Number(b.year || 0) - Number(a.year || 0);
         });
@@ -125,9 +127,9 @@ function UserProfilePage({ userId, onBack }) {
 
             <div className="max-w-5xl mx-auto px-4 mt-8">
 
-                {/* 1. Header Profile (Updated for Compact Mobile) */}
+                {/* 1. Header Profile */}
                 <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-center md:items-start mb-8">
-                    {/* รูปภาพ */}
+                    {/* Image */}
                     <div
                         className="flex-shrink-0 relative group cursor-pointer"
                         onClick={() => setIsImageOpen(true)}
@@ -150,20 +152,30 @@ function UserProfilePage({ userId, onBack }) {
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-3">
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex flex-wrap items-baseline gap-2">
-                                {user.displayName}
-                                {user.nickname && <span className="text-lg md:text-xl text-gray-500 font-medium">({user.nickname})</span>}
-                            </h1>
-                            {user.username && <div className="text-gray-500 font-medium text-base md:text-lg">@{user.username}</div>}
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex flex-wrap items-baseline gap-2">
+                                    {user.displayName}
+                                    {user.nickname && <span className="text-lg md:text-xl text-gray-500 font-medium">({user.nickname})</span>}
+                                </h1>
+                                {user.username && <div className="text-gray-500 font-medium text-base md:text-lg">@{user.username}</div>}
+                            </div>
 
-                            {isTutor && (
-                                <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-yellow-50 border border-yellow-100 text-yellow-700 font-bold text-sm">
-                                    <Star size={16} className="fill-yellow-500 text-yellow-500" />
-                                    {user.rating || "0.0"} ({reviews.length} รีวิว)
-                                </div>
-                            )}
+                            <button
+                                onClick={() => setIsReportOpen(true)}
+                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                                title="รายงานผู้ใช้"
+                            >
+                                <Flag size={20} />
+                            </button>
                         </div>
+
+                        {isTutor && (
+                            <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-yellow-50 border border-yellow-100 text-yellow-700 font-bold text-sm">
+                                <Star size={16} className="fill-yellow-500 text-yellow-500" />
+                                {user.rating || "0.0"} ({reviews.length} รีวิว)
+                            </div>
+                        )}
 
                         <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm md:text-base">
                             {user.about_me || user.about || "ยังไม่ได้ระบุข้อมูลแนะนำตัว"}
@@ -175,10 +187,10 @@ function UserProfilePage({ userId, onBack }) {
                     </div>
                 </div>
 
-                {/* 2. Contact Grid (Interactive Links + Eye Icon) */}
+                {/* 2. Contact Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 text-sm">
 
-                    {/* Link: ที่อยู่ */}
+                    {/* Link: Address */}
                     <a
                         href={user.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(user.address)}` : "#"}
                         target="_blank"
@@ -195,7 +207,7 @@ function UserProfilePage({ userId, onBack }) {
                         </div>
                     </a>
 
-                    {/* Blinded: เบอร์โทร */}
+                    {/* Phone */}
                     <div className={`flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl transition-all ${user.phone ? "hover:border-green-300 hover:shadow-md" : "opacity-80"}`}>
                         <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-500 shrink-0">
                             <Phone size={18} />
@@ -217,7 +229,6 @@ function UserProfilePage({ userId, onBack }) {
                                     <p className="text-sm font-semibold text-gray-800">ยังไม่ระบุ</p>
                                 )}
 
-                                {/* Eye Icon Toggle */}
                                 {user.phone && (
                                     <button
                                         onClick={() => setShowPhone(!showPhone)}
@@ -231,7 +242,7 @@ function UserProfilePage({ userId, onBack }) {
                         </div>
                     </div>
 
-                    {/* Blinded: อีเมล */}
+                    {/* Email */}
                     <div className={`flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl transition-all ${user.email ? "hover:border-blue-300 hover:shadow-md" : "opacity-80"}`}>
                         <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 shrink-0">
                             <Mail size={18} />
@@ -253,7 +264,6 @@ function UserProfilePage({ userId, onBack }) {
                                     <p className="text-sm font-semibold text-gray-800">ยังไม่ระบุ</p>
                                 )}
 
-                                {/* Eye Icon Toggle */}
                                 {user.email && (
                                     <button
                                         onClick={() => setShowEmail(!showEmail)}
@@ -267,7 +277,7 @@ function UserProfilePage({ userId, onBack }) {
                         </div>
                     </div>
 
-                    {/* Info: วุฒิการศึกษาล่าสุด */}
+                    {/* Education/Grade */}
                     <div className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl">
                         <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-500 shrink-0">
                             {isTutor ? <GraduationCap size={18} /> : <BookOpen size={18} />}
@@ -426,7 +436,7 @@ function UserProfilePage({ userId, onBack }) {
                                                         </div>
                                                     </div>
 
-                                                    {/* Subject Badge แบบใหม่ */}
+                                                    {/* Subject Badge */}
                                                     {r.subject && (
                                                         <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-gradient-to-r from-blue-50 to-indigo-50 text-indigo-600 border border-indigo-100">
                                                             {r.subject}
@@ -510,7 +520,7 @@ function UserProfilePage({ userId, onBack }) {
                                         </div>
 
                                         <div className="mt-6 pt-4 border-t">
-                                            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Lightbulb className="text-amber-500" /> วิชาที่สนใจ (AI Analysis)</h3>
+                                            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Lightbulb className="text-amber-500" /> วิชาที่สนใจ</h3>
                                             {derivedInterests.length > 0 ? (
                                                 <div className="flex flex-wrap gap-2">
                                                     {derivedInterests.map((s, i) => (
@@ -532,7 +542,7 @@ function UserProfilePage({ userId, onBack }) {
 
             </div>
 
-            {/* ✅ Image Lightbox Modal */}
+            {/* Image Modal */}
             {isImageOpen && (
                 <div
                     className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-sm animate-in fade-in duration-200"
@@ -548,10 +558,19 @@ function UserProfilePage({ userId, onBack }) {
                         src={user.profile_picture_url || "/../blank_avatar.jpg"}
                         className="max-w-[90vw] max-h-[85vh] rounded-lg shadow-2xl scale-100"
                         alt="Full Size Profile"
-                        onClick={(e) => e.stopPropagation()} // กดที่รูปไม่ปิด
+                        onClick={(e) => e.stopPropagation()}
                     />
                 </div>
             )}
+
+            {/* Report Modal */}
+            <ReportModal
+                open={isReportOpen}
+                onClose={() => setIsReportOpen(false)}
+                postType="profile"
+                reportedUserId={user.user_id}
+            />
+
         </div>
     );
 }

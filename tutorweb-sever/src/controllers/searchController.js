@@ -1,4 +1,4 @@
-// src/controllers/searchController.js
+// tutorweb-server/src/controllers/searchController.js
 const SUBJECT_KNOWLEDGE_BASE = {
     'program': ['code', 'python', 'java', 'c++', 'html', 'css', 'react', 'node', 'sql', 'คอมพิวเตอร์'],
     'code': ['program', 'python', 'java', 'script', 'web', 'app', 'dev'],

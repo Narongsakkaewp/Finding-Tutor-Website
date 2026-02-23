@@ -37,7 +37,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
       {recs.based_on && (
         <p className="text-sm text-gray-600 mb-4 bg-white inline-block px-3 py-1 rounded-full border">
           💡 อ้างอิงจากความสนใจวิชาที่คุณสนใจ
-          {/* <span className="font-bold text-indigo-600">  {recs.based_on}</span> */}
+          <span className="font-bold text-indigo-600">  {recs.based_on}</span>
         </p>
       )}
 
@@ -48,8 +48,8 @@ export default function RecommendedTutors({ userId, onOpen }) {
             <div
               key={tutor.tutor_post_id}
               className={`rounded-xl p-4 shadow-sm hover:shadow-md transition-all border cursor-pointer group relative overflow-hidden ${isExpired
-                  ? "bg-gray-50 border-gray-200 opacity-80"
-                  : "bg-white hover:border-indigo-300"
+                ? "bg-gray-50 border-gray-200 opacity-80"
+                : "bg-white hover:border-indigo-300"
                 }`}
               onClick={() => {
                 // Construct standardized item object for Modal with FULL details
@@ -73,6 +73,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
                   // Profile Data
                   dbTutorId: tutor.tutor_id || tutor.owner_id,
                   name: `${tutor.first_name || tutor.name || ""} ${tutor.last_name || tutor.lastname || ""}`.trim(),
+                  username: tutor.username,
                   nickname: tutor.nickname,
                   image: tutor.profile_picture_url || "../blank_avatar.jpg",
                   profile_bio: tutor.profile_bio, // Personal Bio
@@ -111,9 +112,18 @@ export default function RecommendedTutors({ userId, onOpen }) {
                     <User size={14} />
                     {tutor.first_name || tutor.name || "ติวเตอร์"} {tutor.last_name || tutor.lastname || ""}
                   </div>
-                  <div className="text-xs text-gray-400 flex items-center gap-1 mt-1">
-                    <MapPin size={12} />
-                    {tutor.location || "ไม่ระบุสถานที่"}
+                  <div className="text-xs flex items-center gap-1 mt-1">
+                    {(tutor.location?.startsWith("Online:") || tutor.location === "Online") ? (
+                      <>
+                        <User size={12} className="text-indigo-500" />
+                        <span className="text-indigo-600 font-medium truncate">{tutor.location}</span>
+                      </>
+                    ) : (
+                      <>
+                        <MapPin size={12} className="text-gray-400" />
+                        <span className="text-gray-400 truncate">{tutor.location || "ไม่ระบุสถานที่"}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

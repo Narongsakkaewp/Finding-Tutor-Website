@@ -214,7 +214,7 @@ function App() {
             onBack={() => setCurrentPage(backPage || 'mypost')}
           />
         );
-      case 'favorite': return <Favorite />;
+      case 'favorite': return <Favorite onViewProfile={handleViewProfile} />;
       case 'profile':
         if (userType === 'tutor') {
           return <TutorProfile setCurrentPage={setCurrentPage} onEditProfile={handleEditProfile} />;

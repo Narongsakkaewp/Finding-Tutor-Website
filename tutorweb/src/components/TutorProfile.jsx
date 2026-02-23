@@ -373,17 +373,28 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
 
     // ✅ Process Teaching History from Events
     const teachingHistory = useMemo(() => {
-        return events.filter(ev =>
-            ev.source === 'tutor_offer_accepted' ||
-            ev.source === 'tutor_teaching_self_post' ||
-            (ev.source === 'calendar' && (ev.title?.startsWith('สอน') || ev.title?.startsWith('ติว')))
-        ).map(ev => {
-            const isSelfPost = ev.source === 'tutor_teaching_self_post' || (ev.source === 'calendar' && ev.title?.toLowerCase().includes('สอนพิเศษ (ของคุณ)'));
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+
+        return events.filter(ev => {
+            const evDate = ev.event_date ? new Date(ev.event_date.split('T')[0] + 'T12:00:00Z') : (ev.created_at ? new Date(ev.created_at) : new Date(0));
+            if (evDate > today) return false;
+
+            return ev.source === 'tutor_offer_accepted' ||
+                ev.source === 'tutor_teaching_self_post' ||
+                ev.source === 'tutor_post_owner' ||
+                (ev.source === 'calendar' && (ev.title?.startsWith('สอน') || ev.title?.startsWith('ติว')));
+        }).map(ev => {
+            const isSelfPost = ev.source === 'tutor_teaching_self_post' || ev.source === 'tutor_post_owner' || (ev.source === 'calendar' && ev.title?.toLowerCase().includes('สอนพิเศษ (ของคุณ)'));
             return {
                 ...ev,
                 typeLabel: isSelfPost ? 'สอนพิเศษ (ประกาศของคุณ)' : 'สอนพิเศษ (ยื่นข้อเสนอ)',
                 icon: isSelfPost ? BookOpen : GraduationCap
             };
+        }).sort((a, b) => {
+            const dateA = new Date(a.event_date || a.created_at);
+            const dateB = new Date(b.event_date || b.created_at);
+            return dateB - dateA;
         });
     }, [events]);
 
@@ -863,7 +874,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                                                                             {item.typeLabel}
                                                                         </span>
                                                                         <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">
-                                                                            {item.created_at ? new Date(item.created_at).toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : ""}
+                                                                            {item.event_date ? new Date(item.event_date.split('T')[0] + 'T12:00:00Z').toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : (item.created_at ? new Date(item.created_at).toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : "")}
                                                                         </span>
                                                                     </div>
                                                                 </div>

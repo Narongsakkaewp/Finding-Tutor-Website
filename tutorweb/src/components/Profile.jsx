@@ -350,18 +350,34 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
 
   // ✅ Process History from Events
   const studyHistory = useMemo(() => {
-    return events.filter(ev =>
-      // กรองเฉพาะ Event ที่เราไป Join คนอื่น หรือ Tutor มา Join เรา (ที่สถานะ Approved แล้ว)
-      ev.source === 'student_post_joined' ||
-      ev.source === 'tutor_post_joined' ||
-      ev.source === 'tutor_offer_accepted'
-    ).map(ev => ({
-      ...ev,
-      // แปลง Source เป็นข้อความที่อ่านง่าย
-      typeLabel: ev.source === 'tutor_post_joined' ? 'เรียนกับติวเตอร์' :
-        ev.source === 'student_post_joined' ? 'เข้ากลุ่มติว' : 'ติวเตอร์มาสอน',
-      icon: ev.source.includes('tutor') ? GraduationCap : Users
-    }));
+    const today = new Date();
+    today.setHours(23, 59, 59, 999); // นำนับรวมของวันนี้ด้วย
+
+    return events.filter(ev => {
+      const evDate = ev.event_date ? new Date(ev.event_date.split('T')[0] + 'T12:00:00Z') : (ev.created_at ? new Date(ev.created_at) : new Date(0));
+      if (evDate > today) return false; // กรองอนาคตออก
+
+      // ดึงประวัติการเรียนทั้งหมด ทั้งที่เคยเข้าร่วม โพสต์ตัวเอง และปฏิทิน
+      return ev.source === 'student_post_joined' ||
+        ev.source === 'tutor_post_joined' ||
+        ev.source === 'tutor_offer_accepted' ||
+        ev.source === 'student_post_owner' ||
+        (ev.source === 'calendar' && (ev.title?.startsWith('เรียน') || ev.title?.startsWith('ติว') || ev.title?.includes('นัด')));
+    }).map(ev => {
+      const isSelfPost = ev.source === 'student_post_owner' || (ev.source === 'calendar' && ev.title?.includes('โพสต์ของคุณ'));
+      return {
+        ...ev,
+        // แปลง Source เป็นข้อความที่อ่านง่าย
+        typeLabel: isSelfPost ? 'โพสต์หาผู้สอน (ของคุณ)' :
+          ev.source === 'tutor_post_joined' ? 'เรียนกับติวเตอร์' :
+            ev.source === 'student_post_joined' ? 'เข้ากลุ่มติว' : 'ติวเตอร์มาสอน',
+        icon: ev.source.includes('tutor') ? GraduationCap : Users
+      };
+    }).sort((a, b) => {
+      const dateA = new Date(a.event_date || a.created_at);
+      const dateB = new Date(b.event_date || b.created_at);
+      return dateB - dateA; // เรียงจากใหม่ไปเก่า
+    });
   }, [events]);
 
   const handleToggleMenu = (id) => setOpenMenuFor((prev) => (prev === id ? null : id));
@@ -763,7 +779,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                                       {item.typeLabel}
                                     </span>
                                     <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">
-                                      {item.created_at ? new Date(item.created_at).toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : ""}
+                                      {item.event_date ? new Date(item.event_date.split('T')[0] + 'T12:00:00Z').toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : (item.created_at ? new Date(item.created_at).toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : "")}
                                     </span>
                                   </div>
                                 </div>

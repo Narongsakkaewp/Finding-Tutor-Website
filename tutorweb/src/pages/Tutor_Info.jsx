@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import UniversityPicker from '../components/UniversityPicker';
 import SearchableSelect from '../components/SearchableSelect'; // ✅ Import
+import ImageCropper from '../components/ImageCropper';
+
 
 const getCurrentUser = () => {
     try {
@@ -63,6 +65,10 @@ export default function TutorInfoPage({ setCurrentPage }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+
+    // Cropper State
+    const [cropImageSrc, setCropImageSrc] = useState(null);
+
 
     useEffect(() => {
         fetch('/db.json').then(res => res.json()).then(jsonData => {
@@ -161,12 +167,30 @@ export default function TutorInfoPage({ setCurrentPage }) {
     };
 
     const handleImageChange = (e) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setImageFile(file);
-            setFormData(prev => ({ ...prev, profile_picture_url: URL.createObjectURL(file) }));
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.addEventListener('load', () => {
+                setCropImageSrc(reader.result);
+            });
+            reader.readAsDataURL(file);
+            e.target.value = '';
         }
     };
+
+    const onCropComplete = (croppedBlob) => {
+        setImageFile(croppedBlob);
+        setFormData(prev => ({
+            ...prev,
+            profile_picture_url: URL.createObjectURL(croppedBlob)
+        }));
+        setCropImageSrc(null);
+    };
+
+    const onCropCancel = () => {
+        setCropImageSrc(null);
+    };
+
 
     const handleEducationChange = (index, e) => {
         const { name, value } = e.target;
@@ -250,6 +274,15 @@ export default function TutorInfoPage({ setCurrentPage }) {
                         <ChevronLeft size={20} /> <span className="ml-1 font-medium">ย้อนกลับ</span>
                     </button>
                 </div>
+
+                {/* Cropper Modal */}
+                {cropImageSrc && (
+                    <ImageCropper
+                        imageSrc={cropImageSrc}
+                        onCropComplete={onCropComplete}
+                        onCancel={onCropCancel}
+                    />
+                )}
 
                 <form onSubmit={handleSubmit} className="space-y-8">
 

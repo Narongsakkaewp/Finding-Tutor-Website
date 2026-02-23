@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Flag, X, AlertTriangle } from 'lucide-react';
 
-export default function ReportModal({ open, onClose, postId, postType }) {
+export default function ReportModal({ open, onClose, postId, postType, reportedUserId }) {
     const [reason, setReason] = useState("");
     const [otherReason, setOtherReason] = useState("");
     const [loading, setLoading] = useState(false);
@@ -33,9 +33,10 @@ export default function ReportModal({ open, onClose, postId, postType }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     reporter_id: user.user_id,
-                    post_id: postId,
+                    post_id: postId || null,
                     post_type: postType,
-                    reason: finalReason
+                    reason: finalReason,
+                    reported_user_id: reportedUserId || null
                 })
             });
 

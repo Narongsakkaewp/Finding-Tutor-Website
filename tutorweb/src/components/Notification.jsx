@@ -204,6 +204,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     if (item.type === 'join_request') path = `/feed?tab=student&open=${item.related_id}`;
     else if (item.type === 'tutor_join_request') path = `/feed?tab=tutor&open=${item.related_id}`;
     else if (item.type === 'join_approved') path = `/feed?tab=student&open=${item.related_id}`; // หรือไปที่ calendar
+    else if (item.type === 'tutor_join_approved') path = `/feed?tab=tutor&open=${item.related_id}`;
 
     if (typeof onOpenPost === "function" && path) {
       const url = new URL(path, window.location.origin);
@@ -331,6 +332,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
         );
         break;
       case "join_approved":
+      case "tutor_join_approved":
         content = (
           <span>
             คำขอเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span> ของคุณ <span className="text-green-600 font-bold">ได้รับการอนุมัติแล้ว</span>
@@ -338,6 +340,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
         );
         break;
       case "join_rejected":
+      case "tutor_join_rejected":
         content = (
           <span>
             คำขอเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span> ของคุณ <span className="text-rose-500 font-bold">ถูกปฏิเสธ</span>

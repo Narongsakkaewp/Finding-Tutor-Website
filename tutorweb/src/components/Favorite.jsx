@@ -71,7 +71,7 @@ function Modal({ open, onClose, title, children }) {
 // --------------------------- Hooks ---------------------------
 function useFavorites() {
   const me = getMe();
-  const [data, setData] = useState({ student: [], tutor: [] });
+  const [data, setData] = useState({ student: [], tutor: [], followedTutors: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -107,7 +107,12 @@ function useFavorites() {
           else tutor.push(item);
         });
 
-        setData({ student, tutor });
+        // 🔥 Fetch Followed Tutors
+        const res2 = await fetch(`${API_BASE}/api/favorites/tutor/user/${me.user_id}`);
+        const json2 = await res2.json();
+        const followedTutors = json2.success ? json2.items : [];
+
+        setData({ student, tutor, followedTutors });
       }
     } catch (err) {
       console.error("Fav Error:", err);
@@ -170,6 +175,36 @@ function TabButton({ active, children, onClick, icon: Icon }) {
       {children}
     </button>
   );
+}
+
+function TutorCardSimple({ item, onUnfav, onClick }) {
+  return (
+    <div onClick={onClick} className="group relative flex flex-col rounded-2xl border bg-white shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden h-full">
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-gray-100">
+        <ProfileImage src={item.profile_picture_url} className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" alt={item.authorName} />
+        <div className="absolute top-2 right-2">
+          <button onClick={(e) => { e.stopPropagation(); onUnfav(item); }} className="p-1.5 bg-white/80 hover:bg-white text-rose-500 rounded-full shadow-sm backdrop-blur transition-all hover:scale-110">
+            <Heart size={18} fill="currentColor" />
+          </button>
+        </div>
+      </div>
+      <div className="p-4 flex flex-col flex-1">
+        <h3 className="font-bold text-gray-900 truncate text-lg">{item.authorName}</h3>
+        <p className="text-xs text-gray-500 mb-2 truncate">@{item.username}</p>
+        <div className="flex items-center gap-1 mb-3">
+          <Badge text={item.title || 'ติวเตอร์'} color="indigo" />
+        </div>
+        <div className="mt-auto pt-3 border-t border-gray-50 flex items-center justify-between text-xs">
+          <span className="flex items-center gap-1 text-gray-500"><MapPin size={12} /> {item.location || 'Online'}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Badge({ text, color = "blue" }) {
+  const colors = { indigo: "bg-indigo-50 text-indigo-700", blue: "bg-blue-50 text-blue-700" };
+  return <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium ${colors[color] || colors.blue}`}>{text}</span>;
 }
 
 function PostCardSimple({ item, onUnfav, onClick }) {
@@ -262,16 +297,20 @@ function RecommendCard({ post, reasonSubjects }) {
 }
 
 // --------------------------- Main Page ---------------------------
-export default function Favorite() {
+export default function Favorite({ onViewProfile }) {
   const { me, data, setData, loading, error } = useFavorites();
   const { recs, subjects } = useRecommendations(me?.user_id);
 
-  const [tab, setTab] = useState("tutor");
+  const [tab, setTab] = useState("followed_tutors"); // Default to new tab if we want, or "tutor"
   const [q, setQ] = useState("");
-  const [previewPost, setPreviewPost] = useState(null); // ✅ State สำหรับ Modal
+  const [previewPost, setPreviewPost] = useState(null);
 
   const list = useMemo(() => {
-    const source = tab === "student" ? data.student : data.tutor;
+    let source = [];
+    if (tab === "student") source = data.student;
+    else if (tab === "tutor") source = data.tutor;
+    else if (tab === "followed_tutors") source = data.followedTutors;
+
     if (!q) return source;
     const lowerQ = q.toLowerCase();
     return source.filter(item =>
@@ -284,19 +323,26 @@ export default function Favorite() {
     // Optimistic UI Update
     setData(prev => ({
       student: prev.student.filter(x => x.uniqueId !== item.uniqueId),
-      tutor: prev.tutor.filter(x => x.uniqueId !== item.uniqueId)
+      tutor: prev.tutor.filter(x => x.uniqueId !== item.uniqueId),
+      followedTutors: prev.followedTutors.filter(x => x.uniqueId !== item.uniqueId)
     }));
 
     try {
       console.log("Removing favorite:", item);
-      const res = await fetch(`${API_BASE}/api/favorites/toggle`, {
+      let url = `${API_BASE}/api/favorites/toggle`;
+      let body = {};
+
+      if (item.post_type === 'tutor_profile') {
+        url = `${API_BASE}/api/favorites/tutor/toggle`;
+        body = { user_id: me.user_id, tutor_id: item.post_id };
+      } else {
+        body = { user_id: me.user_id, post_id: item.post_id, post_type: item.post_type };
+      }
+
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: me.user_id,
-          post_id: item.post_id,
-          post_type: item.post_type
-        }),
+        body: JSON.stringify(body),
       });
 
       const result = await res.json();
@@ -341,24 +387,39 @@ export default function Favorite() {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 mt-6">
-        <div className="flex gap-3 mb-6">
+        <div className="flex gap-3 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+          <TabButton active={tab === "followed_tutors"} onClick={() => setTab("followed_tutors")} icon={Heart}>
+            ติวเตอร์ที่ติดตาม ({data.followedTutors?.length || 0})
+          </TabButton>
           <TabButton active={tab === "tutor"} onClick={() => setTab("tutor")} icon={Users}>
-            ติวเตอร์ ({data.tutor.length})
+            ประกาศหาคนเรียน ({data.tutor.length})
           </TabButton>
           <TabButton active={tab === "student"} onClick={() => setTab("student")} icon={BookOpen}>
-            นักเรียน ({data.student.length})
+            ประกาศหาคนสอน ({data.student.length})
           </TabButton>
         </div>
 
         {list.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {list.map(item => (
-              <PostCardSimple
-                key={item.uniqueId}
-                item={item}
-                onUnfav={handleUnfav}
-                onClick={() => setPreviewPost(item)} // ✅ เปิด Modal เมื่อคลิก
-              />
+              item.post_type === 'tutor_profile' ? (
+                <TutorCardSimple
+                  key={item.uniqueId}
+                  item={item}
+                  onUnfav={handleUnfav}
+                  onClick={() => {
+                    if (onViewProfile) onViewProfile(item.post_id);
+                    else setPreviewPost(item);
+                  }}
+                />
+              ) : (
+                <PostCardSimple
+                  key={item.uniqueId}
+                  item={item}
+                  onUnfav={handleUnfav}
+                  onClick={() => setPreviewPost(item)}
+                />
+              )
             ))}
           </div>
         ) : (
@@ -397,7 +458,6 @@ export default function Favorite() {
         </div>
       )}
 
-      {/* ✅ Modal แสดงรายละเอียด (ใช้ดีไซน์เดียวกับ HomeTutor เป๊ะ) */}
       <Modal open={!!previewPost} onClose={() => setPreviewPost(null)} title={previewPost?.post_type === 'tutor' ? "รายละเอียดติวเตอร์" : "รายละเอียดประกาศนักเรียน"}>
         {previewPost && (
           <div className="space-y-6">
