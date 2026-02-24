@@ -909,7 +909,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
             </Card>
 
             {/* 3. Study Buddies */}
-            <Card title="เพื่อนติวที่แนะนำ" icon={Users}>
+            {/* <Card title="เพื่อนติวที่แนะนำ" icon={Users}>
               <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2 space-y-3">
                 {!buddies.length ? <Empty line="ยังไม่พบเพื่อนที่ถูกใจ" /> : (
                   buddies.map((friend) => (
@@ -952,7 +952,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                   ))
                 )}
               </div>
-            </Card>
+            </Card> */}
           </div>
         </div>
       </div>

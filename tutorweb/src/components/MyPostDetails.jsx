@@ -80,12 +80,12 @@ function mapTutorToUnified(t = {}) {
   };
 }
 
-function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, postType = null }) {
+function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, postType = null, onViewProfile }) {
   const backLabel =
     (localStorage.getItem("backPage") === "notification")
       ? "← กลับไปการแจ้งเตือน"
       : "← กลับหน้าโพสต์"
-      ;
+    ;
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -322,17 +322,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
             <div>✉️ ติดต่อ: {contactText}</div>
           </div>
 
-          {/* ติวเตอร์ */}
-          {(post.tutor || isTutorPost) && (
-            <div className="mt-4 p-3 rounded-lg border bg-blue-50 border-blue-200">
-              <div className="text-sm text-blue-800 font-medium">
-                👨‍🏫 ติวเตอร์ที่สอน:
-                <span className="ml-1 font-semibold">
-                  {isTutorPost ? ownerName : `${post.tutor?.name || ''} ${post.tutor?.lastname || ''}`.trim()}
-                </span>
-              </div>
-            </div>
-          )}
+          {/* ติวเตอร์ (ย้ายไปรวมกับบล็อกชื่อผู้เข้าร่วมแล้ว) */}
 
 
           {/* ✅ แสดงผู้เข้าร่วมเป็น 2/2 ถ้ามีจำนวนคน */}
@@ -388,6 +378,10 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
             me={me}
             postOwnerId={post.owner_id}
             ownerName={ownerName}
+            ownerProfile={post.user}
+            tutor={post.tutor}
+            approvedTutorName={post.approved_tutor_name}
+            onViewProfile={onViewProfile}
             onJoinChange={(newCount) => {
               setPost((p) => ({ ...p, join_count: Number(newCount ?? p.join_count) }));
               if (typeof setPostsCache === "function") {
@@ -413,7 +407,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
 /* ---------------------------------------------------------
    JoinRequestsManager
 --------------------------------------------------------- */
-function JoinRequestsManager({ postId, postOwnerId, ownerName, me, canModerate, isTutor = false, onJoinChange }) {
+function JoinRequestsManager({ postId, postOwnerId, ownerName, ownerProfile, me, canModerate, isTutor = false, tutor, approvedTutorName, onJoinChange, onViewProfile }) {
   const [requests, setRequests] = useState([]);
   const [joiners, setJoiners] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -472,6 +466,8 @@ function JoinRequestsManager({ postId, postOwnerId, ownerName, me, canModerate, 
           user_id: postOwnerId,
           name: ownerName.split(' ')[0], // Assuming first name
           lastname: ownerName.split(' ').slice(1).join(' '), // Assuming rest is last name
+          username: ownerProfile?.username || '',
+          profile_picture_url: ownerProfile?.profile_image || '',
           joined_at: new Date().toISOString(), // Or a more appropriate date if available
           is_owner: true, // Custom flag to identify the owner
         };
@@ -569,28 +565,65 @@ function JoinRequestsManager({ postId, postOwnerId, ownerName, me, canModerate, 
         id="joiners-section"
         className="font-semibold mb-3 scroll-mt-20 transition-colors"
       >
-        ชื่อผู้เข้าร่วม
+        ชื่อผู้เข้าร่วมในการติว
       </h2>
 
       {joinersLoading ? (
         <div className="text-sm text-gray-500">กำลังโหลดผู้เข้าร่วม…</div>
-      ) : Array.isArray(joiners) && joiners.length > 0 ? (
+      ) : (Array.isArray(joiners) && joiners.length > 0) || tutor || approvedTutorName ? (
         <div className="mb-5 space-y-2">
+          {/* ✅ แสดงติวเตอร์ที่ได้รับการอนุมัติให้อยู่บนสุด */}
+          {!isTutor && (tutor || approvedTutorName) && (
+            <div className="flex items-center justify-between border rounded-lg p-3 bg-purple-50 border-purple-200 shadow-sm">
+              <div
+                className="flex items-center gap-3 cursor-pointer group"
+                onClick={() => tutor?.user_id || tutor?.id ? onViewProfile?.(tutor.user_id || tutor.id) : null}
+              >
+                <img
+                  src={tutor?.profile_picture_url || "/../blank_avatar.jpg"}
+                  alt="Tutor"
+                  className="w-10 h-10 rounded-full object-cover border-2 border-purple-200"
+                  onError={(e) => { e.target.onerror = null; e.target.src = "/blank_avatar.jpg"; }}
+                />
+                <div className="text-sm font-medium group-hover:text-purple-700 transition-colors">
+                  {tutor?.name ? `${tutor.name} ${tutor.lastname || ''}`.trim() : approvedTutorName}
+                  <span className="text-purple-700 bg-purple-100 px-2 py-0.5 rounded text-xs ml-2 font-bold select-none">ติวเตอร์</span>
+                  {tutor?.username && (
+                    <span className="text-gray-400 text-xs ml-2 font-normal select-none relative top-[1px]">
+                      @{tutor.username}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {joiners.map((j) => (
             <div
               key={`joined-${j.user_id}`}
               className="flex items-center justify-between border rounded-lg p-3 bg-emerald-50 border-emerald-200"
             >
-              <div className="text-sm font-medium">
-                {j.name} {j.lastname}
-                {j.is_owner && (
-                  <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-xs ml-2">เจ้าของโพสต์</span>
-                )}
-                {!j.is_owner && (
-                  <span className="text-gray-400 text-xs ml-1">
-                    #{j.user_id}
-                  </span>
-                )}
+              <div
+                className="flex items-center gap-3 cursor-pointer group"
+                onClick={() => (!j.is_owner || j.user_id) ? onViewProfile?.(j.user_id) : null}
+              >
+                <img
+                  src={j.profile_picture_url || "/../blank_avatar.jpg"}
+                  alt="Joiner"
+                  className="w-8 h-8 rounded-full object-cover border-2 border-emerald-100"
+                  onError={(e) => { e.target.onerror = null; e.target.src = "/blank_avatar.jpg"; }}
+                />
+                <div className="text-sm font-medium group-hover:text-emerald-700 transition-colors">
+                  {j.name} {j.lastname}
+                  {j.is_owner && (
+                    <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-xs ml-2 font-bold select-none">เจ้าของโพสต์</span>
+                  )}
+                  {!j.is_owner && (
+                    <span className="text-gray-400 text-xs ml-2 font-normal select-none relative top-[1px]">
+                      {j.username ? `@${j.username}` : `#${j.user_id}`}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="text-xs text-gray-500">
@@ -623,11 +656,22 @@ function JoinRequestsManager({ postId, postOwnerId, ownerName, me, canModerate, 
                   key={`pending-${r.user_id}`}
                   className="flex justify-between items-center border rounded-lg p-3 bg-white"
                 >
-                  <div className="text-sm">
-                    {r.name} {r.lastname}
-                    <span className="text-gray-400 text-xs ml-1">
-                      #{r.user_id}
-                    </span>
+                  <div
+                    className="flex items-center gap-3 cursor-pointer group"
+                    onClick={() => onViewProfile?.(r.user_id)}
+                  >
+                    <img
+                      src={r.profile_picture_url || "/../blank_avatar.jpg"}
+                      alt="Requester"
+                      className="w-8 h-8 rounded-full object-cover border border-gray-200"
+                      onError={(e) => { e.target.onerror = null; e.target.src = "/blank_avatar.jpg"; }}
+                    />
+                    <div className="text-sm font-medium group-hover:text-blue-600 transition-colors">
+                      {r.name} {r.lastname}
+                      <span className="text-gray-400 text-xs ml-2 font-normal select-none relative top-[1px]">
+                        {r.username ? `@${r.username}` : `#${r.user_id}`}
+                      </span>
+                    </div>
                   </div>
 
                   {canModerate && (

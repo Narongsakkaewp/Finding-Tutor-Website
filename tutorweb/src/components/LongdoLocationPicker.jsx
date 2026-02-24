@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 export default function LongdoLocationPicker({ onLocationSelect, defaultLocation, showMap = true }) {
   const mapId = useRef(`longdo-map-${Math.random().toString(36).substr(2, 9)}`);
   const mapInstance = useRef(null);
+  const debounceTimerRef = useRef(null);
 
   const [searchQuery, setSearchQuery] = useState(defaultLocation || "");
   const [suggestions, setSuggestions] = useState([]);
@@ -59,29 +60,37 @@ export default function LongdoLocationPicker({ onLocationSelect, defaultLocation
     return () => { mapInstance.current = null; };
   }, [showMap]);
 
-  const handleSearch = async (val) => {
+  const handleSearch = (val) => {
     setSearchQuery(val);
     if (onLocationSelect) {
       onLocationSelect(val, { lat: null, lng: null });
     }
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
     if (val.length < 3) {
       setSuggestions([]);
       return;
     }
 
-    try {
-      const res = await fetch(`https://search.longdo.com/mapsearch/json/suggest?limit=10&key=${LONGDO_API_KEY}&keyword=${val}`);
-      const json = await res.json();
-      if (json && json.data) {
-        setSuggestions(json.data);
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://search.longdo.com/mapsearch/json/search?limit=10&key=${LONGDO_API_KEY}&keyword=${encodeURIComponent(val)}`);
+        const json = await res.json();
+        if (json && json.data) {
+          setSuggestions(json.data);
+        }
+      } catch (error) {
+        console.error("Search Error:", error);
       }
-    } catch (error) {
-      console.error("Search Error:", error);
-    }
+    }, 500);
   };
 
   const selectSuggestion = (item) => {
-    const cleanName = stripHtml(item.w);
+    const displayName = item.name || item.w || "";
+    const cleanName = stripHtml(displayName);
     setSearchQuery(cleanName);
     setSuggestions([]);
 
@@ -143,8 +152,8 @@ export default function LongdoLocationPicker({ onLocationSelect, defaultLocation
                 className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm border-b last:border-b-0"
                 onClick={() => selectSuggestion(item)}
               >
-                <div className="font-bold text-gray-800">{stripHtml(item.w)}</div>
-                <div className="text-xs text-gray-500 truncate">{stripHtml(item.d)}</div>
+                <div className="font-bold text-gray-800">{stripHtml(item.name || item.w)}</div>
+                <div className="text-xs text-gray-500 truncate">{stripHtml(item.address || item.d)}</div>
               </li>
             ))}
           </ul>

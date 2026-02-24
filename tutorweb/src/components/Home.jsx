@@ -323,8 +323,8 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
                   <div className="mt-3 pt-3 border-t border-gray-50 flex items-center flex-wrap gap-2 text-xs text-gray-500">
                     <span>เข้าร่วมแล้ว: <b>{(p.join_count || 0) + 1}</b> / {p.group_size || 0} คน</span>
                     {p.has_tutor && (
-                      <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-bold border border-indigo-100">
-                        ได้ติวเตอร์แล้ว
+                      <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-700 font-bold border border-purple-200">
+                        {p.tutor?.name ? `ได้ติวเตอร์แล้ว (${p.tutor.name})` : (p.approved_tutor_name ? `ได้ติวเตอร์แล้ว (${p.approved_tutor_name})` : 'ได้ติวเตอร์แล้ว')}
                       </span>
                     )}
                   </div>
@@ -991,8 +991,22 @@ function HomeTutor({ setCurrentPage, user }) {
   const [isCreatePostModalOpen, setCreatePostModalOpen] = useState(false);
   const [previewPost, setPreviewPost] = useState(null); // For student posts
   const [previewTutor, setPreviewTutor] = useState(null); // For tutor profiles
-  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [recKey, setRecKey] = useState(0);
+
+  const handleSearch = async (keyword) => {
+    setSearchQuery(keyword);
+    // Log history (optional, similar to Student Home)
+    if (keyword.trim()) {
+      try {
+        await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(keyword)}&user_id=${user_id || 0}`);
+        setRecKey(p => p + 1);
+      } catch (err) { console.error("Failed to log search:", err); }
+    }
+    // Auto scroll to results if search is triggered
+    setTimeout(() => document.getElementById('studentRequests')?.scrollIntoView({ behavior: 'smooth' }), 100);
+  };
+
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -1073,13 +1087,25 @@ function HomeTutor({ setCurrentPage, user }) {
 
         {/* --- Section: Student Requests (Recommended) --- */}
         <section className="mb-20 scroll-mt-24" id="studentRequests">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2.5 bg-indigo-100/50 rounded-xl text-indigo-600">
-              <Sparkles size={24} className="fill-indigo-600" />
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-100/50 rounded-xl text-indigo-600">
+                <Sparkles size={24} className="fill-indigo-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">นักเรียนที่อาจเหมาะกับคุณ</h2>
+                <p className="text-sm text-gray-500">ระบบได้คัดเลือกจากวิชาที่คุณสอนและประวัติการใช้งาน</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">นักเรียนที่อาจเหมาะกับคุณ</h2>
-              <p className="text-sm text-gray-500">ระบบได้คัดเลือกจากวิชาที่คุณสอนและประวัติการใช้งาน</p>
+
+            {/* ✅ Search Box Container */}
+            <div className="relative z-40 max-w-md w-full mt-2 md:mt-0">
+              <SmartSearch
+                userId={user_id}
+                onSearch={(val) => {
+                  handleSearch(val);
+                }}
+              />
             </div>
           </div>
 
@@ -1093,7 +1119,7 @@ function HomeTutor({ setCurrentPage, user }) {
                   The user said "Main page like this" referring to Hero & Actions mostly.
                   I will use the grid feed directly. 
               */}
-            <StudentPosts subjectKey={searchQuery} onOpen={(post) => setPreviewPost(post)} />
+            <StudentPosts key={recKey} subjectKey={searchQuery} onOpen={(post) => setPreviewPost(post)} />
           </div>
         </section>
       </div>

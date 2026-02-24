@@ -397,12 +397,12 @@ export default function TutorInfoPage({ setCurrentPage }) {
                             </div>
                         </div>
 
-                        {/* Rate & About */}
+                        {/* About */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
+                            {/* <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-1">ค่าเรียนต่อชั่วโมง (บาท)</label>
                                 <input type="number" name="hourly_rate" value={formData.hourly_rate} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-purple-500 outline-none" placeholder="เช่น 250" />
-                            </div>
+                            </div> */}
                             <div className="md:col-span-2">
                                 <label className="block text-sm font-bold text-gray-700 mb-1">แนะนำตัว / สไตล์การสอน</label>
                                 <textarea name="about_me" rows="3" value={formData.about_me} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-purple-500 outline-none resize-none" placeholder="เขียนแนะนำตัวเองให้น่าสนใจ..."></textarea>

@@ -49,39 +49,82 @@ app.use((req, res, next) => {
 });
 
 // Keyword ชื่อวิชาที่ใช้สำหรับการค้นหา "ติวเตอร์"
+// Keyword ชื่อวิชาที่ใช้สำหรับการค้นหา (Dictionary ฉบับครอบคลุม)
 const KEYWORD_MAP = {
-  // หมวดคณิต
-  'math': ['คณิต', 'เลข', 'calculus', 'algebra'],
-  'คณิต': ['math', 'calculus'],
-  'เลข': ['math'],
+  // 📐 หมวดคณิตศาสตร์
+  'math': ['คณิต', 'เลข', 'คณิตศาสตร์', 'calculus', 'algebra', 'stat'],
+  'คณิต': ['math', 'เลข', 'คณิตศาสตร์', 'calculus', 'แคล'],
+  'เลข': ['math', 'คณิต'],
+  'แคล': ['calculus', 'cal', 'คณิต', 'math'],
+  'แคลคูลัส': ['calculus', 'cal', 'คณิต', 'math'],
+  'สถิติ': ['stat', 'statistics', 'คณิต', 'math', 'data'],
 
-  // หมวดภาษา
-  'eng': ['อังกฤษ', 'english', 'toeic', 'ielts'],
+  // 🧬 หมวดวิทยาศาสตร์
+  'sci': ['วิทย์', 'วิทยาศาสตร์', 'bio', 'chem', 'phy'],
+  'วิทย์': ['sci', 'science', 'วิทยาศาสตร์'],
+  'phy': ['ฟิสิกส์', 'physics', 'กลศาสตร์', 'วิทย์'],
+  'ฟิสิกส์': ['phy', 'physics', 'ฟิสิก'], // ดักคนพิมพ์ผิดว่า ฟิสิก (ไม่มี ส์)
+  'ฟิสิก': ['phy', 'ฟิสิกส์'],
+  'chem': ['เคมี', 'chemistry', 'วิทย์'],
+  'เคมี': ['chem', 'chemistry'],
+  'bio': ['ชีว', 'ชีววิทยา', 'ชีวะ', 'biology', 'วิทย์'],
+  'ชีว': ['bio', 'biology', 'ชีววิทยา', 'ชีวะ'],
+  'ชีวะ': ['bio', 'ชีว', 'ชีววิทยา'],
+
+  // 🗣️ หมวดภาษาและการสอบ
+  'eng': ['อังกฤษ', 'english', 'ภาษาอังกฤษ', 'toeic', 'ielts', 'toefl', 'tgat', 'conversation', 'grammar'],
+  'อังกฤษ': ['eng', 'english', 'ภาษาอังกฤษ', 'ielts', 'toeic'],
+  'ielts': ['eng', 'อังกฤษ', 'english'],
+  'toeic': ['eng', 'อังกฤษ', 'english'],
+  'thai': ['ไทย', 'ภาษาไทย', 'th'],
+  'ไทย': ['thai', 'ภาษาไทย'],
+  'jap': ['ญี่ปุ่น', 'japanese', 'n5', 'n4', 'n3', 'jlpt'],
+  'ญี่ปุ่น': ['jap', 'jlpt'],
+  'จีน': ['chinese', 'hsk', 'พินอิน'],
+  'chinese': ['จีน', 'hsk'],
+  'เกาหลี': ['korean', 'topik', 'ภาษาเกาหลี'],
   'สเปน': ['spanish', 'esp', 'espanol'],
-  'อังกฤษ': ['eng', 'english'],
-  'thai': ['ไทย'],
-  'ไทย': ['thai'],
-  'jap': ['ญี่ปุ่น', 'japanese'],
-  'ญี่ปุ่น': ['jap'],
+  'ฝรั่งเศส': ['french', 'pat7'],
+  'เยอรมัน': ['german', 'pat7'],
 
-  // หมวดวิทย์
-  'sci': ['วิทย์', 'bio', 'chem', 'phy'],
-  'วิทย์': ['sci', 'science'],
-  'phy': ['ฟิสิกส์'],
-  'ฟิสิกส์': ['phy', 'physics'],
-  'chem': ['เคมี'],
-  'เคมี': ['chem'],
-  'bio': ['ชีว'],
-  'ชีว': ['bio', 'biology'],
-
-  // หมวดคอมพิวเตอร์
-  'com': ['คอม', 'code', 'program', 'python', 'java', 'การเขียนโปรแกรม'],
-  'คอม': ['com', 'code', 'it'],
-  'code': ['program', 'python', 'react', 'web', 'java', 'c++', 'html', 'css'],
-  'เขียนโปรแกรม': ['code', 'program', 'python', 'java', 'c++'],
-  'python': ['code', 'program', 'เขียนโปรแกรม', 'data science', 'ai'],
+  // 💻 หมวดคอมพิวเตอร์และเทคโนโลยี (Tech Stack)
+  'com': ['คอม', 'code', 'program', 'it', 'คอมพิวเตอร์', 'เขียนโปรแกรม'],
+  'คอม': ['com', 'code', 'it', 'word', 'excel', 'powerpoint'],
+  'code': ['program', 'เขียนโปรแกรม', 'dev', 'python', 'java', 'html', 'css', 'javascript', 'c++'],
+  'เขียนโปรแกรม': ['code', 'program', 'dev', 'python', 'java', 'c++', 'oop'],
+  'python': ['code', 'program', 'เขียนโปรแกรม', 'data', 'ai', 'machine learning', 'ml'],
   'java': ['code', 'program', 'เขียนโปรแกรม', 'oop'],
-  'react': ['web', 'frontend', 'code', 'program']
+  'oop': ['java', 'c++', 'เขียนโปรแกรม', 'code', 'program', 'object oriented'],
+  'react': ['web', 'frontend', 'code', 'program', 'javascript', 'js'],
+  'web': ['website', 'เขียนเว็บ', 'html', 'css', 'javascript', 'frontend', 'backend', 'react', 'node'],
+  'website': ['web', 'เขียนเว็บ', 'webapp'],
+  'js': ['javascript', 'web', 'react', 'node'],
+  'javascript': ['js', 'web', 'react', 'node', 'frontend'],
+  'sql': ['database', 'ฐานข้อมูล', 'data'],
+  'database': ['sql', 'ฐานข้อมูล', 'mysql', 'nosql'],
+  'app': ['mobile', 'flutter', 'ios', 'android', 'application'],
+  'ui': ['ux', 'design', 'figma', 'ออกแบบ'],
+  'ux': ['ui', 'design', 'figma'],
+
+  // 🌍 หมวดสังคมและมนุษยศาสตร์
+  'สังคม': ['social', 'ประวัติศาสตร์', 'ภูมิศาสตร์', 'รัฐศาสตร์', 'นิติศาสตร์'],
+  'ประวัติศาสตร์': ['history', 'สังคม'],
+
+  // 🎨 หมวดไลฟ์สไตล์ ดนตรี และศิลปะ
+  'ศิลปะ': ['art', 'วาดรูป', 'วาดภาพ', 'design', 'ออกแบบ', 'color'],
+  'วาดรูป': ['ศิลปะ', 'art', 'procreate', 'สีน้ำ', 'ดรออิ้ง'],
+  'ดนตรี': ['music', 'กีตาร์', 'เปียโน', 'ร้องเพลง', 'ไวโอลิน'],
+  'กีตาร์': ['guitar', 'ดนตรี', 'โปร่ง', 'กีตาร์ไฟฟ้า', 'กีตาร์คลาสสิค', 'เบส', 'ukulele', 'เครื่องสาย'],
+  'เปียโน': ['piano', 'ดนตรี'],
+  'ร้องเพลง': ['vocal', 'ดนตรี', 'voice'],
+  'กีฬา': ['sport', 'ว่ายน้ำ', 'แบดมินตัน', 'เทนนิส', 'ฟิตเนส'],
+  'ว่ายน้ำ': ['swimming', 'กีฬา'],
+
+  // 🎯 หมวดเตรียมสอบ (สำคัญมาก เด็กมักพิมพ์คำเหล่านี้ตรงๆ)
+  'สอบเข้า': ['ม.1', 'ม.4', 'เตรียมอุดม', 'tcas', 'มหาวิทยาลัย', 'กสพท'],
+  'tcas': ['tgat', 'tpat', 'a-level', 'สอบเข้า', 'ม.6'],
+  'tgat': ['tcas', 'อังกฤษ', 'ตรรกะ'],
+  'สอวน': ['โอลิมปิก', 'ค่าย', 'คณิต', 'คอม', 'เคมี', 'ชีว', 'ฟิสิกส์']
 };
 
 // ฟังก์ชันช่วยขยายคำค้นหา
@@ -154,38 +197,98 @@ async function getJoiners(postId) {
   }));
 }
 
-// ฟังก์ชันสำหรับบันทึกข้อมูล
+// ฟังก์ชันสำหรับบันทึกข้อมูล Report Issue (แก้ไขใหม่)
 async function saveToGoogleSheet(data) {
   try {
-    // 1. ตั้งค่าการยืนยันตัวตน
     const serviceAccountAuth = new JWT({
       email: creds.client_email,
       key: creds.private_key,
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
-    // 2. โหลดเอกสาร
     const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
     await doc.loadInfo();
 
-    // 3. เลือกแผ่นงานแรก (Sheet2)
+    // เลือกแผ่นงานที่ 2 (Report Issue)
     const sheet = doc.sheetsByIndex[1];
 
-    // 4. เพิ่มแถวใหม่
+    // เพิ่มแถวใหม่ (Map ให้ตรงกับหัวตารางใน Google Sheet)
     await sheet.addRow({
       Timestamp: new Date().toLocaleString('th-TH'),
-      User: data.user_contact,
+      UserID: data.user_id || '-',
+      Username: data.username || '-',
+      Email: data.email || '-',
+      Name: data.name || '-',
+      Lastname: data.lastname || '-',
       Category: data.category,
       Topic: data.topic,
       Detail: data.detail
     });
 
-    console.log("✅ บันทึกลง Google Sheet เรียบร้อยแล้ว!");
+    console.log("✅ บันทึก Report ลง Google Sheet เรียบร้อยแล้ว!");
   } catch (err) {
     console.error("❌ Google Sheet Error:", err.message);
-    // ไม่ throw error เพื่อให้หน้าเว็บทำงานต่อได้แม้ Sheet มีปัญหา
   }
 }
+
+// API รับแจ้งปัญหา (แก้ไขใหม่ให้ดึงข้อมูล User)
+app.post('/api/report-issue', async (req, res) => {
+  const { category, topic, detail, user_contact, user_id } = req.body;
+  // user_contact คือ email ที่ส่งมาจาก frontend
+  // user_id ควรส่งมาจาก frontend ถ้าล็อกอินอยู่
+
+  let userData = {
+    user_id: user_id || '-',
+    username: '-',
+    email: user_contact || '-',
+    name: '-',
+    lastname: '-'
+  };
+
+  try {
+    // พยายามดึงข้อมูลเพิ่มเติมจาก Database
+    let query = '';
+    let param = '';
+
+    if (user_id) {
+      query = 'SELECT user_id, username, email, name, lastname FROM register WHERE user_id = ?';
+      param = user_id;
+    } else if (user_contact) {
+      query = 'SELECT user_id, username, email, name, lastname FROM register WHERE email = ?';
+      param = user_contact;
+    }
+
+    if (query) {
+      const [rows] = await pool.query(query, [param]);
+      if (rows.length > 0) {
+        // ถ้าเจอ user ในระบบ ให้ใช้ข้อมูลจริง
+        userData = {
+          user_id: rows[0].user_id,
+          username: rows[0].username || '-',
+          email: rows[0].email,
+          name: rows[0].name,
+          lastname: rows[0].lastname
+        };
+      }
+    }
+
+    // ส่งข้อมูลครบชุดไปบันทึก
+    saveToGoogleSheet({
+      category,
+      topic,
+      detail,
+      ...userData
+    });
+
+    res.json({ success: true, message: 'ได้รับเรื่องร้องเรียนแล้ว' });
+
+  } catch (err) {
+    console.error("Report Issue Error:", err);
+    // ถึง DB พัง ก็ยังพยายามบันทึกลง Sheet ด้วยข้อมูลเท่าที่มี
+    saveToGoogleSheet({ category, topic, detail, ...userData });
+    res.json({ success: true, message: 'ได้รับเรื่องร้องเรียนแล้ว (User lookup failed)' });
+  }
+});
 
 // ---------- APIs ----------
 app.get('/api/recommendations', recommendationController.getRecommendations);
@@ -673,80 +776,56 @@ app.get('/api/tutor-posts', async (req, res) => {
 
     let orderBy = 'ORDER BY tp.created_at DESC';
 
+    // 🌟 ระบบ Hybrid Search สำหรับ "แท็บคอร์สเรียน" (ใช้ KEYWORD_MAP ของคุณ)
     if (subject) {
-      const keywords = expandSearchTerm(subject);
+      // 1. หั่นคำค้นหา
+      const searchWords = subject.trim().toLowerCase().split(/\s+/);
+      const conditions = [];
 
-      // Relevance Score Calculation
-      // 1. Exact Subject Match (100)
-      // 2. Partial Subject Match (50)
-      // 3. Exact Description Match (20)
-      // 4. Partial Description Match (10)
+      searchWords.forEach(word => {
+        let wordGroup = [word];
 
-      const relevanceCases = [];
-      const mainKw = keywords[0]; // Original query
+        // 2. เช็คกับ KEYWORD_MAP ที่คุณมีอยู่แล้วในไฟล์
+        if (typeof KEYWORD_MAP !== 'undefined' && KEYWORD_MAP[word]) {
+          wordGroup = wordGroup.concat(KEYWORD_MAP[word]);
+        }
 
-      // Main Keyword Priority
-      relevanceCases.push(`WHEN tp.subject LIKE ? THEN 100`);
-      params.push(mainKw); // Exact-ish
+        // 3. สร้างเงื่อนไขค้นหา
+        const synConditions = wordGroup.map(() =>
+          `(LOWER(tp.subject) LIKE ? OR LOWER(tp.description) LIKE ? OR LOWER(tpro.nickname) LIKE ?)`
+        ).join(' OR ');
 
-      relevanceCases.push(`WHEN tp.subject LIKE ? THEN 80`);
-      params.push(`%${mainKw}%`);
+        conditions.push(`(${synConditions})`);
 
-      keywords.forEach(kw => {
-        relevanceCases.push(`WHEN tp.subject LIKE ? THEN 50`);
-        params.push(`%${kw}%`);
-        relevanceCases.push(`WHEN tp.description LIKE ? THEN 20`);
-        params.push(`%${kw}%`);
+        wordGroup.forEach(syn => {
+          const safeSyn = `%${syn}%`;
+          params.push(safeSyn, safeSyn, safeSyn);
+        });
       });
 
-      // Construct OR conditions for WHERE
-      const conditions = keywords.map(() =>
-        `(tp.subject LIKE ? OR tp.description LIKE ?)`
-      ).join(' OR ');
+      where.push(`(${conditions.join(' AND ')})`);
 
-      // IMPORTANT: Add to WHERE, not replace
-      // Make sure parsing params order matches!
-      // Params for ORDER BY are added above. 
-      // Params for WHERE need to be added NOW? 
-      // SQL param order matters! 'SELECT ... ORDER BY ...'
-      // The params for SELECT/WHERE come before ORDER BY in execution but likely same param list in `pool.query`.
-      // Actually, ORDER BY params come LAST.
+      // 4. ให้คะแนนความแม่นยำ (Subject ต้องมาก่อนเสมอ)
+      const exactPhrase = subject.replace(/'/g, "''").toLowerCase();
 
-      // Wait, complex param injection in ORDER BY case statement is risky if I mix WHERE params.
-      // Better strategy: Use string interpolation for ORDER BY values IF they are safe (they are from `expandSearchTerm` which comes from user input... risky SQL injection).
-      // Standard practice: Use `?` everywhere.
-
-      // Let's simplify. I will put the score in the SELECT clause to keep param order clean.
-      // SELECT ..., (CASE ...) as score FROM ... ORDER BY score DESC
-
-      where.push(`(${conditions})`);
-      keywords.forEach(kw => {
-        params.push(`%${kw}%`, `%${kw}%`);
-        // Note: These params are for the WHERE clause.
-      });
+      orderBy = `ORDER BY 
+        (CASE 
+          WHEN LOWER(tp.subject) = '${exactPhrase}' THEN 100        
+          WHEN LOWER(tp.subject) LIKE '${exactPhrase}%' THEN 90     
+          WHEN LOWER(tp.subject) LIKE '%${exactPhrase}%' THEN 80    
+          WHEN LOWER(tp.description) LIKE '${exactPhrase}%' THEN 50
+          WHEN LOWER(tp.description) LIKE '%${exactPhrase}%' THEN 40
+          WHEN LOWER(tpro.nickname) LIKE '%${exactPhrase}%' THEN 30
+          ELSE 10 
+        END) DESC,
+        tp.created_at DESC`;
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    // We need to inject the SCORE calculation into SELECT if we use it for sorting
-    // But modifying the big SELECT string is messy.
-    // Let's rely on a simpler ORDER BY for now that doesn't use bound parameters inside ORDER BY if possible,
-    // Or just append the params correctly.
-
-    // Alternative: Sort by exact match of `subject` vs `subject` parameter
-    if (subject) {
-      // Safe approach: Sort by expression using the query variable directly
-      // WARNING: Ensure `subject` doesn't break SQL. `pool.escape`?
-      // `pool.query` handles `?`
-
-      // Let's just strict sort by: `tp.subject LIKE %query%` DESC
-      orderBy = `ORDER BY 
-            (CASE WHEN tp.subject LIKE '${subject.replace(/'/g, "''")}%' THEN 3  -- Starts with query
-                  WHEN tp.subject LIKE '%${subject.replace(/'/g, "''")}%' THEN 2  -- Contains query
-                  ELSE 1 END) DESC,
-            tp.created_at DESC`;
-    }
-
+    // ==========================================
+    // รัน Query ค้นหาข้อมูล
+    // ==========================================
     const [rows] = await pool.query(
       `
       SELECT
@@ -804,7 +883,15 @@ app.get('/api/tutor-posts', async (req, res) => {
     );
 
     const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM tutor_posts tp ${whereSql}`,
+      `SELECT COUNT(*) AS total 
+       FROM tutor_posts tp
+       LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
+       LEFT JOIN (
+         SELECT tutor_id, AVG(rating) as avg_rating
+         FROM reviews
+         GROUP BY tutor_id
+       ) rv ON rv.tutor_id = tp.tutor_id
+       ${whereSql}`,
       params
     );
 
@@ -1176,7 +1263,10 @@ app.get('/api/student_posts', async (req, res) => {
         CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited,
         CASE WHEN has_tutor.cnt > 0 THEN 1 ELSE 0 END AS has_approved_tutor,
         approved_tutor_info.name AS approved_tutor_name,
-        approved_tutor_info.lastname AS approved_tutor_lastname
+        approved_tutor_info.lastname AS approved_tutor_lastname,
+        approved_tutor_info.tutor_id AS approved_tutor_id,
+        approved_tutor_info.username AS approved_tutor_username,
+        approved_tutor_info.profile_picture_url AS approved_tutor_profile_picture_url
       FROM student_posts sp
       LEFT JOIN register r ON r.user_id = sp.student_id
       LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
@@ -1219,9 +1309,10 @@ app.get('/api/student_posts', async (req, res) => {
       
       -- [NEW] Get the approved tutor's details (picking the first one if multiple, though usually 1)
       LEFT JOIN (
-        SELECT o.student_post_id, t_reg.name, t_reg.lastname
+        SELECT o.student_post_id, o.tutor_id, t_reg.name, t_reg.lastname, t_reg.username, tp.profile_picture_url
         FROM student_post_offers o
         JOIN register t_reg ON o.tutor_id = t_reg.user_id
+        LEFT JOIN tutor_profiles tp ON t_reg.user_id = tp.user_id
         WHERE o.status = 'approved'
         -- Use GROUP BY to ensure we only get one row per post in case of edge cases
         GROUP BY o.student_post_id
@@ -1254,8 +1345,11 @@ app.get('/api/student_posts', async (req, res) => {
       cancel_requested: !!r.cancel_requested, // [NEW]
       has_tutor: !!r.has_approved_tutor, // ✅ Send status to frontend
       tutor: r.has_approved_tutor && r.approved_tutor_name ? {
+        id: r.approved_tutor_id,
         name: r.approved_tutor_name,
-        lastname: r.approved_tutor_lastname
+        lastname: r.approved_tutor_lastname,
+        username: r.approved_tutor_username,
+        profile_picture_url: r.approved_tutor_profile_picture_url
       } : null,
       user: {
         first_name: r.name || '',
@@ -1857,11 +1951,14 @@ app.get('/api/student_posts/:id/joiners', async (req, res) => {
         j.user_id,
         r.name,
         r.lastname,
+        r.username,
+        sprof.profile_picture_url,
         j.joined_at,
         j.status
       FROM student_post_joins j
       JOIN register r ON r.user_id = j.user_id
-      WHERE j.student_post_id = ? 
+      LEFT JOIN student_profiles sprof ON r.user_id = sprof.user_id
+      WHERE j.student_post_id = ? AND j.status = 'approved'
       ORDER BY j.joined_at ASC
     `, [postId]);
 
@@ -1883,15 +1980,23 @@ app.get('/api/tutor_posts/:id/joiners', async (req, res) => {
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
 
     const [rows] = await pool.query(
-      `SELECT j.user_id, j.joined_at, r.name, r.lastname, r.username
+      `SELECT j.user_id, j.joined_at, r.name, r.lastname, r.username, sprof.profile_picture_url
        FROM tutor_post_joins j
        LEFT JOIN register r ON r.user_id = j.user_id
+       LEFT JOIN student_profiles sprof ON r.user_id = sprof.user_id
       WHERE j.tutor_post_id = ? AND j.status = 'approved'
       ORDER BY j.joined_at ASC, j.user_id ASC`,
       [postId]
     );
 
-    res.json(rows.map(x => ({ user_id: x.user_id, joined_at: x.joined_at, name: x.name || '', lastname: x.lastname || '' })));
+    res.json(rows.map(x => ({
+      user_id: x.user_id,
+      joined_at: x.joined_at,
+      name: x.name || '',
+      lastname: x.lastname || '',
+      username: x.username || '',
+      profile_picture_url: x.profile_picture_url || ''
+    })));
   } catch (e) {
     console.error('GET /api/tutor_posts/:id/joiners error', e);
     return sendDbError(res, e);
@@ -1912,10 +2017,11 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     const sqlStudent = `
       SELECT 
         j.student_post_id, j.user_id, j.status, j.requested_at,
-        j.name, j.lastname, r.email, r.username,
+        j.name, j.lastname, r.email, r.username, sprof.profile_picture_url,
         'student' AS request_type
       FROM student_post_joins j
       LEFT JOIN register r ON r.user_id = j.user_id
+      LEFT JOIN student_profiles sprof ON r.user_id = sprof.user_id
       WHERE j.student_post_id = ? ${useFilter ? 'AND j.status = ?' : ''}
     `;
 
@@ -1923,10 +2029,11 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     const sqlTutor = `
       SELECT 
         o.student_post_id, o.tutor_id AS user_id, o.status, o.requested_at,
-        o.name, o.lastname, r.email, r.username,
+        o.name, o.lastname, r.email, r.username, tp.profile_picture_url,
         'tutor' AS request_type
       FROM student_post_offers o
       LEFT JOIN register r ON r.user_id = o.tutor_id
+      LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
       WHERE o.student_post_id = ? ${useFilter ? 'AND o.status = ?' : ''}
     `;
 
@@ -3601,12 +3708,29 @@ app.delete('/api/user/:id', async (req, res) => {
   }
 });
 
-// API สำหรับลบบัญชี (พร้อมเก็บ Feedback)
+// API สำหรับลบบัญชี (พร้อมเก็บ Log ละเอียดลง Sheet)
 app.post('/api/delete-account', async (req, res) => {
-  const { userId, userName, userType, reason, detail } = req.body;
+  const { userId, reason, detail } = req.body;
+  // รับแค่ userId ก็พอ เดี๋ยวเราไป query เอาข้อมูลล่าสุดเองให้ชัวร์
 
   try {
-    // --- 1. ส่วนบันทึกลง Google Sheet (แผ่นที่ 1) ---
+    // 1. ดึงข้อมูล User ล่าสุดจาก DB ก่อนลบ
+    const [rows] = await pool.query('SELECT * FROM register WHERE user_id = ?', [userId]);
+    const user = rows[0] || {};
+
+    const sheetData = {
+      Timestamp: new Date().toLocaleString('th-TH'),
+      UserID: userId,
+      Username: user.username || '-',
+      Email: user.email || 'Unknown',
+      Name: user.name || 'Unknown',
+      Lastname: user.lastname || 'Unknown',
+      Role: user.type || 'Unknown',
+      Reason: reason,
+      Detail: detail
+    };
+
+    // 2. บันทึกลง Google Sheet (แผ่นที่ 1 Reason)
     try {
       const serviceAccountAuth = new JWT({
         email: creds.client_email,
@@ -3616,25 +3740,33 @@ app.post('/api/delete-account', async (req, res) => {
 
       const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
       await doc.loadInfo();
-      const sheet = doc.sheetsByIndex[0];
+      const sheet = doc.sheetsByIndex[0]; // แผ่นแรก
 
-      await sheet.addRow({
-        Timestamp: new Date().toLocaleString('th-TH'),
-        UserID: userId,
-        Name: userName || 'Unknown',
-        Role: userType || 'Unknown',
-        Reason: reason,
-        Detail: detail
-      });
+      await sheet.addRow(sheetData);
       console.log("✅ Saved delete reason to Google Sheet");
     } catch (sheetErr) {
       console.error("⚠️ Sheet Error (ข้ามการบันทึก):", sheetErr.message);
     }
 
-    // --- 2. ส่วนลบข้อมูลจริงใน Database ---
+    // 3. ลบข้อมูลจริงใน Database (Clean Delete logic ที่เราเคยทำ)
+    // เรียกใช้ logic การลบแบบ cascading เหมือน API delete /api/user/:id
+    // ... (คุณสามารถเรียกฟังก์ชันลบ หรือรัน query ลบตรงนี้ได้เลย)
+
+    // ตัวอย่างการลบแบบย่อ (หรือจะ copy logic delete เต็มๆ มาใส่ก็ได้)
+    await pool.query('DELETE FROM student_profiles WHERE user_id = ?', [userId]);
+    await pool.query('DELETE FROM tutor_profiles WHERE user_id = ?', [userId]);
+    await pool.query('DELETE FROM search_history WHERE user_id = ?', [userId]);
+    await pool.query('DELETE FROM calendar_events WHERE user_id = ?', [userId]);
+    await pool.query('DELETE FROM notifications WHERE user_id = ? OR actor_id = ?', [userId, userId]);
+    await pool.query('DELETE FROM student_post_joins WHERE user_id = ?', [userId]);
+    await pool.query('DELETE FROM tutor_post_joins WHERE user_id = ?', [userId]);
+    await pool.query('DELETE FROM student_posts WHERE student_id = ?', [userId]);
+    await pool.query('DELETE FROM tutor_posts WHERE tutor_id = ?', [userId]);
+
+    // สุดท้ายลบ User หลัก
     await pool.query('DELETE FROM register WHERE user_id = ?', [userId]);
 
-    console.log(`🗑️ Deleted User: ${userId} (${userName})`);
+    console.log(`🗑️ Deleted User: ${userId} (${user.email})`);
     res.json({ success: true, message: 'Account deleted' });
 
   } catch (err) {

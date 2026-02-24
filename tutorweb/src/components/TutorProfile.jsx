@@ -1115,7 +1115,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                                     <input type="number" name="price" min="0" value={editForm.price || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">รับจำนวน (คน)</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนผู้เรียนที่รับ (คน)</label>
                                     <input type="number" name="group_size" min="1" placeholder="1 = ตัวต่อตัว" value={editForm.group_size || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
                                 </div>
                             </div>

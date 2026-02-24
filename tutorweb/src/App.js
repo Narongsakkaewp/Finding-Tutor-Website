@@ -174,9 +174,11 @@ function App() {
     }
   };
 
+  const [profileBackPage, setProfileBackPage] = useState(null); // [NEW] Separate back tracking for profile
+
   const handleViewProfile = (userId) => {
     setViewingUserId(userId);
-    setBackPage(currentPage);
+    setProfileBackPage(currentPage);
     setCurrentPage('user_profile');
   };
 
@@ -212,6 +214,7 @@ function App() {
             postsCache={postsCache}
             setPostsCache={setPostsCache}
             onBack={() => setCurrentPage(backPage || 'mypost')}
+            onViewProfile={handleViewProfile}
           />
         );
       case 'favorite': return <Favorite onViewProfile={handleViewProfile} />;
@@ -235,7 +238,7 @@ function App() {
         return (
           <UserProfilePage
             userId={viewingUserId}
-            onBack={() => setCurrentPage(backPage || 'home')}
+            onBack={() => setCurrentPage(profileBackPage || 'home')}
           />
         );
       case 'admin_dashboard': return <AdminDashboard />;
