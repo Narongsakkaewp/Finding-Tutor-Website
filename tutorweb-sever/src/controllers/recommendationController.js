@@ -152,7 +152,7 @@ exports.getRecommendations = async (req, res) => {
 
         // 2. ดึงประวัติค้นหาล่าสุด 3 รายการ
         const [history] = await pool.query(
-            'SELECT DISTINCT keyword FROM search_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 3',
+            'SELECT keyword, MAX(created_at) as last_searched FROM search_history WHERE user_id = ? GROUP BY keyword ORDER BY last_searched DESC LIMIT 3',
             [userId]
         );
 

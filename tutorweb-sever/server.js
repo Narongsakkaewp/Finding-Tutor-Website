@@ -636,9 +636,9 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
 // ---------- /api/tutors (รายชื่อติวเตอร์) ----------
 app.get('/api/tutors', async (req, res) => {
   try {
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
-    const offset = (page - 1) * limit;
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const offset = Number((page - 1) * limit);
 
     const searchQuery = (req.query.search || '').trim();
 
@@ -1365,7 +1365,7 @@ app.get('/api/student_posts', async (req, res) => {
       
       -- [NEW] Get the approved tutor's details (picking the first one if multiple, though usually 1)
       LEFT JOIN (
-        SELECT o.student_post_id, o.tutor_id, t_reg.name, t_reg.lastname, t_reg.username, tp.profile_picture_url
+        SELECT o.student_post_id, MAX(o.tutor_id) AS tutor_id, MAX(t_reg.name) AS name, MAX(t_reg.lastname) AS lastname, MAX(t_reg.username) AS username, MAX(tp.profile_picture_url) AS profile_picture_url
         FROM student_post_offers o
         JOIN register t_reg ON o.tutor_id = t_reg.user_id
         LEFT JOIN tutor_profiles tp ON t_reg.user_id = tp.user_id
