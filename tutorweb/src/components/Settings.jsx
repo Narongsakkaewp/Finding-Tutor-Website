@@ -2,8 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { User, Mail, Lock, Trash2, Save, AlertTriangle, Eye, EyeOff, Info, X } from "lucide-react"; // ✅ เพิ่ม Icon
 import DeleteAccountModal from './DeleteAccountModal';
-
-const API_BASE = "http://localhost:5000";
+import { API_BASE } from '../config';
 
 export default function Settings() {
     const [user, setUser] = useState(null);

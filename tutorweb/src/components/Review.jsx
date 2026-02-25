@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Star, X } from "lucide-react";
+import { API_BASE } from '../config';
 
 // Helper Component for Star Row
 const StarRow = ({ label, value, onChange }) => (
@@ -49,7 +50,7 @@ const Review = ({ postId, tutorId, studentId, onClose, initialSubject, initialTu
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/api/reviews", {
+      const res = await fetch(`${API_BASE}/api/reviews`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

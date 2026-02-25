@@ -1,8 +1,7 @@
 // tutorweb/src/pages/ForgotPassword.jsx
 import React, { useState } from 'react';
 import { Mail, Lock, Key, ArrowLeft, CheckCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react';
-
-const API_BASE = "http://localhost:5000";
+import { API_BASE } from '../config';
 
 export default function ForgotPassword({ onSwitchToLogin }) {
     const [step, setStep] = useState(1); // 1: Email, 2: OTP & New Password

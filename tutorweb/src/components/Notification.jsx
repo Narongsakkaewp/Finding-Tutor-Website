@@ -1,6 +1,7 @@
 // src/components/Notification.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import Review from "./Review";
+import { API_BASE } from '../config';
 import {
   Bell, Check, Clock, ChevronRight, User, BookOpen, Calendar, CheckCircle, Shield
 } from "lucide-react";
@@ -29,7 +30,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
 
       try {
         // Fetch regular notifications
-        const notifUrl = `http://localhost:5000/api/notifications/${normalizedUserId}?_ts=${Date.now()}`;
+        const notifUrl = `${API_BASE}/api/notifications/${normalizedUserId}?_ts=${Date.now()}`;
         const notifRes = await fetch(notifUrl, {
           method: "GET",
           cache: "no-store",
@@ -41,7 +42,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
         setNotifications(Array.isArray(notifData) ? notifData : []);
 
         // Fetch Real-time Schedule Alerts
-        const schedUrl = `http://localhost:5000/api/schedule-alerts/${normalizedUserId}?_ts=${Date.now()}`;
+        const schedUrl = `${API_BASE}/api/schedule-alerts/${normalizedUserId}?_ts=${Date.now()}`;
         const schedRes = await fetch(schedUrl, {
           method: "GET",
           cache: "no-store",
@@ -118,7 +119,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
 
   const fetchTutorData = async (actorId) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/tutor-profile/${actorId}`);
+      const res = await fetch(`${API_BASE}/api/tutor-profile/${actorId}`);
       if (!res.ok) throw new Error("Failed to load tutor");
       return await res.json();
     } catch (e) {
@@ -155,7 +156,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
       setNotifications((prev) => prev.map((x) => (x.notification_id === item.notification_id ? { ...x, is_read: 1 } : x)));
       if (onReadOne) onReadOne(); // [FIX] Call parent to update badge
       try {
-        fetch(`http://localhost:5000/api/notifications/read/${item.notification_id}`, { method: "PUT" });
+        fetch(`${API_BASE}/api/notifications/read/${item.notification_id}`, { method: "PUT" });
       } catch (e) { console.error(e); }
     }
 
@@ -220,7 +221,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
 
     try {
       setOfferLoading(true);
-      const url = `http://localhost:5000/api/student_posts/${offerModal.post_id}/requests/${offerModal.actor_id}`;
+      const url = `${API_BASE}/api/student_posts/${offerModal.post_id}/requests/${offerModal.actor_id}`;
       const res = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -253,7 +254,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     const unread = notifications.filter((x) => !x.is_read);
     if (unread.length === 0) return;
     setNotifications((prev) => prev.map((x) => ({ ...x, is_read: 1 })));
-    await Promise.all(unread.map((x) => fetch(`http://localhost:5000/api/notifications/read/${x.notification_id}`, { method: "PUT" })));
+    await Promise.all(unread.map((x) => fetch(`${API_BASE}/api/notifications/read/${x.notification_id}`, { method: "PUT" })));
     if (onReadAll) onReadAll();
   };
 

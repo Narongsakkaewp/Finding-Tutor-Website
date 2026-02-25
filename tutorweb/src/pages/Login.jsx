@@ -1,6 +1,7 @@
 // tutorweb/src/pages/Login.jsx
 import React, { useState } from 'react';
 import { User, Lock, Eye, EyeOff, LogIn } from 'lucide-react'; // ✅ เปลี่ยน Mail เป็น User
+import { API_BASE } from '../config';
 
 function Login({ onLoginSuccess, onSwitchToRegister, onSwitchToForgotPassword }) {
   const [email, setEmail] = useState(''); // ตัวแปรยังชื่อ email แต่จริงๆ รับได้ทั้ง user/email
@@ -15,7 +16,7 @@ function Login({ onLoginSuccess, onSwitchToRegister, onSwitchToForgotPassword })
     setLoading(true);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/login`, {
+      const res = await fetch(`${API_BASE}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.toLowerCase(), password }), // แปลงพิมพ์เล็กกันเหนียว

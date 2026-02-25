@@ -4,10 +4,9 @@ import {
   MessageSquarePlus, CalendarCheck, Sparkles, CheckCircle
 } from "lucide-react";
 import SmartSearch from "../components/SmartSearch";
+import { API_BASE } from '../config';
 
 // Config
-const API_BASE = "http://localhost:5000";
-
 // --- Helper Components (เอามาไว้ในนี้เลยจะได้ไม่ error) ---
 function Badge({ icon: Icon, text, color = "blue" }) {
   const colors = {

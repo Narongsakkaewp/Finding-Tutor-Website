@@ -2,9 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Star, MapPin, User, Search, DollarSign, ExternalLink } from "lucide-react";
 
 // --------------------------- Components: ProfileImage --------------------------- (Duplicate from Home.jsx or import it if shared)
+import { API_BASE } from '../config';
 // Use simple img with fallback for now as logic is simple here
-const API_BASE = "http://localhost:5000";
-
 export default function TutorSearchList({ searchKey, onOpen }) {
     const [tutors, setTutors] = useState([]);
     const [loading, setLoading] = useState(true);

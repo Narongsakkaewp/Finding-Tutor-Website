@@ -5,8 +5,7 @@ import {
     MapPin, Users, DollarSign, CalendarCheck, Edit, Trash2, MoreHorizontal, ArrowLeft
 } from "lucide-react";
 import TutorPostForm from "./TutorPostForm";
-
-const API_BASE = "http://localhost:5000";
+import { API_BASE } from '../config';
 
 /* ---------- helpers ---------- */
 function pickUser() {

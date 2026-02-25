@@ -13,8 +13,8 @@ import {
   MapPin, Clock, Calendar, Mail, Phone, GraduationCap, Briefcase, PlusCircle, Search, Sparkles
 } from "lucide-react";
 import SmartSearch from './SmartSearch';
+import { API_BASE } from '../config';
 
-const API_BASE = "http://localhost:5000";
 const priceText = (p) => new Intl.NumberFormat("th-TH").format(p || 0);
 const formatDateLocal = (date) => {
   if (!date) return "";

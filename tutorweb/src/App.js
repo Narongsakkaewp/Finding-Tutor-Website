@@ -19,6 +19,7 @@ import AdminDashboard from './components/AdminDashboard'; // [NEW]
 import ManageMyPosts from './components/ManageMyPosts';
 
 // ✅ 1. Import Icons from lucide-react
+import { API_BASE } from './config';
 import {
   LayoutDashboard,
   Bell,
@@ -97,7 +98,7 @@ function App() {
 
   useEffect(() => {
     if (!user?.user_id) return;
-    fetch(`http://localhost:5000/api/notifications/${user.user_id}`)
+    fetch(`${API_BASE}/api/notifications/${user.user_id}`)
       .then(res => res.json())
       .then(data => {
         const newOnes = Array.isArray(data) ? data.filter(n => !n.is_read) : [];

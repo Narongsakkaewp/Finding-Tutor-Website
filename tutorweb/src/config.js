@@ -1,0 +1,2 @@
+const isDev = process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost';
+export const API_BASE = process.env.REACT_APP_API_BASE || (isDev ? "http://localhost:5000" : "https://finding-tutor-website-production.up.railway.app");

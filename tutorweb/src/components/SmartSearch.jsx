@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Search, Clock, X, BookOpen, ChevronRight, TrendingUp, Trash2 } from "lucide-react";
+import { API_BASE } from '../config';
 
 // Helper hook for debouncing
 function useDebounce(value, delay) {
@@ -26,7 +27,7 @@ export default function SmartSearch({ userId, onSearch, onSelectResult }) {
   const fetchSearchHistory = async () => {
     if (!userId) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/search/history?user_id=${userId}`);
+      const res = await fetch(`${API_BASE}/api/search/history?user_id=${userId}`);
       const data = await res.json();
       if (Array.isArray(data)) setSearchHistory(data);
     } catch (err) { console.error("History Error", err); }
@@ -41,7 +42,7 @@ export default function SmartSearch({ userId, onSearch, onSelectResult }) {
 
     try {
       // ส่ง user_id และ keyword ไปลบ
-      await fetch(`http://localhost:5000/api/search/history?user_id=${userId}&keyword=${encodeURIComponent(keyword)}`, {
+      await fetch(`${API_BASE}/api/search/history?user_id=${userId}&keyword=${encodeURIComponent(keyword)}`, {
         method: 'DELETE'
       });
     } catch (err) {
@@ -60,7 +61,7 @@ export default function SmartSearch({ userId, onSearch, onSelectResult }) {
 
     try {
       // ส่งแค่ user_id ไปเพื่อลบทั้งหมด
-      await fetch(`http://localhost:5000/api/search/history?user_id=${userId}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/api/search/history?user_id=${userId}`, { method: 'DELETE' });
     } catch (err) { console.error("Error clearing history:", err); }
   };
 
@@ -75,7 +76,7 @@ export default function SmartSearch({ userId, onSearch, onSelectResult }) {
     async function doLiveSearch() {
       try {
         setIsLoading(true);
-        const res = await fetch(`http://localhost:5000/api/search?q=${encodeURIComponent(debouncedQuery)}&user_id=${userId || 0}`);
+        const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(debouncedQuery)}&user_id=${userId || 0}`);
         const data = await res.json();
         if (!ignore) setLiveResults(data);
       } catch (e) {

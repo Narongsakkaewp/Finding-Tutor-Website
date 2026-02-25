@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Flag, X, AlertTriangle } from 'lucide-react';
+import { API_BASE } from '../config';
 
 export default function ReportModal({ open, onClose, postId, postType, reportedUserId }) {
     const [reason, setReason] = useState("");
@@ -28,7 +29,7 @@ export default function ReportModal({ open, onClose, postId, postType, reportedU
             const user = JSON.parse(localStorage.getItem('user'));
             if (!user) return alert("กรุณาเข้าสู่ระบบ");
 
-            const res = await fetch('http://localhost:5000/api/reports', {
+            const res = await fetch(`${API_BASE}/api/reports`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

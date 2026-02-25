@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldAlert, CheckCircle, XCircle, Trash2, Eye, Filter, Loader2, Flag, User, Ban, Timer, Search, MoreHorizontal } from 'lucide-react';
 import MyPostDetails from './MyPostDetails';
+import { API_BASE } from '../config';
 
 export default function AdminDashboard() {
     // Reports State
@@ -35,7 +36,7 @@ export default function AdminDashboard() {
     const fetchReports = async () => {
         try {
             setLoading(true);
-            const res = await fetch(`http://localhost:5000/api/admin/reports?user_id=${currentUser?.user_id}`);
+            const res = await fetch(`${API_BASE}/api/admin/reports?user_id=${currentUser?.user_id}`);
             if (!res.ok) throw new Error("Unauthorized");
             const data = await res.json();
             setReports(data);
@@ -49,7 +50,7 @@ export default function AdminDashboard() {
     const handleUpdateStatus = async (reportId, status) => {
         setActionLoading(reportId);
         try {
-            await fetch(`http://localhost:5000/api/admin/reports/${reportId}`, {
+            await fetch(`${API_BASE}/api/admin/reports/${reportId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status })
@@ -67,7 +68,7 @@ export default function AdminDashboard() {
 
         setActionLoading(report.report_id);
         try {
-            const res = await fetch(`http://localhost:5000/api/admin/posts`, {
+            const res = await fetch(`${API_BASE}/api/admin/posts`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ post_id: report.post_id, post_type: report.post_type })
@@ -94,7 +95,7 @@ export default function AdminDashboard() {
     const fetchUsers = async () => {
         try {
             setUsersLoading(true);
-            const res = await fetch(`http://localhost:5000/api/admin/users?user_id=${currentUser?.user_id}&search=${userSearch}`);
+            const res = await fetch(`${API_BASE}/api/admin/users?user_id=${currentUser?.user_id}&search=${userSearch}`);
             if (res.ok) {
                 const data = await res.json();
                 setUsers(data);
@@ -116,7 +117,7 @@ export default function AdminDashboard() {
         if (action === 'delete') {
             if (!window.confirm("คุณแน่ใจว่าต้องการลบผู้ใช้นี้? ข้อมูลทั้งหมดจะหายไป")) return;
             try {
-                const res = await fetch(`http://localhost:5000/api/admin/users/${userId}`, { method: 'DELETE' });
+                const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, { method: 'DELETE' });
                 if (res.ok) {
                     setUsers(prev => prev.filter(u => u.user_id !== userId));
                     alert("ลบผู้ใช้สำเร็จ");
@@ -127,7 +128,7 @@ export default function AdminDashboard() {
 
         // Suspend/Ban/Activate
         try {
-            const res = await fetch(`http://localhost:5000/api/admin/users/${userId}/status`, {
+            const res = await fetch(`${API_BASE}/api/admin/users/${userId}/status`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: action, suspendDays: days })

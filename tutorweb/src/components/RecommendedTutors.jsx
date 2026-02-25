@@ -1,6 +1,7 @@
 // tutorweb/src/components/RecommendedTutors.jsx
 import React, { useEffect, useState } from "react";
 import { Star, MapPin, User } from "lucide-react";
+import { API_BASE } from '../config';
 
 export default function RecommendedTutors({ userId, onOpen }) {
   const [recs, setRecs] = useState({ items: [], based_on: "" });
@@ -10,7 +11,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
   useEffect(() => {
     const id = userId || 0;
 
-    fetch(`http://localhost:5000/api/recommendations?user_id=${id}`)
+    fetch(`${API_BASE}/api/recommendations?user_id=${id}`)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -30,7 +31,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
     const postId = tutor.id || tutor.tutor_post_id;
     setJoinLoading(prev => ({ ...prev, [postId]: true }));
     try {
-      const res = await fetch(`http://localhost:5000/api/posts/tutor/${postId}/join`, {
+      const res = await fetch(`${API_BASE}/api/posts/tutor/${postId}/join`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId })
@@ -65,7 +66,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
     const postId = tutor.id || tutor.tutor_post_id;
     setJoinLoading(prev => ({ ...prev, [postId]: true }));
     try {
-      const res = await fetch(`http://localhost:5000/api/posts/tutor/${postId}/join?user_id=${userId}`, {
+      const res = await fetch(`${API_BASE}/api/posts/tutor/${postId}/join?user_id=${userId}`, {
         method: "DELETE"
       });
       const data = await res.json();

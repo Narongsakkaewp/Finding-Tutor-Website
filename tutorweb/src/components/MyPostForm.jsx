@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import LongdoLocationPicker from './LongdoLocationPicker';
-
-const API_BASE = "http://localhost:5000";
+import { API_BASE } from '../config';
 
 const postGradeLevelOptions = [
     { value: "ประถมศึกษา", label: "ประถมศึกษา" },

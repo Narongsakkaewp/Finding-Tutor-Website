@@ -7,6 +7,7 @@ import {
 import UniversityPicker from '../components/UniversityPicker';
 import SearchableSelect from '../components/SearchableSelect'; // ✅ Import
 import ImageCropper from '../components/ImageCropper';
+import { API_BASE } from '../config';
 
 
 const getCurrentUser = () => {
@@ -83,7 +84,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
         if (!currentUser?.user_id || db.length === 0) return;
         const fetchProfile = async () => {
             try {
-                const response = await fetch(`http://localhost:5000/api/tutor-profile/${currentUser.user_id}`);
+                const response = await fetch(`${API_BASE}/api/tutor-profile/${currentUser.user_id}`);
                 if (!response.ok) throw new Error("ดึงข้อมูลไม่สำเร็จ");
                 const data = await response.json();
 
@@ -230,7 +231,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
             let imageUrl = formData.profile_picture_url;
             if (imageFile) {
                 const fd = new FormData(); fd.append('image', imageFile);
-                const res = await fetch('http://localhost:5000/api/upload', { method: 'POST', body: fd });
+                const res = await fetch(`${API_BASE}/api/upload`, { method: 'POST', body: fd });
                 if (!res.ok) throw new Error('Upload failed');
                 imageUrl = (await res.json()).imageUrl;
             }
@@ -249,7 +250,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
                 profile_picture_url: imageUrl,
             };
 
-            const res = await fetch(`http://localhost:5000/api/tutor-profile/${currentUser.user_id}`, {
+            const res = await fetch(`${API_BASE}/api/tutor-profile/${currentUser.user_id}`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profileData),
             });
             if (!res.ok) throw new Error((await res.json()).message || 'Failed');

@@ -1,12 +1,11 @@
 // tutorweb/src/components/PopularSubjects.jsx
 // Component to display popular subjects with icons and counts
 import React, { useEffect, useState } from 'react';
+import { API_BASE } from '../config';
 import {
     BookOpen, Calculator, FlaskConical, Languages, Laptop,
     MapPin, Music, Palette, Trophy, Globe, TrendingUp
 } from 'lucide-react';
-
-const API_BASE = "http://localhost:5000";
 
 // Map string icon names to Lucide components
 const ICON_MAP = {

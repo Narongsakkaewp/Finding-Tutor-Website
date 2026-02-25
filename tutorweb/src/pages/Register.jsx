@@ -1,6 +1,7 @@
 // tutorweb/src/pages/Register.jsx
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Lock, Eye, EyeOff, UserPlus, GraduationCap, Presentation, AlertCircle, ArrowLeft, AtSign } from 'lucide-react'; //  เพิ่ม AtSign
+import { API_BASE } from '../config';
 
 function Register({ onRegisterSuccess, onSwitchToLogin }) {
   const [step, setStep] = useState(1);
@@ -70,7 +71,7 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/request-otp', {
+      const res = await fetch(`${API_BASE}/api/auth/request-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: formData.email, username: formData.username, type: 'register' }),
@@ -99,7 +100,7 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/register', {
+      const res = await fetch(`${API_BASE}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

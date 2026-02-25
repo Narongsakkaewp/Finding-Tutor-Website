@@ -10,10 +10,9 @@ import TutorPostForm from './TutorPostForm';
 import TutorSearchList from './TutorSearchList';
 import SmartSearch from './SmartSearch';
 import RecommendedTutors from './RecommendedTutors';
+import { API_BASE } from '../config';
 
 /** ---------------- Config ---------------- */
-const API_BASE = "http://localhost:5000";
-
 /** ---------------- Utils ----------------- */
 const priceText = (p) => new Intl.NumberFormat("th-TH").format(p);
 const getUserContext = () => {
@@ -593,13 +592,13 @@ function HomeStudent() {
         setJoinersLoading(true);
         try {
           // Trying /api/tutor_posts/:id/joiners
-          let res = await fetch(`http://localhost:5000/api/tutor_posts/${postId}/joiners`);
+          let res = await fetch(`${API_BASE}/api/tutor_posts/${postId}/joiners`);
           if (res.ok) {
             const data = await res.json();
             setPreviewJoiners(Array.isArray(data) ? data : []);
           } else {
             // fallback if not found
-            res = await fetch(`http://localhost:5000/api/tutor_posts/${postId}`);
+            res = await fetch(`${API_BASE}/api/tutor_posts/${postId}`);
             if (res.ok) {
               const data = await res.json();
               setPreviewJoiners(Array.isArray(data.joiners) ? data.joiners : []);

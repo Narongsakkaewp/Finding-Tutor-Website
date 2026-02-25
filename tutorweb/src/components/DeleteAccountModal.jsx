@@ -1,9 +1,8 @@
 import React, { useState } from "react";
 import { AlertTriangle, Trash2, Loader2, X } from "lucide-react";
+import { API_BASE } from '../config';
 
 // เปลี่ยนเป็น Port Backend ของคุณ
-const API_BASE = "http://localhost:5000";
-
 export default function DeleteAccountModal({ isOpen, onClose, user, userType, onLogout }) {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);

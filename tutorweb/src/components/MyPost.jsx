@@ -8,8 +8,7 @@ import {
 import ReportModal from "./ReportModal";
 import MyPostForm from "./MyPostForm";
 import SmartSearch from "./SmartSearch";
-
-const API_BASE = "http://localhost:5000";
+import { API_BASE } from '../config';
 
 /* ---------- helpers ---------- */
 function pickUser() {

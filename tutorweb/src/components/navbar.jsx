@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import logo from "../assets/logo/FindingTutor_Logo.png";
 import { Menu, ChevronDown, Edit, LogOut, Settings, MessageSquareWarning } from "lucide-react"; // ใช้ไอคอนจาก lucide-react เพื่อความสวยงาม
+import { API_BASE } from '../config';
 
 const Navbar = ({
   userType,
@@ -43,9 +44,9 @@ const Navbar = ({
     if (userId && userType) {
       let profileApiUrl = '';
       if (userType === 'student') {
-        profileApiUrl = `http://localhost:5000/api/profile/${userId}`;
+        profileApiUrl = `${API_BASE}/api/profile/${userId}`;
       } else if (userType === 'tutor') {
-        profileApiUrl = `http://localhost:5000/api/tutor-profile/${userId}`;
+        profileApiUrl = `${API_BASE}/api/tutor-profile/${userId}`;
       }
 
       if (profileApiUrl) {

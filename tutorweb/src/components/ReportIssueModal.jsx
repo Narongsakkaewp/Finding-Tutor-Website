@@ -1,9 +1,8 @@
 import React, { useState } from "react";
 import { X, MessageSquareWarning, Send, AlertCircle, Loader2 } from "lucide-react";
+import { API_BASE } from '../config';
 
 // ⚠️ เช็ค Port ให้ตรงกับ Server ของคุณ
-const API_BASE = "http://localhost:5000"; 
-
 export default function ReportIssueModal({ isOpen, onClose, user }) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({

@@ -1,11 +1,10 @@
 // src/pages/Favorite.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { API_BASE } from '../config';
 import {
   Heart, Users, BookOpen, Search, Filter, Trash2,
   Sparkles, MapPin, DollarSign, User, X, Calendar, Phone, GraduationCap
 } from "lucide-react";
-
-const API_BASE = "http://localhost:5000";
 
 // --------------------------- Utilities ---------------------------
 const formatPrice = (n) => new Intl.NumberFormat("th-TH").format(n || 0);

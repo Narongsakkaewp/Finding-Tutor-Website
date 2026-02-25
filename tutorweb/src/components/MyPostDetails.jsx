@@ -1,8 +1,7 @@
 // src/components/MyPostDetails.jsx
 import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { API_BASE } from '../config';
 
-
-const API_BASE = "http://localhost:5000";
 
 const ProfileImage = ({ src, alt, className }) => {
   const [imageSrc, setImageSrc] = useState(src);

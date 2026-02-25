@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import TutorLayout from "../components/TutorLayout";
+import { API_BASE } from '../config';
 
-const API_BASE = "http://localhost:5000";
 const getTutorId = () => localStorage.getItem("tutorId") || "";
 
 function TutorSchedule() {

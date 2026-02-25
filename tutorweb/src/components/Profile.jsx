@@ -4,6 +4,7 @@ import 'react-calendar/dist/Calendar.css';
 import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive, Sparkles, User, Users, Flag, History, BookOpen, UserCheck, Clock, Calendar } from "lucide-react";
 import LongdoLocationPicker from './LongdoLocationPicker';
 import ReportModal from "./ReportModal";
+import { API_BASE } from '../config';
 
 const postGradeLevelOptions = [
   { value: "ประถมศึกษา", label: "ประถมศึกษา" },
@@ -266,7 +267,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
           username: currentUser?.username || "",
         };
         try {
-          const pfRes = await fetch(`http://localhost:5000/api/profile/${me}`);
+          const pfRes = await fetch(`${API_BASE}/api/profile/${me}`);
           if (pfRes.ok) {
             const p = await pfRes.json();
             const education = [];
@@ -298,20 +299,20 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
         if (!cancelled) setProfile(prof);
 
         // 2. Posts
-        const r = await fetch(`http://localhost:5000/api/student_posts?me=${me}&mine=1`);
+        const r = await fetch(`${API_BASE}/api/student_posts?me=${me}&mine=1`);
         const data = await r.json();
         const onlyMine = Array.isArray(data) ? data.filter((p) => Number(p.owner_id) === Number(me)) : [];
         if (!cancelled) setPosts(onlyMine.map(normalizePost));
 
         // 3. Calendar Events (Used for History)
-        const evRes = await fetch(`http://localhost:5000/api/calendar/${me}`);
+        const evRes = await fetch(`${API_BASE}/api/calendar/${me}`);
         if (evRes.ok) {
           const evData = await evRes.json();
           if (!cancelled) setEvents(evData.items || []);
         }
 
         // 4. Fetch Recommended Tutors
-        const recRes = await fetch(`http://localhost:5000/api/recommendations?user_id=${me}`);
+        const recRes = await fetch(`${API_BASE}/api/recommendations?user_id=${me}`);
         if (recRes.ok) {
           const recData = await recRes.json();
           if (!cancelled) {
@@ -325,7 +326,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
         }
 
         // 5. Fetch Study Buddies
-        const budRes = await fetch(`http://localhost:5000/api/recommendations/friends?user_id=${me}`);
+        const budRes = await fetch(`${API_BASE}/api/recommendations/friends?user_id=${me}`);
         if (budRes.ok) {
           const budData = await budRes.json();
           if (!cancelled) setBuddies(budData);
@@ -437,7 +438,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
 
     try {
       setUpdating(true);
-      const res = await fetch(`http://localhost:5000/api/student_posts/${editPost._id}`, {
+      const res = await fetch(`${API_BASE}/api/student_posts/${editPost._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -501,7 +502,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
     setPosts(prev => prev.filter(p => (p._id ?? p.id) !== id));
 
     try {
-      const res = await fetch(`http://localhost:5000/api/student_posts/${id}`, {
+      const res = await fetch(`${API_BASE}/api/student_posts/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: currentUser?.user_id })

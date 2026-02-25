@@ -2,8 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Mail, Phone, MapPin, Clock, ArrowLeft, Star, Users, DollarSign, User, GraduationCap, BookOpen, Briefcase, Lightbulb, Calendar, MoreVertical, X, Eye, EyeOff, Flag } from 'lucide-react';
 import ReportModal from '../components/ReportModal';
-
-const API_BASE = "http://localhost:5000";
+import { API_BASE } from '../config';
 
 function UserProfilePage({ userId, onBack }) {
     const [user, setUser] = useState(null);

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import UniversityPicker from '../components/UniversityPicker'; // ✅ Import
 import ImageCropper from '../components/ImageCropper';
+import { API_BASE } from '../config';
 
 
 // Helper function
@@ -46,7 +47,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
 
     const fetchProfile = async () => {
       try {
-        const response = await fetch(`http://localhost:5000/api/profile/${currentUser.user_id}`);
+        const response = await fetch(`${API_BASE}/api/profile/${currentUser.user_id}`);
         if (!response.ok) throw new Error("ไม่สามารถดึงข้อมูลโปรไฟล์ได้");
         const data = await response.json();
 
@@ -114,7 +115,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
       if (imageFile) {
         const uploadFormData = new FormData();
         uploadFormData.append('image', imageFile);
-        const uploadResponse = await fetch('http://localhost:5000/api/upload', {
+        const uploadResponse = await fetch(`${API_BASE}/api/upload`, {
           method: 'POST',
           body: uploadFormData,
         });
@@ -136,7 +137,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
         profile_picture_url: imageUrl,
       };
 
-      const response = await fetch(`http://localhost:5000/api/profile/${currentUser.user_id}`, {
+      const response = await fetch(`${API_BASE}/api/profile/${currentUser.user_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profileData),

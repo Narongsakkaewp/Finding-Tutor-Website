@@ -1,7 +1,7 @@
 // tutorweb-server/server.js
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
-const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+// const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 
 const SPREADSHEET_ID = '1djs9ACE03WeImxVwuz6VfhnJ0ev1R473VQKVLYt5ynM';
 
@@ -9,15 +9,15 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-// let creds;
+let creds;
 
-// if (process.env.GOOGLE_SERVICE_ACCOUNT) {
-//   // Production (Render)
-//   creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
-// } else {
-//   // Local (เครื่องเรา)
-//   creds = require('./service-account.json');
-// }
+if (process.env.GOOGLE_SERVICE_ACCOUNT) {
+  // Production (Render)
+  creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+} else {
+  // Local (เครื่องเรา)
+  creds = require('./service-account.json');
+}
 
 // ----- Upload Deps -----
 const multer = require('multer');
@@ -260,13 +260,12 @@ async function getJoiners(postId) {
 // ฟังก์ชันสำหรับบันทึกข้อมูล Report Issue (แก้ไขใหม่)
 async function saveToGoogleSheet(data) {
   try {
-    const serviceAccountAuth = new JWT({
-      email: creds.client_email,
-      key: creds.private_key.replace(/\\n/g, '\n'),
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    const doc = new GoogleSpreadsheet(SPREADSHEET_ID);
+    await doc.useServiceAccountAuth({
+      client_email: creds.client_email,
+      private_key: creds.private_key.replace(/\\n/g, '\n')
     });
 
-    const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
     await doc.loadInfo();
 
     const sheet = doc.sheetsByIndex[1]; // แผ่นที่ 2

@@ -5,6 +5,7 @@ import 'react-calendar/dist/Calendar.css';
 import { Edit, Star, MapPin, Phone, Trash2, EyeOff, Mail, GraduationCap, AppWindow, X, Archive, MoreVertical, Eye, Save, Flag, History, BookOpen, Clock, Calendar, Briefcase, Award, ChevronDown, ChevronUp } from "lucide-react";
 import LongdoLocationPicker from './LongdoLocationPicker';
 import ReportModal from "./ReportModal";
+import { API_BASE } from '../config';
 
 const normalizeTutorPost = (p = {}) => ({
     _id: p._id ?? p.tutor_post_id,
@@ -301,10 +302,10 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
                 const userId = currentUser.user_id;
 
                 const [profileRes, postsRes, calendarRes, reviewsRes] = await Promise.all([
-                    fetch(`http://localhost:5000/api/tutor-profile/${userId}`),
-                    fetch(`http://localhost:5000/api/tutor-posts?tutorId=${userId}`),
-                    fetch(`http://localhost:5000/api/calendar/${userId}`),
-                    fetch(`http://localhost:5000/api/tutors/${userId}/reviews`)
+                    fetch(`${API_BASE}/api/tutor-profile/${userId}`),
+                    fetch(`${API_BASE}/api/tutor-posts?tutorId=${userId}`),
+                    fetch(`${API_BASE}/api/calendar/${userId}`),
+                    fetch(`${API_BASE}/api/tutors/${userId}/reviews`)
                 ]);
 
                 const profileData = await profileRes.json();
@@ -464,7 +465,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
 
         try {
             setUpdating(true);
-            const res = await fetch(`http://localhost:5000/api/tutor-posts/${editPost._id}`, {
+            const res = await fetch(`${API_BASE}/api/tutor-posts/${editPost._id}`, {
                 method: "PUT", // Typo fixed in backend route: /api/tutor-posts/:id
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -531,7 +532,7 @@ function TutorProfile({ setCurrentPage, onEditProfile }) {
         setTutorPosts(after);
 
         try {
-            const res = await fetch(`http://localhost:5000/api/tutor-posts/${id}`, {
+            const res = await fetch(`${API_BASE}/api/tutor-posts/${id}`, {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
                 // 🔥 แก้ตรงนี้: ส่ง user_id ไปด้วย เพื่อให้หลังบ้านยอมให้ลบ
