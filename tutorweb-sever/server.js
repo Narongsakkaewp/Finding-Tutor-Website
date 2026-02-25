@@ -568,7 +568,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
       sqlParams.push(likeTerm, likeTerm);
     });
 
-    const [rows] = await pool.execute(
+    const [rows] = await pool.query(
       `SELECT 
           sp.student_post_id, sp.student_id, sp.subject, sp.description,
           sp.preferred_days, sp.preferred_time, sp.location, sp.group_size, sp.budget,
@@ -700,7 +700,7 @@ app.get('/api/tutors', async (req, res) => {
     }
 
     // ... (ส่วน subject filter ถ้ามี) ...
-    const [rows] = await pool.execute(
+    const [rows] = await pool.query(
       `SELECT 
           r.user_id, r.name, r.lastname, r.email, r.username,
           tp.nickname,
