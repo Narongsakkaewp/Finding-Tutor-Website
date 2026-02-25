@@ -45,20 +45,23 @@ exports.smartSearch = async (req, res) => {
 
         // 2. ระบบ Hybrid Search (หั่นคำ + แตกคำศัพท์จาก Dictionary)
         const searchWords = q.trim().toLowerCase().split(/\s+/);
-        
+
         const conditions = [];
         const sqlParams = [];
+
+        const studentConditions = [];
+        const studentSqlParams = [];
 
         // ลูปตรวจสอบทีละคำ ว่ามีคำเหมือนใน Dictionary ไหม?
         searchWords.forEach(word => {
             let wordGroup = [word];
-            
+
             // แตกหน่อคำพ้องความหมาย (ถ้ามี)
             if (SUBJECT_KNOWLEDGE_BASE[word]) {
                 wordGroup = wordGroup.concat(SUBJECT_KNOWLEDGE_BASE[word]);
             }
 
-            // สร้างเงื่อนไข OR สำหรับคำกลุ่มนี้ (หาทั้งในชื่อวิชา, รายละเอียด, ชื่อคน, ชื่อเล่น, และวิชาที่สอนได้)
+            // สร้างเงื่อนไข OR สำหรับคำกลุ่มนี้ของ Tutor
             const synConditions = wordGroup.map(() => `
                 (LOWER(tp.subject) LIKE ? OR 
                  LOWER(tp.description) LIKE ? OR 
@@ -67,29 +70,40 @@ exports.smartSearch = async (req, res) => {
                  LOWER(tpro.nickname) LIKE ? OR 
                  LOWER(tpro.can_teach_subjects) LIKE ?)
             `).join(' OR ');
-
             conditions.push(`(${synConditions})`);
 
-            // หยอดพารามิเตอร์ 6 ตัว ต่อ 1 คำ (เพราะหาใน 6 คอลัมน์)
+            // สร้างเงื่อนไข OR สำหรับคำกลุ่มนี้ของ Student
+            const studentSynConditions = wordGroup.map(() => `
+                (LOWER(sp.subject) LIKE ? OR 
+                 LOWER(sp.description) LIKE ? OR 
+                 LOWER(r.name) LIKE ? OR 
+                 LOWER(r.lastname) LIKE ?)
+            `).join(' OR ');
+            studentConditions.push(`(${studentSynConditions})`);
+
+            // หยอดพารามิเตอร์
             wordGroup.forEach(syn => {
                 const safeSyn = `%${syn}%`;
                 sqlParams.push(safeSyn, safeSyn, safeSyn, safeSyn, safeSyn, safeSyn);
+                studentSqlParams.push(safeSyn, safeSyn, safeSyn, safeSyn);
             });
         });
 
         // สร้าง WHERE Clause บังคับให้ต้องเจอทุกคำที่พิมพ์ (AND)
         const likeConditions = conditions.join(' AND ');
+        const studentLikeConditions = studentConditions.join(' AND ');
 
         const exactPhrase = q.replace(/'/g, "''").toLowerCase();
 
         // 3. ค้นหาติวเตอร์ (Tutor Posts) พร้อม Smart Scoring
         const [tutors] = await pool.query(`
             SELECT 
-                tp.*, r.name, r.lastname, r.username, tpro.profile_picture_url, tpro.nickname,
+                tp.tutor_id, r.name, r.lastname, r.username, tpro.profile_picture_url, tpro.nickname,
                 tpro.about_me, tpro.education, tpro.teaching_experience,  
                 tpro.can_teach_grades, tpro.can_teach_subjects, tpro.phone, tpro.address,
-                -- 🌟 การให้คะแนน (Scoring): บังคับชื่อวิชา หรือ ชื่อติวเตอร์ ให้ขึ้นก่อน
-                (CASE 
+                COALESCE(rv.avg_rating, 0) AS avg_rating,
+                COALESCE(rv.review_count, 0) AS review_count,
+                MAX(CASE 
                     WHEN LOWER(tp.subject) = '${exactPhrase}' THEN 100 
                     WHEN LOWER(tpro.nickname) = '${exactPhrase}' THEN 95 
                     WHEN LOWER(tp.subject) LIKE '${exactPhrase}%' THEN 90 
@@ -99,13 +113,15 @@ exports.smartSearch = async (req, res) => {
                     WHEN LOWER(tp.description) LIKE '%${exactPhrase}%' THEN 40
                     ELSE 10 
                 END) AS relevance_score,
-                COALESCE(tp.location, tpro.address, 'ไม่ระบุสถานที่') AS location
+                MAX(tp.created_at) AS latest_post,
+                COALESCE(tpro.address, 'ไม่ระบุสถานที่') AS tutor_location
             FROM tutor_posts tp
             LEFT JOIN register r ON tp.tutor_id = r.user_id
             LEFT JOIN tutor_profiles tpro ON tp.tutor_id = tpro.user_id
+            LEFT JOIN (SELECT tutor_id, AVG(rating) as avg_rating, COUNT(*) as review_count FROM reviews GROUP BY tutor_id) rv ON tp.tutor_id = rv.tutor_id
             WHERE ${likeConditions}
-            GROUP BY tp.tutor_id
-            ORDER BY relevance_score DESC, tp.created_at DESC
+            GROUP BY tp.tutor_id, r.name, r.lastname, r.username, tpro.profile_picture_url, tpro.nickname, tpro.about_me, tpro.education, tpro.teaching_experience, tpro.can_teach_grades, tpro.can_teach_subjects, tpro.phone, tpro.address, rv.avg_rating, rv.review_count
+            ORDER BY relevance_score DESC, latest_post DESC
             LIMIT 20
         `, sqlParams);
 
@@ -130,17 +146,80 @@ exports.smartSearch = async (req, res) => {
             LIMIT 20
         `, sqlParams);
 
+        // 4.. ค้นหานักเรียน (Student Posts) 
+        const [students] = await pool.query(`
+            SELECT 
+                sp.*, 
+                r.name, r.lastname, r.username,
+                spro.profile_picture_url,
+                (CASE 
+                    WHEN LOWER(sp.subject) = '${exactPhrase}' THEN 100 
+                    WHEN LOWER(sp.subject) LIKE '${exactPhrase}%' THEN 90 
+                    WHEN LOWER(sp.subject) LIKE '%${exactPhrase}%' THEN 80 
+                    WHEN LOWER(sp.description) LIKE '%${exactPhrase}%' THEN 40
+                    ELSE 10 
+                END) AS relevance_score,
+                sp.location
+            FROM student_posts sp
+            LEFT JOIN register r ON sp.student_id = r.user_id
+            LEFT JOIN student_profiles spro ON sp.student_id = spro.user_id
+            WHERE ${studentLikeConditions}
+            ORDER BY relevance_score DESC, sp.created_at DESC
+            LIMIT 20
+        `, studentSqlParams);
+
         // 5. ส่งผลลัพธ์กลับ
         res.json({
             keyword_used: q,
             tutors: tutors.map(t => {
+                let education = [];
+                let experience = [];
                 try {
-                    if (typeof t.education === 'string') t.education = JSON.parse(t.education);
-                    if (typeof t.teaching_experience === 'string') t.teaching_experience = JSON.parse(t.teaching_experience);
+                    education = typeof t.education === 'string' ? JSON.parse(t.education) : (t.education || []);
+                    experience = typeof t.teaching_experience === 'string' ? JSON.parse(t.teaching_experience) : (t.teaching_experience || []);
                 } catch (e) { }
-                return t;
+                return {
+                    ...t,
+                    id: t.tutor_id,
+                    dbTutorId: t.tutor_id,
+                    name: `${t.name || ''} ${t.lastname || ''}`.trim(),
+                    nickname: t.nickname,
+                    image: t.profile_picture_url || '/../blank_avatar.jpg',
+                    city: t.tutor_location || t.address || 'ไม่ระบุสถานที่',
+                    rating: Number(t.avg_rating || 0),
+                    reviews: Number(t.review_count || 0),
+                    subject: t.can_teach_subjects || 'ไม่ระบุวิชา',
+                    education: education,
+                    teaching_experience: experience
+                };
             }),
-            posts: posts
+            posts: posts.map(p => ({
+                ...p,
+                _id: p.tutor_post_id,
+                content: p.description,
+                user: {
+                    first_name: p.name,
+                    last_name: p.lastname,
+                    profile_image: p.profile_picture_url || '/../blank_avatar.jpg',
+                    username: p.username
+                },
+                meta: {
+                    target_student_level: p.target_student_level || 'ทั่วไป',
+                    location: p.location || 'ออนไลน์',
+                    teaching_days: p.teaching_days || '-',
+                    teaching_time: p.teaching_time || '-'
+                }
+            })),
+            students: students.map(s => ({
+                ...s,
+                id: s.student_post_id,
+                user: {
+                    first_name: s.name,
+                    last_name: s.lastname,
+                    profile_image: s.profile_picture_url || '/../blank_avatar.jpg',
+                    username: s.username
+                }
+            }))
         });
 
     } catch (err) {
@@ -232,7 +311,7 @@ exports.getPopularSubjects = async (req, res) => {
         const sortedSubjects = Object.keys(uniqueSubjects)
             .map(key => ({ title: key, count: uniqueSubjects[key] }))
             .sort((a, b) => b.count - a.count)
-            .slice(0, 8); 
+            .slice(0, 8);
 
         // Helper เพื่อหาหมวดหมู่
         const getCategory = (text) => {
@@ -247,14 +326,14 @@ exports.getPopularSubjects = async (req, res) => {
             if (sciBase.some(k => t.includes(k))) return { icon: 'FlaskConical', color: 'emerald' };
             if (engBase.some(k => t.includes(k))) return { icon: 'Languages', color: 'rose' };
             if (progBase.some(k => t.includes(k))) return { icon: 'Laptop', color: 'indigo' };
-            return { icon: 'BookOpen', color: 'amber' }; 
+            return { icon: 'BookOpen', color: 'amber' };
         };
 
         const result = sortedSubjects.map(s => {
             const style = getCategory(s.title);
             return {
                 id: s.title,
-                name: s.title, 
+                name: s.title,
                 count: s.count,
                 ...style
             };

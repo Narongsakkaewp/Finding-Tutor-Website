@@ -169,6 +169,96 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
 
   const user = JSON.parse(localStorage.getItem('user')); // ดึง User ID มาใช้
   const userId = user?.user_id || 0;
+  const userType = (localStorage.getItem("userType") || "").toLowerCase();
+  const isTutor = userType === "tutor";
+  const [joinLoading, setJoinLoading] = useState({});
+
+  const handleJoin = async (e, post) => {
+    e.stopPropagation();
+    if (!userId) return alert("กรุณาเข้าสู่ระบบ");
+
+    if (isTutor) {
+      if (!window.confirm("ยืนยันที่จะเสนอสอนให้นักเรียนคนนี้?")) return;
+    }
+
+    setJoinLoading(s => ({ ...s, [post.id || post._id]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/api/student_posts/${post.id || post._id}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId }) });
+      const data = await res.json();
+      if (!res.ok) return alert(data?.message || "Error joining");
+
+      setPosts(arr => arr.map(p => (p.id || p._id) === (post.id || post._id) ? { ...p, pending_me: true, joined: false, join_count: data.join_count } : p));
+      alert(isTutor ? "ส่งข้อเสนอสำเร็จ" : "ส่งคำขอเข้าร่วมเรียบร้อยแล้ว");
+    } catch { alert("Error"); } finally { setJoinLoading(s => ({ ...s, [post.id || post._id]: false })); }
+  };
+
+  const handleUnjoin = async (e, post) => {
+    e.stopPropagation();
+    if (!window.confirm("ยืนยันที่จะยกเลิก?")) return;
+    setJoinLoading(s => ({ ...s, [post.id || post._id]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/api/student_posts/${post.id || post._id}/join?user_id=${userId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) return alert(data?.message || "Error unjoining");
+
+      setPosts(arr => arr.map(p => {
+        if ((p.id || p._id) === (post.id || post._id)) {
+          if (data.cancel_requested) {
+            return { ...p, cancel_requested: true, joined: true };
+          }
+          return { ...p, joined: false, pending_me: false, join_count: Number(data.join_count ?? 0), cancel_requested: false };
+        }
+        return p;
+      }));
+
+      if (data.cancel_requested) {
+        alert(data.message || "ส่งคำขอยกเลิกแล้ว รอการอนุมัติ");
+      } else {
+        alert("ยกเลิกเรียบร้อยแล้ว");
+      }
+    } catch (e) { alert(e.message); } finally { setJoinLoading(s => ({ ...s, [post.id || post._id]: false })); }
+  };
+
+  const handleJoinTutor = async (e, post) => {
+    e.stopPropagation();
+    if (isTutor) return alert("บัญชีติวเตอร์ไม่สามารถ Join ได้");
+    if (!userId) return alert("กรุณาเข้าสู่ระบบ");
+    setJoinLoading(s => ({ ...s, [post.id || post._id]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/api/posts/tutor/${post.id || post._id}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error();
+      setPosts(arr => arr.map(p => (p.id || p._id) === (post.id || post._id) ? { ...p, joined: !!data.joined, pending_me: !!data.pending_me, join_count: data.join_count ?? (p.join_count + 1) } : p));
+      alert("ส่งคำขอเข้าร่วมเรียบร้อยแล้ว");
+    } catch { alert("Error"); } finally { setJoinLoading(s => ({ ...s, [post.id || post._id]: false })); }
+  };
+
+  const handleUnjoinTutor = async (e, post) => {
+    e.stopPropagation();
+    if (!window.confirm("ยืนยันที่จะยกเลิก?")) return;
+    setJoinLoading(s => ({ ...s, [post.id || post._id]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/api/posts/tutor/${post.id || post._id}/join?user_id=${userId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) return alert(data.message || "เกิดข้อผิดพลาด");
+
+      setPosts(arr => arr.map(p => {
+        if ((p.id || p._id) === (post.id || post._id)) {
+          if (data.cancel_requested) {
+            return { ...p, cancel_requested: true, joined: true };
+          }
+          return { ...p, joined: !!data.joined, pending_me: !!data.pending_me, join_count: data.join_count ?? (p.join_count - 1), cancel_requested: false };
+        }
+        return p;
+      }));
+
+      if (data.cancel_requested) {
+        alert(data.message || "ส่งคำขอยกเลิกแล้ว รอการอนุมัติ");
+      } else {
+        alert("ยกเลิกการเข้าร่วมเรียบร้อยแล้ว");
+      }
+    } catch (e) { alert("เกิดข้อผิดพลาดในการเชื่อมต่อ"); } finally { setJoinLoading(s => ({ ...s, [post.id || post._id]: false })); }
+  };
 
   useEffect(() => {
     let ignore = false;
@@ -203,7 +293,7 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
         }
         // 5. ดึงโพสต์นักเรียน (Student)
         else {
-          url = `${API_BASE}/api/student_posts?search=${encodeURIComponent(searchKey || "")}&limit=12${filterStr}`;
+          url = `${API_BASE}/api/student_posts?search=${encodeURIComponent(searchKey || "")}&limit=12${filterStr}&me=${userId}`;
         }
 
         const res = await fetch(url);
@@ -320,12 +410,75 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
             ) : (
               <>
                 {isStudent && (
-                  <div className="mt-3 pt-3 border-t border-gray-50 flex items-center flex-wrap gap-2 text-xs text-gray-500">
-                    <span>เข้าร่วมแล้ว: <b>{(p.join_count || 0) + 1}</b> / {p.group_size || 0} คน</span>
-                    {p.has_tutor && (
-                      <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-700 font-bold border border-purple-200">
-                        {p.tutor?.name ? `ได้ติวเตอร์แล้ว (${p.tutor.name})` : (p.approved_tutor_name ? `ได้ติวเตอร์แล้ว (${p.approved_tutor_name})` : 'ได้ติวเตอร์แล้ว')}
-                      </span>
+                  <div className="mt-3 pt-3 border-t border-gray-50 flex items-center flex-wrap justify-between gap-2 text-xs text-gray-500">
+                    <div className="flex flex-col gap-1">
+                      <span>เข้าร่วมแล้ว: <b>{(p.join_count || 0) + 1}</b> / {p.group_size || 0} คน</span>
+                      {p.has_tutor && (
+                        <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-700 font-bold border border-purple-200 inline-block">
+                          {p.tutor?.name ? `ได้ติวเตอร์แล้ว (${p.tutor.name})` : (p.approved_tutor_name ? `ได้ติวเตอร์แล้ว (${p.approved_tutor_name})` : 'ได้ติวเตอร์แล้ว')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {!isStudent && (
+                  <div className="mt-3 pt-3 border-t border-gray-50 flex items-center justify-between text-xs text-gray-500">
+                    <span>ผู้เข้าร่วม: <b>{p.join_count || 0}</b> / {p.group_size || 0} คน</span>
+                  </div>
+                )}
+
+                {/* Actions (Join/Unjoin/Offer) */}
+                {!(userId === p.owner_id || userId === p.authorId?.id) && (
+                  <div className="mt-3 pt-3 border-t flex flex-col gap-2">
+                    {isStudent ? (
+                      // Student Post Actions
+                      (p.joined || p.pending_me) ? (
+                        <button
+                          disabled={joinLoading[p.id || p._id] || p.cancel_requested}
+                          onClick={(e) => handleUnjoin(e, p)}
+                          className={`w-full py-2 rounded-xl text-sm font-bold border text-gray-700 hover:bg-gray-50 transition-colors ${p.cancel_requested ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                        >
+                          {p.cancel_requested ? "รออนุมัติยกเลิก" : (joinLoading[p.id || p._id] ? "กำลังประมวลผล..." : (isTutor ? "ยกเลิกข้อเสนอสอน" : (p.joined ? "ยกเลิกการเข้าร่วม" : "ยกเลิกคำขอเข้าร่วม")))}
+                        </button>
+                      ) : (
+                        <button
+                          disabled={joinLoading[p.id || p._id] || (p.group_size > 0 && !isTutor && (p.join_count + 1) >= p.group_size) || (isTutor && p.has_tutor)}
+                          onClick={(e) => handleJoin(e, p)}
+                          className={`w-full py-2 rounded-xl text-sm font-bold text-white transition-colors ${(p.group_size > 0 && !isTutor && (p.join_count + 1) >= p.group_size) ? "bg-gray-400 cursor-not-allowed" :
+                            (isTutor && p.has_tutor) ? "bg-indigo-300 cursor-not-allowed" :
+                              isTutor ? "bg-indigo-600 hover:bg-indigo-700" :
+                                "bg-purple-600 hover:bg-purple-700"
+                            }`}
+                        >
+                          {(p.group_size > 0 && !isTutor && (p.join_count + 1) >= p.group_size) ? "เต็มแล้ว" :
+                            (isTutor && p.has_tutor) ? "ได้ติวเตอร์แล้ว" :
+                              joinLoading[p.id || p._id] ? "กำลังประมวลผล..." :
+                                (isTutor ? "เสนอสอน" : "ขอเข้าร่วม")}
+                        </button>
+                      )
+                    ) : (
+                      // Tutor Post Actions
+                      (p.joined || p.pending_me) ? (
+                        <button
+                          disabled={joinLoading[p.id || p._id] || p.cancel_requested}
+                          onClick={(e) => handleUnjoinTutor(e, p)}
+                          className={`w-full py-2 rounded-xl text-sm font-bold border text-gray-700 hover:bg-gray-50 transition-colors ${p.cancel_requested ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                        >
+                          {p.cancel_requested ? "รออนุมัติยกเลิก" : (joinLoading[p.id || p._id] ? "กำลังประมวลผล..." : (p.joined ? "ยกเลิกการเข้าร่วม" : "ยกเลิกคำขอ"))}
+                        </button>
+                      ) : (
+                        <button
+                          disabled={joinLoading[p.id || p._id] || (p.group_size > 0 && p.join_count >= p.group_size)}
+                          onClick={(e) => handleJoinTutor(e, p)}
+                          className={`w-full py-2 rounded-xl text-sm font-bold text-white transition-colors ${(p.group_size > 0 && p.join_count >= p.group_size) ? "bg-gray-400 cursor-not-allowed" :
+                            "bg-purple-600 hover:bg-purple-700"
+                            }`}
+                        >
+                          {(p.group_size > 0 && p.join_count >= p.group_size) ? "เต็มแล้ว" :
+                            joinLoading[p.id || p._id] ? "กำลังประมวลผล..." :
+                              "Join"}
+                        </button>
+                      )
                     )}
                   </div>
                 )}
@@ -428,8 +581,44 @@ function HomeStudent() {
   const [query, setQuery] = useState("");
   const [preview, setPreview] = useState(null);
   const [previewType, setPreviewType] = useState(null);
-  // ✅ New State: จำนวนติวเตอร์ที่แสดง (สำหรับ Show More)
   const [visibleCount, setVisibleCount] = useState(4);
+  const [previewJoiners, setPreviewJoiners] = useState([]);
+  const [joinersLoading, setJoinersLoading] = useState(false);
+
+  useEffect(() => {
+    if (preview && (previewType === "tutor" || previewType === "tutor_only")) {
+      const postId = preview.id || preview.tutor_post_id;
+      if (!postId) return;
+      const fetchJoiners = async () => {
+        setJoinersLoading(true);
+        try {
+          // Trying /api/tutor_posts/:id/joiners
+          let res = await fetch(`http://localhost:5000/api/tutor_posts/${postId}/joiners`);
+          if (res.ok) {
+            const data = await res.json();
+            setPreviewJoiners(Array.isArray(data) ? data : []);
+          } else {
+            // fallback if not found
+            res = await fetch(`http://localhost:5000/api/tutor_posts/${postId}`);
+            if (res.ok) {
+              const data = await res.json();
+              setPreviewJoiners(Array.isArray(data.joiners) ? data.joiners : []);
+            } else {
+              setPreviewJoiners([]);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load joiners for tutor post:", e);
+          setPreviewJoiners([]);
+        } finally {
+          setJoinersLoading(false);
+        }
+      };
+      fetchJoiners();
+    } else {
+      setPreviewJoiners([]);
+    }
+  }, [preview, previewType]);
 
   const [recKey, setRecKey] = useState(0);
 
@@ -761,6 +950,41 @@ function HomeStudent() {
                     </div>
                   </div>
                 </div>
+
+                {/* --- JOINERS LIST --- */}
+                {joinersLoading ? (
+                  <div className="mt-6 p-4 text-center text-sm text-gray-500 bg-gray-50 rounded-xl border border-gray-100">กำลังโหลดรายชื่อผู้เข้าร่วม...</div>
+                ) : previewJoiners.length > 0 ? (
+                  <div className="mt-6 border-t pt-6">
+                    <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Users size={20} className="text-indigo-600" /> นักเรียนที่เข้าร่วม ({previewJoiners.filter(jStr => jStr.status !== 'pending' && jStr.status !== 'rejected').length}{(preview.group_size > 0 ? `/${preview.group_size}` : '')} คน)
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {previewJoiners.map((j, idx) => (
+                        <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-100 rounded-xl shadow-sm hover:border-indigo-200 transition-colors">
+                          <img
+                            src={j.profile_picture_url || j.profile_image || "/../blank_avatar.jpg"}
+                            alt={j.name}
+                            className="w-10 h-10 rounded-full object-cover border border-white shadow-sm"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-gray-900 truncate">
+                              {j.name} {j.lastname || j.last_name || ""}
+                            </div>
+                            {j.username && (
+                              <div className="text-xs text-indigo-600 font-medium truncate">
+                                @{j.username}
+                              </div>
+                            )}
+                          </div>
+                          {(j.status === "pending" || j.status === "requested") && (
+                            <span className="text-[10px] px-2 py-1 bg-yellow-100 text-yellow-700 font-bold rounded-full ml-auto whitespace-nowrap">รอยืนยัน</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
 

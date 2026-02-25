@@ -164,6 +164,71 @@ function HighlightPostCard({ post, onRegister }) {
   );
 }
 
+// ✅ NEW: Post Card for Search Results (Premium Look)
+function TutorPostResultCard({ post, onRegister }) {
+  return (
+    <div className="group bg-white rounded-[2rem] p-1 border border-indigo-50 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 h-full flex flex-col relative overflow-hidden">
+      {/* Decorative Top Gradient */}
+      <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+
+      <div className="p-6 flex flex-col h-full relative z-10 w-full">
+        {/* Header: Avatar & Info */}
+        <div className="flex items-start gap-4 mb-5 mt-1">
+          <div className="relative shrink-0">
+            <img
+              src={post.user?.profile_image || "/default-avatar.png"}
+              alt="tutor"
+              className="w-14 h-14 rounded-full border-2 border-indigo-100 object-cover shadow-sm group-hover:scale-110 transition-transform duration-500"
+            />
+            <div className="absolute -bottom-1 -right-1 bg-indigo-500 text-white rounded-full p-1.5 border-2 border-white shadow-sm">
+              <GraduationCap size={12} />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0 pt-1">
+            <h4 className="text-gray-900 font-black text-lg leading-tight line-clamp-1 group-hover:text-indigo-600 transition-colors">
+              {post.subject || post.meta?.subject || "ไม่ระบุเรื่อง"}
+            </h4>
+            <p className="text-indigo-500 text-xs font-bold mt-1.5 tracking-wide truncate">
+              {post.user?.first_name} {post.user?.last_name}
+            </p>
+          </div>
+        </div>
+
+        {/* Content Box */}
+        <div className="bg-indigo-50/50 rounded-2xl p-4 mb-5 flex-grow border border-indigo-50/50">
+          <span className="inline-block bg-white text-indigo-600 text-[10px] font-black tracking-widest px-3 py-1 rounded-lg shadow-sm border border-indigo-100 mb-3 uppercase">
+            {post.meta?.target_student_level || 'ทุกระดับชั้น'}
+          </span>
+          <p className="text-gray-700 text-sm line-clamp-3 leading-relaxed font-medium">
+            "{post.content || "ไม่มีรายละเอียดเพิ่มเติมจากผู้สอน"}"
+          </p>
+        </div>
+
+        {/* Footer Info */}
+        <div className="space-y-4 mt-auto">
+          <div className="grid grid-cols-2 gap-3 text-[11px] font-bold text-gray-500">
+            <div className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-xl">
+              <MapPin size={14} className="text-indigo-500 shrink-0" />
+              <span className="truncate">{post.meta?.location || "ออนไลน์"}</span>
+            </div>
+            <div className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-xl">
+              <Clock size={14} className="text-indigo-500 shrink-0" />
+              <span className="truncate">{post.meta?.teaching_days || "-"} {post.meta?.teaching_time || "-"}</span>
+            </div>
+          </div>
+
+          <button
+            onClick={onRegister}
+            className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-sm font-black tracking-wide py-3.5 rounded-xl transition-all shadow-lg shadow-indigo-200 hover:shadow-xl flex justify-center items-center gap-2"
+          >
+            ดูรายละเอียดชั่วโมงสอน <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ✅ NEW: Student Request Card (ฉบับ UI สวยพรีเมียม ✨)
 function StudentRequestCard({ post, onRegister }) {
   return (
@@ -422,7 +487,7 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
   const [loadingMore, setLoadingMore] = useState(false);
 
   // ✅ New Search State
-  const [searchResults, setSearchResults] = useState({ tutors: [], students: [] });
+  const [searchResults, setSearchResults] = useState({ tutors: [], students: [], posts: [] });
   const [isSearchActive, setIsSearchActive] = useState(false);
 
   useEffect(() => {
@@ -448,7 +513,8 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
 
       setSearchResults({
         tutors: data.tutors || [],
-        students: data.students || []
+        students: data.students || [],
+        posts: data.posts || []
       });
       setIsSearchActive(true);
 
@@ -647,14 +713,14 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
                 <Search className="text-indigo-600" /> ผลการค้นหา
               </h2>
               <button
-                onClick={() => { setIsSearchActive(false); setSearchResults({ tutors: [], students: [] }); }}
+                onClick={() => { setIsSearchActive(false); setSearchResults({ tutors: [], students: [], posts: [] }); }}
                 className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-bold transition-all text-sm flex items-center gap-2"
               >
                 <X size={16} /> ปิดการค้นหา
               </button>
             </div>
 
-            {searchResults.tutors.length === 0 && searchResults.students.length === 0 ? (
+            {searchResults.tutors.length === 0 && searchResults.students.length === 0 && searchResults.posts.length === 0 ? (
               <div className="text-center py-20 bg-white rounded-[2rem] border border-gray-100 shadow-sm opacity-60">
                 <Search size={48} className="mx-auto text-gray-300 mb-4" />
                 <p className="text-xl font-bold text-gray-400">ไม่พบข้อมูลที่ตรงกัน</p>
@@ -671,6 +737,21 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                       {searchResults.tutors.map(tutor => (
                         <TutorCard key={tutor.id} item={tutor} onOpen={openTutorModal} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Results: Tutor Posts */}
+                {searchResults.posts.length > 0 && (
+                  <div>
+                    <div className="w-full h-px bg-gray-200 my-8"></div>
+                    <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                      <BookOpen size={20} className="text-indigo-500" /> โพสต์ติวเตอร์
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                      {searchResults.posts.map(post => (
+                        <TutorPostResultCard key={post.tutor_post_id || post._id} post={post} onRegister={() => setShowRegister(true)} />
                       ))}
                     </div>
                   </div>

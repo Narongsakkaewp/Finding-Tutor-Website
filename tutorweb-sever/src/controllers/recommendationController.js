@@ -164,7 +164,9 @@ exports.getRecommendations = async (req, res) => {
                    COALESCE(rv.avg_rating, 0) AS avg_rating,
                    COALESCE(rv.review_count, 0) AS review_count,
                    COALESCE(fvc.c,0) AS fav_count,
-                   CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited
+                   CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited,
+                   (SELECT COUNT(*) FROM tutor_post_joins WHERE tutor_post_id = tp.tutor_post_id AND status='approved') AS join_count,
+                   (SELECT status FROM tutor_post_joins WHERE tutor_post_id = tp.tutor_post_id AND user_id = ?) AS my_join_status
             FROM tutor_posts tp
             LEFT JOIN register r ON tp.tutor_id = r.user_id
             LEFT JOIN tutor_profiles tpro ON tp.tutor_id = tpro.user_id
@@ -174,7 +176,7 @@ exports.getRecommendations = async (req, res) => {
             WHERE COALESCE(tp.is_active, 1) = 1
             ORDER BY tp.created_at DESC
             LIMIT 100
-        `, [userId]);
+        `, [userId, userId]);
 
         // 4. ถ้ามีประวัติค้นหา ให้ทำการประมวลผลคะแนน
         if (history.length > 0) {
@@ -301,7 +303,10 @@ exports.getRecommendations = async (req, res) => {
             favorited: !!r.favorited,
             rating: Number(r.avg_rating || 0),
             reviews: Number(r.review_count || 0),
-            is_expired: calculateIsExpired(r) // เพิ่ม flag สำหรับเช็คว่าโพสต์หมดอายุ
+            is_expired: calculateIsExpired(r), // เพิ่ม flag สำหรับเช็คว่าโพสต์หมดอายุ
+            joined: r.my_join_status === 'approved' || r.my_join_status === 'pending',
+            pending_me: r.my_join_status === 'pending',
+            join_count: Number(r.join_count || 0)
         }));
 
         res.json({
@@ -350,9 +355,11 @@ exports.getStudentRequestsForTutor = async (req, res) => {
             return res.json({ items: latest, based_on: "โพสต์ล่าสุด (กรุณากรอกวิชาที่สอน)" });
         }
 
-        // 2. ดึง Student Posts มาเทียบ
+        // 2. ดึง Student Posts มาเทียบ พร้อมชื่อติวเตอร์ที่ถูกอนุมัติ
         const [candidates] = await pool.query(`
-            SELECT sp.*, r.name, r.lastname, r.username, spro.profile_picture_url
+            SELECT sp.*, r.name, r.lastname, r.username, spro.profile_picture_url,
+                   (SELECT COUNT(*) FROM student_post_offers WHERE student_post_id = sp.student_post_id AND status = 'approved') AS has_tutor_count,
+                   (SELECT t_reg.name FROM student_post_offers o JOIN register t_reg ON o.tutor_id = t_reg.user_id WHERE o.student_post_id = sp.student_post_id AND o.status = 'approved' LIMIT 1) AS approved_tutor_name
             FROM student_posts sp
             LEFT JOIN register r ON sp.student_id = r.user_id
             LEFT JOIN student_profiles spro ON sp.student_id = spro.user_id
@@ -368,7 +375,13 @@ exports.getStudentRequestsForTutor = async (req, res) => {
                 if (score > maxScore) maxScore = score;
             });
 
-            return { ...post, relevance_score: maxScore, is_expired: calculateIsExpired(post) };
+            return {
+                ...post,
+                relevance_score: maxScore,
+                is_expired: calculateIsExpired(post),
+                has_tutor: Number(post.has_tutor_count) > 0,
+                approved_tutor_name: post.approved_tutor_name || null
+            };
         });
 
         const recommended = scoredPosts
@@ -407,7 +420,8 @@ exports.getRecommendedCourses = async (req, res) => {
                  sp.budget, sp.grade_level, sp.created_at,
                  r.first_name, r.last_name, r.profile_picture_url,
                  (SELECT COUNT(*) FROM student_post_joins WHERE student_post_id = sp.student_post_id) AS join_count,
-                 (SELECT COUNT(*) FROM student_post_offers WHERE student_post_id = sp.student_post_id AND status = 'approved') AS has_tutor
+                 (SELECT COUNT(*) FROM student_post_offers WHERE student_post_id = sp.student_post_id AND status = 'approved') AS has_tutor,
+                 (SELECT t_reg.name FROM student_post_offers o JOIN register t_reg ON o.tutor_id = t_reg.user_id WHERE o.student_post_id = sp.student_post_id AND o.status = 'approved' LIMIT 1) AS approved_tutor_name
           FROM student_posts sp
           JOIN register r ON sp.student_id = r.user_id
           WHERE 1=1
@@ -422,7 +436,9 @@ exports.getRecommendedCourses = async (req, res) => {
             user: { first_name: p.first_name, last_name: p.last_name, profile_image: p.profile_picture_url || "/../blank_avatar.jpg" },
             subject: p.subject, description: p.description, location: p.location, budget: p.budget,
             preferred_days: p.preferred_days, preferred_time: p.preferred_time,
-            join_count: Number(p.join_count || 0), has_tutor: Number(p.has_tutor) > 0,
+            join_count: Number(p.join_count || 0),
+            has_tutor: Number(p.has_tutor) > 0,
+            approved_tutor_name: p.approved_tutor_name || null,
             createdAt: p.created_at, post_type: 'student',
             is_expired: calculateIsExpired(p)
         }));

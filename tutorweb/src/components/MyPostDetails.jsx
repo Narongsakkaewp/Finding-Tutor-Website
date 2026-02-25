@@ -43,6 +43,8 @@ const normalizePost = (p = {}) => ({
   join_count: Number(p.join_count ?? 0),
   joined: !!p.joined,
   tutor: p.tutor || null,
+  has_tutor: !!p.has_tutor,
+  approved_tutor_name: p.approved_tutor_name || null,
   user: p.user || {
     first_name: p.first_name || p.name || "",
     last_name: p.last_name || "",
@@ -382,16 +384,31 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
             tutor={post.tutor}
             approvedTutorName={post.approved_tutor_name}
             onViewProfile={onViewProfile}
-            onJoinChange={(newCount) => {
-              setPost((p) => ({ ...p, join_count: Number(newCount ?? p.join_count) }));
+            onJoinChange={(newCount, approvedTutor) => {
+              setPost((p) => {
+                const updated = { ...p, join_count: Number(newCount ?? p.join_count) };
+                if (approvedTutor) {
+                  updated.has_tutor = true;
+                  updated.approved_tutor_name = approvedTutor.name;
+                  updated.tutor = approvedTutor;
+                }
+                return updated;
+              });
               if (typeof setPostsCache === "function") {
                 setPostsCache((arr) =>
                   Array.isArray(arr)
-                    ? arr.map((pp) =>
-                      pp.id === post.id
-                        ? { ...pp, join_count: Number(newCount ?? pp.join_count) }
-                        : pp
-                    )
+                    ? arr.map((pp) => {
+                      if (pp.id === post.id) {
+                        const updated = { ...pp, join_count: Number(newCount ?? pp.join_count) };
+                        if (approvedTutor) {
+                          updated.has_tutor = true;
+                          updated.approved_tutor_name = approvedTutor.name;
+                          updated.tutor = approvedTutor;
+                        }
+                        return updated;
+                      }
+                      return pp;
+                    })
                     : arr
                 );
               }
@@ -517,7 +534,15 @@ function JoinRequestsManager({ postId, postOwnerId, ownerName, ownerProfile, me,
 
       if (typeof onJoinChange === "function") {
         if (data && (typeof data.join_count === "number" || typeof data.join_count === "string")) {
-          onJoinChange(Number(data.join_count));
+          const approvedTutor = (!isTutor && req.request_type === 'tutor') ? {
+            id: req.user_id,
+            name: req.name,
+            lastname: req.lastname,
+            username: req.username,
+            profile_picture_url: req.profile_picture_url
+          } : undefined;
+
+          onJoinChange(Number(data.join_count), approvedTutor);
         }
       }
     } catch (e) {
@@ -666,9 +691,15 @@ function JoinRequestsManager({ postId, postOwnerId, ownerName, ownerProfile, me,
                       className="w-8 h-8 rounded-full object-cover border border-gray-200"
                       onError={(e) => { e.target.onerror = null; e.target.src = "/blank_avatar.jpg"; }}
                     />
-                    <div className="text-sm font-medium group-hover:text-blue-600 transition-colors">
-                      {r.name} {r.lastname}
-                      <span className="text-gray-400 text-xs ml-2 font-normal select-none relative top-[1px]">
+                    <div className="text-sm font-medium group-hover:text-blue-600 transition-colors flex items-center gap-2">
+                      <span>{r.name} {r.lastname}</span>
+                      {r.request_type === 'tutor' && (
+                        <span className="text-purple-700 bg-purple-100 px-2 py-0.5 rounded text-[10px] font-bold select-none">ติวเตอร์เสนอสอนคุณ</span>
+                      )}
+                      {r.request_type === 'student' && (
+                        <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-[10px] font-bold select-none">ขอเข้าร่วมกลุ่ม</span>
+                      )}
+                      <span className="text-gray-400 text-xs font-normal select-none relative top-[1px]">
                         {r.username ? `@${r.username}` : `#${r.user_id}`}
                       </span>
                     </div>

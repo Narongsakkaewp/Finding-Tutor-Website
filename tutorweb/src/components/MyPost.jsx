@@ -51,6 +51,8 @@ const normalizeStudentPost = (p = {}) => ({
   fav_count: Number(p.fav_count ?? 0),
   favorited: !!p.favorited,
   has_tutor: !!p.has_tutor, // [NEW]
+  tutor: p.tutor || null,
+  approved_tutor_name: p.approved_tutor_name || null,
   post_type: "student",
   user: p.user || {
     first_name: p.first_name || p.name || "",

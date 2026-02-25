@@ -5,6 +5,7 @@ import { Star, MapPin, User } from "lucide-react";
 export default function RecommendedTutors({ userId, onOpen }) {
   const [recs, setRecs] = useState({ items: [], based_on: "" });
   const [loading, setLoading] = useState(true);
+  const [joinLoading, setJoinLoading] = useState({});
 
   useEffect(() => {
     const id = userId || 0;
@@ -21,6 +22,73 @@ export default function RecommendedTutors({ userId, onOpen }) {
       .catch((err) => console.error("Recs Error:", err))
       .finally(() => setLoading(false));
   }, [userId]);
+
+  const handleJoin = async (e, tutor) => {
+    e.stopPropagation();
+    if (!userId) return alert("กรุณาเข้าสู่ระบบก่อนทำรายการ");
+
+    const postId = tutor.id || tutor.tutor_post_id;
+    setJoinLoading(prev => ({ ...prev, [postId]: true }));
+    try {
+      const res = await fetch(`http://localhost:5000/api/posts/tutor/${postId}/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data?.message || "Error joining tutor post");
+        return;
+      }
+
+      setRecs(prev => {
+        const nextItems = prev.items.map(p => {
+          if ((p.id || p.tutor_post_id) === postId) {
+            return { ...p, joined: true, pending_me: true, join_count: data.join_count };
+          }
+          return p;
+        });
+        return { ...prev, items: nextItems };
+      });
+    } catch (err) {
+      alert("เกิดข้อผิดพลาด: " + err.message);
+    } finally {
+      setJoinLoading(prev => ({ ...prev, [postId]: false }));
+    }
+  };
+
+  const handleUnjoin = async (e, tutor) => {
+    e.stopPropagation();
+    if (!userId) return;
+    if (!window.confirm("ต้องการยกเลิกคำขอเข้าร่วม?")) return;
+
+    const postId = tutor.id || tutor.tutor_post_id;
+    setJoinLoading(prev => ({ ...prev, [postId]: true }));
+    try {
+      const res = await fetch(`http://localhost:5000/api/posts/tutor/${postId}/join?user_id=${userId}`, {
+        method: "DELETE"
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data?.message || "Error unjoining tutor post");
+        return;
+      }
+
+      setRecs(prev => {
+        const nextItems = prev.items.map(p => {
+          if ((p.id || p.tutor_post_id) === postId) {
+            return { ...p, joined: false, pending_me: false, join_count: data.join_count };
+          }
+          return p;
+        });
+        return { ...prev, items: nextItems };
+      });
+    } catch (err) {
+      alert("เกิดข้อผิดพลาด: " + err.message);
+    } finally {
+      setJoinLoading(prev => ({ ...prev, [postId]: false }));
+    }
+  };
 
   if (loading) return <div className="text-center py-4 text-gray-500">กำลังประมวลผลติวเตอร์ที่เหมาะกับคุณ...</div>;
   if (!recs.items || recs.items.length === 0) return null;
@@ -128,19 +196,47 @@ export default function RecommendedTutors({ userId, onOpen }) {
                 </div>
               </div>
 
-              <div className="mt-3 pt-3 border-t flex flex-wrap justify-between items-center gap-2">
-                <span className={`text-xs font-semibold px-2 py-1 rounded-md ${isExpired ? 'bg-gray-200 text-gray-600' : 'bg-green-100 text-green-700'}`}>
-                  {tutor.price} บ./ชม.
-                </span>
-
-                {isExpired ? (
-                  <span className="text-[10px] text-red-500 font-medium bg-red-50 px-2 py-0.5 rounded-full">
-                    ติดต่อติวเตอร์โดยตรง
+              <div className="mt-3 pt-3 border-t flex flex-col gap-2">
+                <div className="flex flex-wrap justify-between items-center gap-2">
+                  <span className={`text-xs font-semibold px-2 py-1 rounded-md ${isExpired ? 'bg-gray-200 text-gray-600' : 'bg-green-100 text-green-700'}`}>
+                    {tutor.price} บ./ชม.
                   </span>
-                ) : (
-                  tutor.relevance_score > 0 && (
-                    <span className="text-xs text-indigo-500 font-medium"></span>
-                  )
+
+                  {isExpired ? (
+                    <span className="text-[10px] text-red-500 font-medium bg-red-50 px-2 py-0.5 rounded-full">
+                      ติดต่อติวเตอร์โดยตรง
+                    </span>
+                  ) : (
+                    tutor.relevance_score > 0 && (
+                      <span className="text-xs text-indigo-500 font-medium"></span>
+                    )
+                  )}
+                </div>
+
+                {!isExpired && (tutor.owner_id !== userId && tutor.tutor_id !== userId) && (
+                  <div className="mt-2">
+                    {tutor.joined || tutor.pending_me ? (
+                      <button
+                        disabled={joinLoading[tutor.id || tutor.tutor_post_id]}
+                        onClick={(e) => handleUnjoin(e, tutor)}
+                        className="w-full py-2 rounded-xl text-sm font-bold border text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        {joinLoading[tutor.id || tutor.tutor_post_id] ? "กำลังประมวลผล..." : (tutor.pending_me ? "ยกเลิกคำขอ" : "ยกเลิกการเข้าร่วม")}
+                      </button>
+                    ) : (
+                      <button
+                        disabled={joinLoading[tutor.id || tutor.tutor_post_id] || (tutor.group_size > 0 && tutor.join_count >= tutor.group_size)}
+                        onClick={(e) => handleJoin(e, tutor)}
+                        className={`w-full py-2 rounded-xl text-sm font-bold text-white transition-colors ${(tutor.group_size > 0 && tutor.join_count >= tutor.group_size) ? "bg-gray-400 cursor-not-allowed" :
+                          "bg-purple-600 hover:bg-purple-700"
+                          }`}
+                      >
+                        {(tutor.group_size > 0 && tutor.join_count >= tutor.group_size) ? "เต็มแล้ว" :
+                          joinLoading[tutor.id || tutor.tutor_post_id] ? "กำลังประมวลผล..." :
+                            "ขอเข้าร่วม"}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
