@@ -1,6 +1,9 @@
 {
   "name": "tutorweb-server",
   "version": "0.1.0",
+  "engines": {
+    "node": "20.x"
+  },
   "private": true,
   "dependencies": {
     "@testing-library/dom": "^10.4.1",
@@ -50,8 +53,5 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
-  },
-  "engines": {
-    "node": "18.x"
   }
 }
