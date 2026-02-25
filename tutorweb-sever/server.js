@@ -1,7 +1,7 @@
 // tutorweb-server/server.js
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
-// const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 
 const SPREADSHEET_ID = '1djs9ACE03WeImxVwuz6VfhnJ0ev1R473VQKVLYt5ynM';
 
@@ -9,15 +9,15 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-let creds;
+// let creds;
 
-if (process.env.GOOGLE_SERVICE_ACCOUNT) {
-  // Production (Render)
-  creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
-} else {
-  // Local (เครื่องเรา)
-  creds = require('./service-account.json');
-}
+// if (process.env.GOOGLE_SERVICE_ACCOUNT) {
+//   // Production (Render)
+//   creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+// } else {
+//   // Local (เครื่องเรา)
+//   creds = require('./service-account.json');
+// }
 
 // ----- Upload Deps -----
 const multer = require('multer');
