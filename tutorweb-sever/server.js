@@ -1,13 +1,23 @@
 // tutorweb-server/server.js
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
-const creds = require('./service-account.json');
+// const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 
 const SPREADSHEET_ID = '1djs9ACE03WeImxVwuz6VfhnJ0ev1R473VQKVLYt5ynM';
 
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+
+let creds;
+
+if (process.env.GOOGLE_SERVICE_ACCOUNT) {
+  // Production (Render)
+  creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+} else {
+  // Local (เครื่องเรา)
+  creds = require('./service-account.json');
+}
 
 // ----- Upload Deps -----
 const multer = require('multer');
@@ -252,17 +262,14 @@ async function saveToGoogleSheet(data) {
   try {
     const serviceAccountAuth = new JWT({
       email: creds.client_email,
-      key: creds.private_key,
+      key: creds.private_key.replace(/\\n/g, '\n'),
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
     const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
     await doc.loadInfo();
 
-    // เลือกแผ่นงานที่ 2 (Report Issue)
-    const sheet = doc.sheetsByIndex[1];
-
-    // เพิ่มแถวใหม่ (Map ให้ตรงกับหัวตารางใน Google Sheet)
+    const sheet = doc.sheetsByIndex[1]; // แผ่นที่ 2
     await sheet.addRow({
       Timestamp: new Date().toLocaleString('th-TH'),
       UserID: data.user_id || '-',
@@ -275,7 +282,7 @@ async function saveToGoogleSheet(data) {
       Detail: data.detail
     });
 
-    console.log("✅ บันทึก Report ลง Google Sheet เรียบร้อยแล้ว!");
+    console.log("✅ Saved report issue to Google Sheet");
   } catch (err) {
     console.error("❌ Google Sheet Error:", err.message);
   }
@@ -3793,7 +3800,7 @@ app.post('/api/delete-account', async (req, res) => {
     try {
       const serviceAccountAuth = new JWT({
         email: creds.client_email,
-        key: creds.private_key,
+        key: creds.private_key.replace(/\\n/g, '\n'),
         scopes: ['https://www.googleapis.com/auth/spreadsheets'],
       });
 
