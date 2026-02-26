@@ -308,7 +308,7 @@ async function saveToGoogleSheet(data) {
     const doc = new GoogleSpreadsheet(SPREADSHEET_ID);
     await doc.useServiceAccountAuth({
       client_email: creds.client_email,
-      private_key: creds.private_key.replace(/\\n/g, '\n')
+      private_key: creds.private_key
     });
 
     await doc.loadInfo();
@@ -3845,7 +3845,7 @@ app.post('/api/delete-account', async (req, res) => {
     try {
       const serviceAccountAuth = new JWT({
         email: creds.client_email,
-        key: creds.private_key.replace(/\\n/g, '\n'),
+        key: creds.private_key,
         scopes: ['https://www.googleapis.com/auth/spreadsheets'],
       });
 
