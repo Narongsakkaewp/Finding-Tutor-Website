@@ -1,5 +1,8 @@
-const { Resend } = require('resend');
-const resend = new Resend(process.env.RESEND_API_KEY);
+const brevo = require('@getbrevo/brevo');
+const defaultClient = brevo.ApiClient.instance;
+const apiKey = defaultClient.authentications['api-key'];
+apiKey.apiKey = process.env.BREVO_API_KEY;
+const apiInstance = new brevo.TransactionalEmailsApi();
 
 // Helper for generic HTML email structure
 const wrapHtml = (title, bodyContent) => `
@@ -66,13 +69,17 @@ async function sendBookingConfirmationEmail(toEmail, details) {
             </center>
         `;
 
-        const { error } = await resend.emails.send({
-            from: process.env.RESEND_FROM_EMAIL || 'Finding Tutor Notification <onboarding@resend.dev>',
-            to: toEmail,
-            subject: subject,
-            html: wrapHtml('ยืนยันนัดหมายการเรียน', body)
-        });
-        if (error) throw new Error(error.message);
+        let sendSmtpEmail = new brevo.SendSmtpEmail();
+        sendSmtpEmail.subject = subject;
+        sendSmtpEmail.htmlContent = wrapHtml('ยืนยันนัดหมายการเรียน', body);
+        sendSmtpEmail.sender = { "name": "Finding Tutor Notification", "email": process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" };
+        sendSmtpEmail.to = [{ "email": toEmail }];
+
+        try {
+            await apiInstance.sendTransacEmail(sendSmtpEmail);
+        } catch (error) {
+            throw new Error(error.response ? JSON.stringify(error.response.text) : error.message);
+        }
 
         console.log(`📧 [Email] Sent Confirmation to ${toEmail}`);
     } catch (err) {
@@ -105,13 +112,17 @@ async function sendReviewReminderEmail(toEmail, details) {
             <p style="font-size: 14px; color: #6b7280;">*หากคุณรีวิวไปแล้ว โปรดเพิกเฉยต่ออีเมลนี้</p>
         `;
 
-        const { error } = await resend.emails.send({
-            from: process.env.RESEND_FROM_EMAIL || 'Finding Tutor Notification <onboarding@resend.dev>',
-            to: toEmail,
-            subject: subject,
-            html: wrapHtml('📝 เชิญร่วมรีวิวการเรียนการสอน', body)
-        });
-        if (error) throw new Error(error.message);
+        let sendSmtpEmail = new brevo.SendSmtpEmail();
+        sendSmtpEmail.subject = subject;
+        sendSmtpEmail.htmlContent = wrapHtml('📝 เชิญร่วมรีวิวการเรียนการสอน', body);
+        sendSmtpEmail.sender = { "name": "Finding Tutor Notification", "email": process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" };
+        sendSmtpEmail.to = [{ "email": toEmail }];
+
+        try {
+            await apiInstance.sendTransacEmail(sendSmtpEmail);
+        } catch (error) {
+            throw new Error(error.response ? JSON.stringify(error.response.text) : error.message);
+        }
 
         console.log(`📧 [Email] Sent Review Reminder to ${toEmail}`);
     } catch (err) {
@@ -148,13 +159,17 @@ async function sendClassReminderEmail(toEmail, details) {
             </center>
         `;
 
-        const { error } = await resend.emails.send({
-            from: process.env.RESEND_FROM_EMAIL || 'Finding Tutor Notification <onboarding@resend.dev>',
-            to: toEmail,
-            subject: subject,
-            html: wrapHtml(`แจ้งเตือนตารางเรียนวันที่ ${date}`, body)
-        });
-        if (error) throw new Error(error.message);
+        let sendSmtpEmail = new brevo.SendSmtpEmail();
+        sendSmtpEmail.subject = subject;
+        sendSmtpEmail.htmlContent = wrapHtml(`แจ้งเตือนตารางเรียนวันที่ ${date}`, body);
+        sendSmtpEmail.sender = { "name": "Finding Tutor Notification", "email": process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" };
+        sendSmtpEmail.to = [{ "email": toEmail }];
+
+        try {
+            await apiInstance.sendTransacEmail(sendSmtpEmail);
+        } catch (error) {
+            throw new Error(error.response ? JSON.stringify(error.response.text) : error.message);
+        }
 
         console.log(`📧 [Email] Sent Class Reminder to ${toEmail}`);
     } catch (err) {

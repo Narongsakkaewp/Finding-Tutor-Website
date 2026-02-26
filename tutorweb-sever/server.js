@@ -58,8 +58,11 @@ const searchRoutes = require('./src/routes/searchRoutes');
 const favoriteRoutes = require('./src/routes/favoriteRoutes');
 const searchController = require('./src/controllers/searchController');
 // ----- Email Deps -----
-const { Resend } = require('resend');
-const resend = new Resend(process.env.RESEND_API_KEY);
+const brevo = require('@getbrevo/brevo');
+const defaultClient = brevo.ApiClient.instance;
+const apiKey = defaultClient.authentications['api-key'];
+apiKey.apiKey = process.env.BREVO_API_KEY;
+const apiInstance = new brevo.TransactionalEmailsApi();
 const { initCron, checkAndSendNotifications } = require('./src/services/cronService');
 const { sendBookingConfirmationEmail } = require('./src/utils/emailService');
 
@@ -3587,20 +3590,21 @@ app.post('/api/auth/request-otp', async (req, res) => {
     if (type === 'change_email') subject = '📧 รหัสยืนยันการเปลี่ยนอีเมล - Tutor Web';
     if (type === 'forgot_password') subject = '🔑 รหัสรีเซ็ตรหัสผ่าน - Tutor Web';
 
-    console.log("⏳ กำลังเชื่อมต่อ Resend API...");
-    const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'Finding TutorWeb <onboarding@resend.dev>',
-      to: email, // Resend expects an array or a single string
-      subject: subject,
-      html: getEmailTemplate(otpCode),
-    });
+    console.log("⏳ กำลังเชื่อมต่อ Brevo API...");
 
-    if (error) {
-      console.error("❌ Resend Error:", error);
-      throw new Error(error.message);
+    let sendSmtpEmail = new brevo.SendSmtpEmail();
+    sendSmtpEmail.subject = subject;
+    sendSmtpEmail.htmlContent = getEmailTemplate(otpCode);
+    sendSmtpEmail.sender = { "name": "Finding TutorWeb", "email": process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" };
+    sendSmtpEmail.to = [{ "email": email }];
+
+    try {
+      const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+      console.log("🚀 ส่งเมลสำเร็จ! ID:", data.messageId);
+    } catch (error) {
+      console.error("❌ Brevo Error:", error);
+      throw new Error(error.response ? JSON.stringify(error.response.text) : error.message);
     }
-
-    console.log("🚀 ส่งเมลสำเร็จ! ID:", data?.id);
 
     res.json({ success: true, message: 'ส่งรหัส OTP เรียบร้อยแล้ว' });
 
