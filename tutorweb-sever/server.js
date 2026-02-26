@@ -11,28 +11,37 @@ require('dotenv').config();
 
 let creds;
 
-if (process.env.GOOGLE_SERVICE_ACCOUNT) {
-  // Production (Render / Railway)
+if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+  // Production (Clean Split Env Variables)
+  let key = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+  if (!key.includes('\n') && key.includes('-----BEGIN PRIVATE KEY-----') && key.includes('-----END PRIVATE KEY-----')) {
+    const beginStr = '-----BEGIN PRIVATE KEY-----';
+    const endStr = '-----END PRIVATE KEY-----';
+    let base64Body = key.substring(key.indexOf(beginStr) + beginStr.length, key.indexOf(endStr));
+    base64Body = base64Body.replace(/\s+/g, '\n');
+    key = `${beginStr}\n${base64Body.trim()}\n${endStr}\n`;
+  }
+
+  creds = {
+    client_email: process.env.GOOGLE_CLIENT_EMAIL,
+    private_key: key
+  };
+} else if (process.env.GOOGLE_SERVICE_ACCOUNT) {
+  // Production (Legacy JSON Parser)
   creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
   if (creds.private_key) {
-    // 1. Convert any literal escaped newlines back to actual newlines
     let key = creds.private_key.replace(/\\n/g, '\n');
-
-    // 2. If newlines were completely stripped by the environment parsing (e.g., turned into spaces), reconstruct the PEM format
-    if (!key.includes('\n')) {
+    if (!key.includes('\n') && key.includes('-----BEGIN PRIVATE KEY-----') && key.includes('-----END PRIVATE KEY-----')) {
       const beginStr = '-----BEGIN PRIVATE KEY-----';
       const endStr = '-----END PRIVATE KEY-----';
-
-      if (key.includes(beginStr) && key.includes(endStr)) {
-        let base64Body = key.substring(key.indexOf(beginStr) + beginStr.length, key.indexOf(endStr));
-        base64Body = base64Body.replace(/\s+/g, '\n'); // Replace spaces with newlines in the payload
-        key = `${beginStr}\n${base64Body.trim()}\n${endStr}\n`;
-      }
+      let base64Body = key.substring(key.indexOf(beginStr) + beginStr.length, key.indexOf(endStr));
+      base64Body = base64Body.replace(/\s+/g, '\n');
+      key = `${beginStr}\n${base64Body.trim()}\n${endStr}\n`;
     }
     creds.private_key = key;
   }
 } else {
-  // Local (เครื่องเรา)
+  // Local (กระบวนการเครื่องเรา)
   creds = require('./service-account.json');
 }
 
