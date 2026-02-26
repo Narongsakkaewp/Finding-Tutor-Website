@@ -1,16 +1,5 @@
-const nodemailer = require('nodemailer');
-
-// Reuse the existing configuration from server.js
-const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // Use STARTTLS
-    requireTLS: true,
-    auth: {
-        user: process.env.MAIL_USER || 's6603052413159@email.kmutnb.ac.th',
-        pass: process.env.MAIL_PASS || 'mbtb ixlb oulm zlea' // แนะนำให้ใช้ App Password ของ Gmail
-    }
-});
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Helper for generic HTML email structure
 const wrapHtml = (title, bodyContent) => `
@@ -77,12 +66,13 @@ async function sendBookingConfirmationEmail(toEmail, details) {
             </center>
         `;
 
-        await transporter.sendMail({
-            from: '"Finding Tutor Notification" <s6603052413159@email.kmutnb.ac.th>',
+        const { error } = await resend.emails.send({
+            from: process.env.RESEND_FROM_EMAIL || 'Finding Tutor Notification <onboarding@resend.dev>',
             to: toEmail,
             subject: subject,
             html: wrapHtml('ยืนยันนัดหมายการเรียน', body)
         });
+        if (error) throw new Error(error.message);
 
         console.log(`📧 [Email] Sent Confirmation to ${toEmail}`);
     } catch (err) {
@@ -115,12 +105,13 @@ async function sendReviewReminderEmail(toEmail, details) {
             <p style="font-size: 14px; color: #6b7280;">*หากคุณรีวิวไปแล้ว โปรดเพิกเฉยต่ออีเมลนี้</p>
         `;
 
-        await transporter.sendMail({
-            from: '"Finding Tutor Notification" <s6603052413159@email.kmutnb.ac.th>',
+        const { error } = await resend.emails.send({
+            from: process.env.RESEND_FROM_EMAIL || 'Finding Tutor Notification <onboarding@resend.dev>',
             to: toEmail,
             subject: subject,
             html: wrapHtml('📝 เชิญร่วมรีวิวการเรียนการสอน', body)
         });
+        if (error) throw new Error(error.message);
 
         console.log(`📧 [Email] Sent Review Reminder to ${toEmail}`);
     } catch (err) {
@@ -157,12 +148,13 @@ async function sendClassReminderEmail(toEmail, details) {
             </center>
         `;
 
-        await transporter.sendMail({
-            from: '"Finding Tutor Notification" <s6603052413159@email.kmutnb.ac.th>',
+        const { error } = await resend.emails.send({
+            from: process.env.RESEND_FROM_EMAIL || 'Finding Tutor Notification <onboarding@resend.dev>',
             to: toEmail,
             subject: subject,
             html: wrapHtml(`แจ้งเตือนตารางเรียนวันที่ ${date}`, body)
         });
+        if (error) throw new Error(error.message);
 
         console.log(`📧 [Email] Sent Class Reminder to ${toEmail}`);
     } catch (err) {

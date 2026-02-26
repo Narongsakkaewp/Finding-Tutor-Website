@@ -58,7 +58,8 @@ const searchRoutes = require('./src/routes/searchRoutes');
 const favoriteRoutes = require('./src/routes/favoriteRoutes');
 const searchController = require('./src/controllers/searchController');
 // ----- Email Deps -----
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 const { initCron, checkAndSendNotifications } = require('./src/services/cronService');
 const { sendBookingConfirmationEmail } = require('./src/utils/emailService');
 
@@ -75,16 +76,7 @@ cloudinary.config({
 // Initialize Scheduler
 initCron();
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use STARTTLS
-  requireTLS: true,
-  auth: {
-    user: process.env.MAIL_USER || 's6603052413159@email.kmutnb.ac.th',
-    pass: process.env.MAIL_PASS || 'mbtb ixlb oulm zlea' // แนะนำให้ใช้ App Password ของ Gmail
-  }
-});
+// (Nodemailer transporter removed in favor of Resend API)
 
 // -----------------------
 const app = express();
@@ -3595,16 +3587,20 @@ app.post('/api/auth/request-otp', async (req, res) => {
     if (type === 'change_email') subject = '📧 รหัสยืนยันการเปลี่ยนอีเมล - Tutor Web';
     if (type === 'forgot_password') subject = '🔑 รหัสรีเซ็ตรหัสผ่าน - Tutor Web';
 
-    const mailOptions = {
-      from: '"Finding TutorWeb" <findingtoturwebteam@gmail.com>',
-      to: email,
+    console.log("⏳ กำลังเชื่อมต่อ Resend API...");
+    const { data, error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL || 'Finding TutorWeb <onboarding@resend.dev>',
+      to: email, // Resend expects an array or a single string
       subject: subject,
       html: getEmailTemplate(otpCode),
-    };
+    });
 
-    console.log("⏳ กำลังเชื่อมต่อ Gmail...");
-    await transporter.sendMail(mailOptions);
-    console.log("🚀 ส่งเมลสำเร็จ!");
+    if (error) {
+      console.error("❌ Resend Error:", error);
+      throw new Error(error.message);
+    }
+
+    console.log("🚀 ส่งเมลสำเร็จ! ID:", data?.id);
 
     res.json({ success: true, message: 'ส่งรหัส OTP เรียบร้อยแล้ว' });
 
