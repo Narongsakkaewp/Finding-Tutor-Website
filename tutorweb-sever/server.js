@@ -36,6 +36,16 @@ const nodemailer = require('nodemailer');
 const { initCron, checkAndSendNotifications } = require('./src/services/cronService');
 const { sendBookingConfirmationEmail } = require('./src/utils/emailService');
 
+// ----- Cloudinary Images Upload Config -----
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
 // Initialize Scheduler
 initCron();
 
@@ -213,15 +223,15 @@ function expandSearchTerm(term) {
   }
 })();
 
-// ----- Multer (upload folder) -----
-const uploadDir = 'public/uploads';
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
+// ----- Multer (Cloudinary) -----
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'finding-tutor',
+    allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
+  },
 });
-const upload = multer({ storage });
+const upload = multer({ storage: storage });
 // ---------------------------------
 
 // ===== helper =====
@@ -3110,7 +3120,8 @@ app.put('/api/tutor-profile/:userId', async (req, res) => {
 // ---------- Upload ----------
 app.post('/api/upload', upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+  // req.file.path properties is returned by multer-storage-cloudinary representing the secure Cloudinary URL
+  const imageUrl = req.file.path;
   res.status(200).json({ imageUrl });
 });
 
