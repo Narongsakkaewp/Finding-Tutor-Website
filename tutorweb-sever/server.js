@@ -12,8 +12,11 @@ require('dotenv').config();
 let creds;
 
 if (process.env.GOOGLE_SERVICE_ACCOUNT) {
-  // Production (Render)
+  // Production (Render / Railway)
   creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+  if (creds.private_key) {
+    creds.private_key = creds.private_key.replace(/\\n/g, '\n');
+  }
 } else {
   // Local (เครื่องเรา)
   creds = require('./service-account.json');

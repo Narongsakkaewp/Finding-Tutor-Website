@@ -645,63 +645,63 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
     <div className="min-h-screen bg-gray-50">
       <div className="p-4 max-w-4xl mx-auto">
 
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
-          <h1 className="text-xl font-bold">ฟีดโพสต์</h1>
+        {/* Header & Controls Container (Compact Mobile Layout) */}
+        <div className="mb-6 space-y-4">
 
-          <div className="inline-flex rounded-xl border overflow-hidden">
-            <button
-              className={`px-4 py-2 text-sm ${feedType === 'student' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => { setFeedType('student'); setFilterLevel('all'); }}
-            >
-              นักเรียน
-            </button>
-            <button
-              className={`px-4 py-2 text-sm ${feedType === 'tutor' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              onClick={() => { setFeedType('tutor'); setFilterLevel('all'); }}
-            >
-              ติวเตอร์
-            </button>
-          </div>
-        </div>
+          {/* Top Row: Title & Toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">ฟีดโพสต์</h1>
 
-        <p className="text-sm text-gray-500 mb-4">
-          {feedType === "student" ? "แสดงโพสต์ของนักเรียน" : "แสดงโพสต์ของติวเตอร์"}
-        </p>
-
-        {/* Search & Dropdown Filter Container */}
-        <div className="flex flex-col md:flex-row items-end md:items-center justify-between gap-4 mb-4">
-          {/* Smart Search */}
-          <div className="w-full md:w-[400px] z-20">
-            <SmartSearch
-              userId={meId}
-              onSearch={(val) => setSearchQuery(val)}
-            />
+            <div className="inline-flex bg-white rounded-xl border border-gray-200 p-1 shadow-sm">
+              <button
+                className={`px-3 py-1.5 md:px-5 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${feedType === 'student' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                onClick={() => { setFeedType('student'); setFilterLevel('all'); }}
+              >
+                นักเรียน
+              </button>
+              <button
+                className={`px-3 py-1.5 md:px-5 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${feedType === 'tutor' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                onClick={() => { setFeedType('tutor'); setFilterLevel('all'); }}
+              >
+                ติวเตอร์
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600 font-medium whitespace-nowrap">กรองระดับชั้น:</span>
-            <div className="relative">
+          <p className="hidden md:block text-sm text-gray-500 font-medium">
+            {feedType === "student" ? "แสดงโพสต์ขอเรียนจากนักเรียนทั้งหมด" : "แสดงประกาศสอนจากติวเตอร์ทั้งหมด"}
+          </p>
+
+          {/* Bottom Row: Search & Filter */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 w-full relative z-20">
+              <SmartSearch
+                userId={meId}
+                onSearch={(val) => setSearchQuery(val)}
+              />
+            </div>
+
+            <div className="w-full sm:w-auto relative shrink-0">
               <select
                 value={filterLevel}
                 onChange={(e) => setFilterLevel(e.target.value)}
-                className="appearance-none bg-white border border-gray-300 text-gray-700 py-1.5 pl-3 pr-8 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-3 md:py-3.5 pl-4 pr-10 rounded-full text-sm font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
               >
-                <option value="all">แสดงทั้งหมด</option>
+                <option value="all">ระดับชั้น: ทั้งหมด</option>
                 {postGradeLevelOptions.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                <ChevronDown size={14} />
+              <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-gray-400">
+                <ChevronDown size={16} />
               </div>
             </div>
           </div>
         </div>
 
         {error && (
-          <div className="mb-3 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-3">
-            {error}
+          <div className="mb-4 text-sm font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-4 shadow-sm flex items-center gap-2">
+            ⚠️ {error}
           </div>
         )}
 

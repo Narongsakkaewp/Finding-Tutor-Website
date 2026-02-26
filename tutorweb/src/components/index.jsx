@@ -62,7 +62,7 @@ function TutorCard({ item, onOpen }) {
       className="group bg-white rounded-3xl border border-gray-100 overflow-hidden hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 cursor-pointer flex flex-col"
       onClick={() => onOpen?.(item)}
     >
-      <div className="relative aspect-[4/5] overflow-hidden">
+      <div className="relative aspect-square md:aspect-[4/5] overflow-hidden">
         <img
           src={item.image || "/../blank_avatar.jpg"}
           alt={item.name}
@@ -79,11 +79,11 @@ function TutorCard({ item, onOpen }) {
           </span>
         </div>
       </div>
-      <div className="p-6 flex-grow flex flex-col">
-        <h3 className="font-black text-xl text-gray-900 truncate group-hover:text-indigo-600 transition-colors leading-tight">
+      <div className="p-4 md:p-6 flex-grow flex flex-col">
+        <h3 className="font-black text-lg md:text-xl text-gray-900 truncate group-hover:text-indigo-600 transition-colors leading-tight">
           {item.name}
         </h3>
-        {item.nickname && <p className="text-gray-400 text-sm font-bold mt-0.5">({item.nickname})</p>}
+        {item.nickname && <p className="text-gray-400 text-xs md:text-sm font-bold mt-0.5">({item.nickname})</p>}
 
         <div className="mt-4 flex flex-wrap gap-2">
           {(item.subject || "ไม่ระบุวิชา").split(',').slice(0, 2).map((s, idx) => (
@@ -112,17 +112,17 @@ function TutorCard({ item, onOpen }) {
 // ... (HighlightPostCard คงเดิม) ...
 function HighlightPostCard({ post, onRegister }) {
   return (
-    <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-6 hover:bg-white/10 transition-all duration-300 group flex flex-col h-full">
+    <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-4 md:p-6 hover:bg-white/10 transition-all duration-300 group flex flex-col h-full">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <img
             src={post.user?.profile_image || "/default-avatar.png"}
             alt="tutor"
-            className="w-12 h-12 rounded-full border-2 border-indigo-400/50 object-cover"
+            className="w-10 h-10 md:w-12 md:h-12 rounded-full border-2 border-indigo-400/50 object-cover"
           />
           <div>
-            <h4 className="text-white font-bold text-lg leading-tight line-clamp-1">{post.subject}</h4>
-            <p className="text-indigo-200 text-xs font-medium">{post.user?.first_name} {post.user?.last_name}</p>
+            <h4 className="text-white font-bold text-base md:text-lg leading-tight line-clamp-1">{post.subject}</h4>
+            <p className="text-indigo-200 text-[10px] md:text-xs font-medium">{post.user?.first_name} {post.user?.last_name}</p>
           </div>
         </div>
         <span className="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2 py-1 rounded-lg border border-indigo-500/30">
@@ -171,41 +171,41 @@ function TutorPostResultCard({ post, onRegister }) {
       {/* Decorative Top Gradient */}
       <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
 
-      <div className="p-6 flex flex-col h-full relative z-10 w-full">
+      <div className="p-4 md:p-6 flex flex-col h-full relative z-10 w-full">
         {/* Header: Avatar & Info */}
-        <div className="flex items-start gap-4 mb-5 mt-1">
+        <div className="flex items-start gap-4 mb-4 mt-1">
           <div className="relative shrink-0">
             <img
               src={post.user?.profile_image || "/default-avatar.png"}
               alt="tutor"
-              className="w-14 h-14 rounded-full border-2 border-indigo-100 object-cover shadow-sm group-hover:scale-110 transition-transform duration-500"
+              className="w-10 h-10 md:w-14 md:h-14 rounded-full border-2 border-indigo-100 object-cover shadow-sm group-hover:scale-110 transition-transform duration-500"
             />
-            <div className="absolute -bottom-1 -right-1 bg-indigo-500 text-white rounded-full p-1.5 border-2 border-white shadow-sm">
-              <GraduationCap size={12} />
+            <div className="absolute -bottom-1 -right-1 bg-indigo-500 text-white rounded-full p-1 md:p-1.5 border-2 border-white shadow-sm">
+              <GraduationCap size={10} className="md:w-3 md:h-3" />
             </div>
           </div>
-          <div className="flex-1 min-w-0 pt-1">
-            <h4 className="text-gray-900 font-black text-lg leading-tight line-clamp-1 group-hover:text-indigo-600 transition-colors">
+          <div className="flex-1 min-w-0 pt-0.5">
+            <h4 className="text-gray-900 font-black text-base md:text-lg leading-tight line-clamp-1 group-hover:text-indigo-600 transition-colors">
               {post.subject || post.meta?.subject || "ไม่ระบุเรื่อง"}
             </h4>
-            <p className="text-indigo-500 text-xs font-bold mt-1.5 tracking-wide truncate">
+            <p className="text-indigo-500 text-[10px] md:text-xs font-bold mt-1 tracking-wide truncate">
               {post.user?.first_name} {post.user?.last_name}
             </p>
           </div>
         </div>
 
         {/* Content Box */}
-        <div className="bg-indigo-50/50 rounded-2xl p-4 mb-5 flex-grow border border-indigo-50/50">
-          <span className="inline-block bg-white text-indigo-600 text-[10px] font-black tracking-widest px-3 py-1 rounded-lg shadow-sm border border-indigo-100 mb-3 uppercase">
+        <div className="bg-indigo-50/50 rounded-xl md:rounded-2xl p-3 md:p-4 mb-4 flex-grow border border-indigo-50/50">
+          <span className="inline-block bg-white text-indigo-600 text-[9px] md:text-[10px] font-black tracking-widest px-2 py-1 md:px-3 rounded-md md:rounded-lg shadow-sm border border-indigo-100 mb-2 md:mb-3 uppercase">
             {post.meta?.target_student_level || 'ทุกระดับชั้น'}
           </span>
-          <p className="text-gray-700 text-sm line-clamp-3 leading-relaxed font-medium">
+          <p className="text-gray-700 text-xs md:text-sm line-clamp-2 md:line-clamp-3 leading-relaxed font-medium">
             "{post.content || "ไม่มีรายละเอียดเพิ่มเติมจากผู้สอน"}"
           </p>
         </div>
 
         {/* Footer Info */}
-        <div className="space-y-4 mt-auto">
+        <div className="space-y-3 md:space-y-4 mt-auto">
           <div className="grid grid-cols-2 gap-3 text-[11px] font-bold text-gray-500">
             <div className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-xl">
               <MapPin size={14} className="text-indigo-500 shrink-0" />
@@ -219,9 +219,9 @@ function TutorPostResultCard({ post, onRegister }) {
 
           <button
             onClick={onRegister}
-            className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-sm font-black tracking-wide py-3.5 rounded-xl transition-all shadow-lg shadow-indigo-200 hover:shadow-xl flex justify-center items-center gap-2"
+            className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs md:text-sm font-black tracking-wide py-2.5 md:py-3.5 rounded-xl transition-all shadow-lg shadow-indigo-200 hover:shadow-xl flex justify-center items-center gap-2"
           >
-            ดูรายละเอียดชั่วโมงสอน <ChevronRight size={16} />
+            ดูรายละเอียดชั่วโมงสอน <ChevronRight size={16} className="w-3 h-3 md:w-4 md:h-4" />
           </button>
         </div>
       </div>
@@ -236,32 +236,32 @@ function StudentRequestCard({ post, onRegister }) {
       {/* Gradient Top Border */}
       <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-orange-400 via-pink-500 to-orange-400"></div>
 
-      <div className="p-6 flex flex-col h-full relative z-10">
+      <div className="p-4 md:p-6 flex flex-col h-full relative z-10">
         {/* Header with Avatar & Subject */}
         <div className="flex items-start gap-4 mb-4">
           <div className="relative">
             <img
               src={post.user?.profile_image || "/default-avatar.png"}
               alt="student"
-              className="w-12 h-12 rounded-2xl object-cover ring-2 ring-orange-100 group-hover:ring-orange-400 transition-all"
+              className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl object-cover ring-2 ring-orange-100 group-hover:ring-orange-400 transition-all"
             />
             <div className="absolute -bottom-1 -right-1 bg-orange-500 text-white rounded-full p-1 border-2 border-white">
-              <BookOpen size={10} />
+              <BookOpen size={10} className="w-2.5 h-2.5 md:w-3 md:h-3" />
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="font-black text-gray-900 text-lg leading-tight line-clamp-1 group-hover:text-orange-600 transition-colors">
+            <h4 className="font-black text-gray-900 text-base md:text-lg leading-tight line-clamp-1 group-hover:text-orange-600 transition-colors">
               {post.subject}
             </h4>
-            <p className="text-xs text-gray-400 mt-1 font-medium flex items-center gap-1">
+            <p className="text-[10px] md:text-xs text-gray-400 mt-1 font-medium flex items-center gap-1">
               หาครู <span className="w-1 h-1 rounded-full bg-gray-300"></span> {post.grade_level || 'ไม่ระบุชั้น'}
             </p>
           </div>
         </div>
 
         {/* Content */}
-        <div className="bg-orange-50/50 rounded-2xl p-4 mb-4 flex-grow">
-          <p className="text-gray-600 text-sm line-clamp-3 leading-relaxed font-medium">
+        <div className="bg-orange-50/50 rounded-xl md:rounded-2xl p-3 md:p-4 mb-4 flex-grow">
+          <p className="text-gray-600 text-xs md:text-sm line-clamp-2 md:line-clamp-3 leading-relaxed font-medium">
             "{post.description || "ต้องการหาติวเตอร์ที่มีประสบการณ์..."}"
           </p>
         </div>
@@ -319,28 +319,28 @@ function TutorDetailModal({ tutor, onClose, onSignUp }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-md animate-fade-in" onClick={onClose}></div>
-      <div className="relative w-full max-w-5xl bg-white rounded-[2rem] shadow-2xl overflow-hidden animate-zoom-in max-h-[90vh] flex flex-col md:flex-row">
+      <div className="relative w-full max-w-5xl bg-white rounded-[2rem] shadow-2xl overflow-y-auto overflow-x-hidden md:overflow-hidden animate-zoom-in max-h-[95vh] md:max-h-[90vh] flex flex-col md:flex-row custom-scrollbar">
 
         {/* Left Side: Avatar & Basic Info */}
-        <div className="md:w-1/3 bg-gray-900 text-white p-8 flex flex-col">
-          <button onClick={onClose} className="md:hidden absolute top-4 right-4 p-2 bg-white/10 rounded-full hover:bg-white/20 transition">
+        <div className="md:w-1/3 bg-gray-900 text-white p-6 md:p-8 flex flex-col">
+          <button onClick={onClose} className="md:hidden absolute top-4 right-4 p-2 bg-white/10 rounded-full hover:bg-white/20 transition z-10">
             <X size={20} />
           </button>
 
-          <div className="relative mx-auto w-48 h-48 mb-6 group">
+          <div className="relative mx-auto w-32 h-32 md:w-48 md:h-48 mb-4 md:mb-6 group mt-4 md:mt-0">
             <img
               src={tutor.image || "/../blank_avatar.jpg"}
-              className="w-full h-full rounded-[2.5rem] object-cover ring-4 ring-indigo-500/30 group-hover:ring-indigo-500 transition-all duration-500"
+              className="w-full h-full rounded-[1.5rem] md:rounded-[2.5rem] object-cover ring-4 ring-indigo-500/30 group-hover:ring-indigo-500 transition-all duration-500"
               alt={tutor.name}
             />
-            <div className="absolute -bottom-2 -right-2 bg-indigo-600 px-3 py-1.5 rounded-xl text-xs font-black shadow-lg">
+            <div className="absolute -bottom-2 -right-2 bg-indigo-600 px-2 py-1 md:px-3 md:py-1.5 rounded-lg md:rounded-xl text-[10px] md:text-xs font-black shadow-lg">
               TUTOR
             </div>
           </div>
 
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-black mb-1">{tutor.name}</h2>
-            {tutor.nickname && <p className="text-indigo-400 font-bold mb-4 text-xl">({tutor.nickname})</p>}
+          <div className="text-center mb-6 md:mb-8">
+            <h2 className="text-2xl md:text-3xl font-black mb-1">{tutor.name}</h2>
+            {tutor.nickname && <p className="text-indigo-400 font-bold mb-3 md:mb-4 text-lg md:text-xl">({tutor.nickname})</p>}
 
             <div className="flex justify-center gap-4 text-sm font-bold">
               <div className="flex flex-col items-center p-3 bg-white/5 rounded-2xl border border-white/10 w-24">
@@ -356,8 +356,8 @@ function TutorDetailModal({ tutor, onClose, onSignUp }) {
 
           <div className="space-y-4 mt-auto">
             <div className="p-4 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-600/20">
-              <h4 className="flex items-center gap-2 font-black text-xs uppercase tracking-widest mb-3 text-indigo-100">สนใจเรียนกับติวเตอร์?</h4>
-              <button onClick={onSignUp} className="w-full py-3 bg-white text-indigo-600 rounded-xl font-black text-sm hover:bg-indigo-50 transition-colors">
+              <h4 className="flex items-center gap-2 font-black text-[10px] md:text-xs uppercase tracking-widest mb-3 text-indigo-100">สนใจเรียนกับติวเตอร์?</h4>
+              <button onClick={onSignUp} className="w-full py-2.5 md:py-3 bg-white text-indigo-600 rounded-xl font-black text-xs md:text-sm hover:bg-indigo-50 transition-colors">
                 สมัครสมาชิกเพื่อจองเรียน
               </button>
             </div>
@@ -365,8 +365,8 @@ function TutorDetailModal({ tutor, onClose, onSignUp }) {
         </div>
 
         {/* Right Side: Detailed Info & Calendar */}
-        <div className="flex-1 p-8 overflow-y-auto bg-gray-50 custom-scrollbar">
-          <button onClick={onClose} className="hidden md:flex absolute top-6 right-6 p-2 bg-gray-200 text-gray-500 rounded-full hover:bg-gray-300 transition">
+        <div className="flex-1 p-5 md:p-8 md:overflow-y-auto bg-gray-50 md:custom-scrollbar">
+          <button onClick={onClose} className="hidden md:flex absolute top-6 right-6 p-2 bg-gray-200 text-gray-500 rounded-full hover:bg-gray-300 transition z-10">
             <X size={20} />
           </button>
 
