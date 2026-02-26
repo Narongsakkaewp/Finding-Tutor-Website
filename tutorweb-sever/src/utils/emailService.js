@@ -3,8 +3,9 @@ const nodemailer = require('nodemailer');
 // Reuse the existing configuration from server.js
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, // Use TLS
+    port: 587,
+    secure: false, // Use STARTTLS
+    requireTLS: true,
     auth: {
         user: process.env.EMAIL_USER || 's6603052413159@email.kmutnb.ac.th',
         pass: process.env.EMAIL_PASS || 'mbtb ixlb oulm zlea' // แนะนำให้ใช้ App Password ของ Gmail
