@@ -226,12 +226,30 @@ function expandSearchTerm(term) {
 // ----- Multer (Cloudinary) -----
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  params: {
-    folder: 'finding-tutor',
-    allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
+  params: async (req, file) => {
+    // กำหนดโฟลเดอร์หลัก
+    let folderName = 'finding-tutor';
+    // ถ้ามีการส่ง role เข้ามาเพื่อแยกประเภท ก็ให้เอาไปต่อท้าย
+    if (req.body.role === 'tutor') {
+      folderName = 'finding-tutor/tutors';
+    } else if (req.body.role === 'student') {
+      folderName = 'finding-tutor/students';
+    }
+
+    return {
+      folder: folderName,
+      allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
+      // ย่อขนาดรูปให้ไม่เกิน Full HD ป้องกันไฟล์ใหญ่เกินไปแล้วเปลืองพื้นที่
+      transformation: [{ width: 1920, limit: true }],
+    };
   },
 });
-const upload = multer({ storage: storage });
+
+const upload = multer({
+  storage: storage,
+  // จำกัดขนาดไฟล์รับเข้าสูงสุด 5 MB (5 * 1024 * 1024 bytes)
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
 // ---------------------------------
 
 // ===== helper =====
