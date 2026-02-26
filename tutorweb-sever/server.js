@@ -58,11 +58,7 @@ const searchRoutes = require('./src/routes/searchRoutes');
 const favoriteRoutes = require('./src/routes/favoriteRoutes');
 const searchController = require('./src/controllers/searchController');
 // ----- Email Deps -----
-const brevo = require('@getbrevo/brevo');
-const defaultClient = brevo.ApiClient.instance;
-const apiKey = defaultClient.authentications['api-key'];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-const apiInstance = new brevo.TransactionalEmailsApi();
+// Using native fetch for Brevo to avoid SDK CommonJS bugs
 const { initCron, checkAndSendNotifications } = require('./src/services/cronService');
 const { sendBookingConfirmationEmail } = require('./src/utils/emailService');
 
@@ -3590,20 +3586,34 @@ app.post('/api/auth/request-otp', async (req, res) => {
     if (type === 'change_email') subject = '📧 รหัสยืนยันการเปลี่ยนอีเมล - Tutor Web';
     if (type === 'forgot_password') subject = '🔑 รหัสรีเซ็ตรหัสผ่าน - Tutor Web';
 
-    console.log("⏳ กำลังเชื่อมต่อ Brevo API...");
+    console.log("⏳ กำลังเชื่อมต่อ Brevo HTTP API...");
 
-    let sendSmtpEmail = new brevo.SendSmtpEmail();
-    sendSmtpEmail.subject = subject;
-    sendSmtpEmail.htmlContent = getEmailTemplate(otpCode);
-    sendSmtpEmail.sender = { "name": "Finding TutorWeb", "email": process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" };
-    sendSmtpEmail.to = [{ "email": email }];
+    const brevoPayload = {
+      sender: { name: "Finding TutorWeb", email: process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" },
+      to: [{ email: email }],
+      subject: subject,
+      htmlContent: getEmailTemplate(otpCode)
+    };
 
     try {
-      const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "accept": "application/json",
+          "api-key": process.env.BREVO_API_KEY,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(brevoPayload)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Brevo API request failed');
+      }
       console.log("🚀 ส่งเมลสำเร็จ! ID:", data.messageId);
     } catch (error) {
       console.error("❌ Brevo Error:", error);
-      throw new Error(error.response ? JSON.stringify(error.response.text) : error.message);
+      throw new Error(error.message);
     }
 
     res.json({ success: true, message: 'ส่งรหัส OTP เรียบร้อยแล้ว' });

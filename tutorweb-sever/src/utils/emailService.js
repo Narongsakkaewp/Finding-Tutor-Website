@@ -1,8 +1,5 @@
-const brevo = require('@getbrevo/brevo');
-const defaultClient = brevo.ApiClient.instance;
-const apiKey = defaultClient.authentications['api-key'];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-const apiInstance = new brevo.TransactionalEmailsApi();
+// ----- Email Deps -----
+// Using native fetch for Brevo to avoid SDK CommonJS bugs
 
 // Helper for generic HTML email structure
 const wrapHtml = (title, bodyContent) => `
@@ -69,16 +66,27 @@ async function sendBookingConfirmationEmail(toEmail, details) {
             </center>
         `;
 
-        let sendSmtpEmail = new brevo.SendSmtpEmail();
-        sendSmtpEmail.subject = subject;
-        sendSmtpEmail.htmlContent = wrapHtml('ยืนยันนัดหมายการเรียน', body);
-        sendSmtpEmail.sender = { "name": "Finding Tutor Notification", "email": process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" };
-        sendSmtpEmail.to = [{ "email": toEmail }];
+        const brevoPayload = {
+            sender: { name: "Finding Tutor Notification", email: process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" },
+            to: [{ email: toEmail }],
+            subject: subject,
+            htmlContent: wrapHtml('ยืนยันนัดหมายการเรียน', body)
+        };
 
         try {
-            await apiInstance.sendTransacEmail(sendSmtpEmail);
+            const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                    "accept": "application/json",
+                    "api-key": process.env.BREVO_API_KEY,
+                    "content-type": "application/json"
+                },
+                body: JSON.stringify(brevoPayload)
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Brevo API request failed');
         } catch (error) {
-            throw new Error(error.response ? JSON.stringify(error.response.text) : error.message);
+            throw new Error(error.message);
         }
 
         console.log(`📧 [Email] Sent Confirmation to ${toEmail}`);
@@ -112,16 +120,27 @@ async function sendReviewReminderEmail(toEmail, details) {
             <p style="font-size: 14px; color: #6b7280;">*หากคุณรีวิวไปแล้ว โปรดเพิกเฉยต่ออีเมลนี้</p>
         `;
 
-        let sendSmtpEmail = new brevo.SendSmtpEmail();
-        sendSmtpEmail.subject = subject;
-        sendSmtpEmail.htmlContent = wrapHtml('📝 เชิญร่วมรีวิวการเรียนการสอน', body);
-        sendSmtpEmail.sender = { "name": "Finding Tutor Notification", "email": process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" };
-        sendSmtpEmail.to = [{ "email": toEmail }];
+        const brevoPayload = {
+            sender: { name: "Finding Tutor Notification", email: process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" },
+            to: [{ email: toEmail }],
+            subject: subject,
+            htmlContent: wrapHtml('📝 เชิญร่วมรีวิวการเรียนการสอน', body)
+        };
 
         try {
-            await apiInstance.sendTransacEmail(sendSmtpEmail);
+            const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                    "accept": "application/json",
+                    "api-key": process.env.BREVO_API_KEY,
+                    "content-type": "application/json"
+                },
+                body: JSON.stringify(brevoPayload)
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Brevo API request failed');
         } catch (error) {
-            throw new Error(error.response ? JSON.stringify(error.response.text) : error.message);
+            throw new Error(error.message);
         }
 
         console.log(`📧 [Email] Sent Review Reminder to ${toEmail}`);
@@ -159,16 +178,27 @@ async function sendClassReminderEmail(toEmail, details) {
             </center>
         `;
 
-        let sendSmtpEmail = new brevo.SendSmtpEmail();
-        sendSmtpEmail.subject = subject;
-        sendSmtpEmail.htmlContent = wrapHtml(`แจ้งเตือนตารางเรียนวันที่ ${date}`, body);
-        sendSmtpEmail.sender = { "name": "Finding Tutor Notification", "email": process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" };
-        sendSmtpEmail.to = [{ "email": toEmail }];
+        const brevoPayload = {
+            sender: { name: "Finding Tutor Notification", email: process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" },
+            to: [{ email: toEmail }],
+            subject: subject,
+            htmlContent: wrapHtml(`แจ้งเตือนตารางเรียนวันที่ ${date}`, body)
+        };
 
         try {
-            await apiInstance.sendTransacEmail(sendSmtpEmail);
+            const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                    "accept": "application/json",
+                    "api-key": process.env.BREVO_API_KEY,
+                    "content-type": "application/json"
+                },
+                body: JSON.stringify(brevoPayload)
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Brevo API request failed');
         } catch (error) {
-            throw new Error(error.response ? JSON.stringify(error.response.text) : error.message);
+            throw new Error(error.message);
         }
 
         console.log(`📧 [Email] Sent Class Reminder to ${toEmail}`);
