@@ -15,7 +15,21 @@ if (process.env.GOOGLE_SERVICE_ACCOUNT) {
   // Production (Render / Railway)
   creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
   if (creds.private_key) {
-    creds.private_key = creds.private_key.replace(/\\n/g, '\n');
+    // 1. Convert any literal escaped newlines back to actual newlines
+    let key = creds.private_key.replace(/\\n/g, '\n');
+
+    // 2. If newlines were completely stripped by the environment parsing (e.g., turned into spaces), reconstruct the PEM format
+    if (!key.includes('\n')) {
+      const beginStr = '-----BEGIN PRIVATE KEY-----';
+      const endStr = '-----END PRIVATE KEY-----';
+
+      if (key.includes(beginStr) && key.includes(endStr)) {
+        let base64Body = key.substring(key.indexOf(beginStr) + beginStr.length, key.indexOf(endStr));
+        base64Body = base64Body.replace(/\s+/g, '\n'); // Replace spaces with newlines in the payload
+        key = `${beginStr}\n${base64Body.trim()}\n${endStr}\n`;
+      }
+    }
+    creds.private_key = key;
   }
 } else {
   // Local (เครื่องเรา)
