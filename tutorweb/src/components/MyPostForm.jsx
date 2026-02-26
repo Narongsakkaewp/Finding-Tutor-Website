@@ -27,6 +27,10 @@ export default function MyPostForm({
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState(initialData);
 
+    // ✅ Contact Info State
+    const [contactType, setContactType] = useState('Line ID');
+    const [contactValue, setContactValue] = useState('');
+
     const [teachingMode, setTeachingMode] = useState("onsite");
     const [platform, setPlatform] = useState("");
     const [customPlatform, setCustomPlatform] = useState("");
@@ -51,9 +55,29 @@ export default function MyPostForm({
                 setTeachingMode("onsite");
             }
         }
-        // Only run on mount or when initialData changes structurally (if needed)
-        // The parent controls mounting this component, so initialData is set properly.
-    }, [formData.location]);
+
+        // Initialize contact parsing if editing
+        if (formData.contact_info) {
+            const ci = formData.contact_info;
+            if (ci.startsWith("Line ID:")) {
+                setContactType("Line ID");
+                setContactValue(ci.replace("Line ID:", "").trim());
+            } else if (ci.startsWith("เบอร์โทร:")) {
+                setContactType("เบอร์โทร");
+                setContactValue(ci.replace("เบอร์โทร:", "").trim());
+            } else if (ci.startsWith("Email:")) {
+                setContactType("Email");
+                setContactValue(ci.replace("Email:", "").trim());
+            } else if (ci.includes(":")) {
+                const parts = ci.split(":");
+                setContactType("อื่นๆ");
+                setContactValue(parts.slice(1).join(":").trim());
+            } else {
+                setContactType("อื่นๆ");
+                setContactValue(ci.trim());
+            }
+        }
+    }, [formData.location, formData.contact_info]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -86,8 +110,10 @@ export default function MyPostForm({
             const idPart = editMode ? `/${editingPostId}` : "";
 
             if (feedType === "student") {
-                const required = ["subject", "description", "preferred_days", "preferred_time", "group_size", "budget", "contact_info", "grade_level"];
+                const required = ["subject", "description", "preferred_days", "preferred_time", "group_size", "budget", "grade_level"];
                 for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
+
+                if (!contactValue.trim()) return alert("กรุณากรอกข้อมูลติดต่อ");
 
                 // Validate Location
                 if (teachingMode === "onsite" && !formData.location.trim()) {
@@ -112,7 +138,7 @@ export default function MyPostForm({
                         : formData.location.trim(),
                     group_size: Number(formData.group_size),
                     budget: Number(formData.budget),
-                    contact_info: formData.contact_info.trim(),
+                    contact_info: contactType === "อื่นๆ" ? contactValue.trim() : `${contactType}: ${contactValue.trim()}`,
                 };
                 const res = await fetch(`${API_BASE}/api/student_posts${idPart}`, {
                     method: method,
@@ -122,8 +148,10 @@ export default function MyPostForm({
                 if (!res.ok) throw new Error("เกิดข้อผิดพลาด");
 
             } else {
-                const required = ["subject", "description", "teaching_days", "teaching_time", "price", "contact_info"];
+                const required = ["subject", "description", "teaching_days", "teaching_time", "price"];
                 for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
+
+                if (!contactValue.trim()) return alert("กรุณากรอกข้อมูลติดต่อ");
 
                 if (teachingMode === "onsite" && !formData.location.trim()) {
                     return alert("กรุณาระบุสถานที่");
@@ -149,7 +177,7 @@ export default function MyPostForm({
                         : formData.location.trim(),
                     group_size: Number(formData.group_size) || 1,
                     price: Number(formData.price),
-                    contact_info: formData.contact_info.trim(),
+                    contact_info: contactType === "อื่นๆ" ? contactValue.trim() : `${contactType}: ${contactValue.trim()}`,
                 };
 
                 const res = await fetch(`${API_BASE}/api/tutor-posts${idPart}`, {
@@ -282,7 +310,7 @@ export default function MyPostForm({
                     <div className="grid md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนผู้เรียน (คน)</label>
-                            <input type="number" name="group_size" min="1" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                            <input type="number" name="group_size" min="1" placeholder="1 = ตัวต่อตัว" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">งบประมาณ (ราคาต่อชั่วโมง)</label>
@@ -292,8 +320,28 @@ export default function MyPostForm({
 
                     {/* ข้อมูลติดต่อ */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ (เช่น Line ID, เบอร์โทร)</label>
-                        <input type="text" name="contact_info" value={formData.contact_info} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
+                        <div className="flex gap-2">
+                            <select
+                                value={contactType}
+                                onChange={(e) => setContactType(e.target.value)}
+                                className="border rounded-lg p-2.5 w-1/3 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                            >
+                                <option value="Line ID">Line ID</option>
+                                <option value="เบอร์โทร">เบอร์โทร</option>
+                                <option value="Email">Email</option>
+                                <option value="Facebook">Facebook</option>
+                                <option value="อื่นๆ">อื่นๆ</option>
+                            </select>
+                            <input
+                                type="text"
+                                value={contactValue}
+                                onChange={(e) => setContactValue(e.target.value)}
+                                required
+                                className="border rounded-lg p-2.5 w-2/3 focus:ring-2 focus:ring-blue-500 outline-none"
+                                placeholder={contactType === "อื่นๆ" ? "ระบุข้อมูลติดต่อ" : `ระบุ ${contactType}`}
+                            />
+                        </div>
                     </div>
                 </>
             ) : (
@@ -331,7 +379,7 @@ export default function MyPostForm({
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนผู้เรียน (คน)</label>
-                            <input type="number" name="group_size" min="0" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                            <input type="number" name="group_size" min="0" placeholder="1 = ตัวต่อตัว" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                     </div>
 
@@ -410,7 +458,27 @@ export default function MyPostForm({
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
-                            <input type="text" name="contact_info" value={formData.contact_info} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
+                            <div className="flex gap-2">
+                                <select
+                                    value={contactType}
+                                    onChange={(e) => setContactType(e.target.value)}
+                                    className="border rounded-lg p-2.5 w-1/3 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                >
+                                    <option value="Line ID">Line ID</option>
+                                    <option value="เบอร์โทร">เบอร์โทร</option>
+                                    <option value="Email">Email</option>
+                                    <option value="Facebook">Facebook</option>
+                                    <option value="อื่นๆ">อื่นๆ</option>
+                                </select>
+                                <input
+                                    type="text"
+                                    value={contactValue}
+                                    onChange={(e) => setContactValue(e.target.value)}
+                                    required
+                                    className="border rounded-lg p-2.5 w-2/3 focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder={contactType === "อื่นๆ" ? "ระบุข้อมูลติดต่อ" : `ระบุ ${contactType}`}
+                                />
+                            </div>
                         </div>
                     </div>
                 </>

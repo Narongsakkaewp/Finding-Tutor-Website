@@ -29,6 +29,10 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
     const [platform, setPlatform] = useState("");
     const [customPlatform, setCustomPlatform] = useState("");
 
+    // ✅ Contact Info State
+    const [contactType, setContactType] = useState('Line ID');
+    const [contactValue, setContactValue] = useState('');
+
     const platformOptions = ["Zoom", "Google Meet", "Microsoft Teams", "Discord", "Line Call", "Other"];
 
     // ✅ Initialize Online/Onsite state when editing
@@ -49,6 +53,28 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
                 }
             } else {
                 setTeachingMode("onsite");
+            }
+        }
+
+        // Initialize contact parsing if editing
+        if (initialData && initialData.contact_info) {
+            const ci = initialData.contact_info;
+            if (ci.startsWith("Line ID:")) {
+                setContactType("Line ID");
+                setContactValue(ci.replace("Line ID:", "").trim());
+            } else if (ci.startsWith("เบอร์โทร:")) {
+                setContactType("เบอร์โทร");
+                setContactValue(ci.replace("เบอร์โทร:", "").trim());
+            } else if (ci.startsWith("Email:")) {
+                setContactType("Email");
+                setContactValue(ci.replace("Email:", "").trim());
+            } else if (ci.includes(":")) {
+                const parts = ci.split(":");
+                setContactType("อื่นๆ");
+                setContactValue(parts.slice(1).join(":").trim());
+            } else {
+                setContactType("อื่นๆ");
+                setContactValue(ci.trim());
             }
         }
     }, [initialData]);
@@ -77,10 +103,12 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
         e.preventDefault();
         if (!tutorId) return alert("กรุณาเข้าสู่ระบบก่อนโพสต์");
 
-        const required = ["subject", "description", "teaching_days", "teaching_time", "price", "contact_info"];
+        const required = ["subject", "description", "teaching_days", "teaching_time", "price"];
         for (const k of required) {
             if (!String(formData[k] || "").trim()) return alert(`กรุณากรอกข้อมูลให้ครบ (${k})`);
         }
+
+        if (!contactValue.trim()) return alert("กรุณากรอกข้อมูลติดต่อให้ครบ");
 
         // Validate Location (Online vs Onsite)
         if (teachingMode === "onsite" && !formData.location?.trim()) {
@@ -119,7 +147,7 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
                     : formData.location.trim(),
                 group_size: Number(formData.group_size) || 1,
                 price: Number(formData.price),
-                contact_info: formData.contact_info.trim(),
+                contact_info: contactType === "อื่นๆ" ? contactValue.trim() : `${contactType}: ${contactValue.trim()}`,
             };
 
             const res = await fetch(url, {
@@ -266,14 +294,34 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนผู้เรียน (คน)</label>
-                    <input type="number" name="group_size" min="1" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none" />
+                    <input type="number" name="group_size" min="1" placeholder="1 = ตัวต่อตัว" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none" />
                 </div>
             </div>
 
             {/* ข้อมูลติดต่อ */}
             <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ (Line ID, เบอร์โทร)</label>
-                <input type="text" name="contact_info" value={formData.contact_info} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="เพื่อให้นักเรียนติดต่อกลับได้สะดวก" />
+                <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
+                <div className="flex gap-2">
+                    <select
+                        value={contactType}
+                        onChange={(e) => setContactType(e.target.value)}
+                        className="border rounded-lg p-2.5 w-1/3 focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                    >
+                        <option value="Line ID">Line ID</option>
+                        <option value="เบอร์โทร">เบอร์โทร</option>
+                        <option value="Email">Email</option>
+                        <option value="Facebook">Facebook</option>
+                        <option value="อื่นๆ">อื่นๆ</option>
+                    </select>
+                    <input
+                        type="text"
+                        value={contactValue}
+                        onChange={(e) => setContactValue(e.target.value)}
+                        required
+                        className="border rounded-lg p-2.5 w-2/3 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder={contactType === "อื่นๆ" ? "เพื่อให้นักเรียนติดต่อกลับได้สะดวก" : `ระบุ ${contactType}`}
+                    />
+                </div>
             </div>
 
             {/* Submit Button */}

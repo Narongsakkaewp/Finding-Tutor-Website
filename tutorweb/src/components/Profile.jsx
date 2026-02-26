@@ -409,6 +409,29 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
   // --- Edit Handlers ---
   const handleEditClick = (post) => {
     setEditPost(post);
+
+    const ci = post.meta?.contact_info || profile?.phone || profile?.email || "";
+    let cType = "Line ID";
+    let cVal = "";
+
+    if (ci.startsWith("Line ID:")) {
+      cType = "Line ID";
+      cVal = ci.replace("Line ID:", "").trim();
+    } else if (ci.startsWith("เบอร์โทร:")) {
+      cType = "เบอร์โทร";
+      cVal = ci.replace("เบอร์โทร:", "").trim();
+    } else if (ci.startsWith("Email:")) {
+      cType = "Email";
+      cVal = ci.replace("Email:", "").trim();
+    } else if (ci.includes(":")) {
+      const parts = ci.split(":");
+      cType = "อื่นๆ";
+      cVal = parts.slice(1).join(":").trim();
+    } else {
+      cType = "อื่นๆ";
+      cVal = ci.trim();
+    }
+
     setEditForm({
       subject: post.subject,
       description: post.content,
@@ -418,7 +441,9 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
       location: post.meta?.location || "",
       group_size: post.meta?.group_size || "",
       budget: post.meta?.budget || "",
-      contact_info: profile?.phone || profile?.email || "",
+      contactType: cType,
+      contactValue: cVal,
+      contact_info: ci, // Fallback original
     });
     setOpenMenuFor(null);
   };
@@ -438,6 +463,10 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
 
     try {
       setUpdating(true);
+      const formattedContact = editForm.contactType === "อื่นๆ"
+        ? editForm.contactValue.trim()
+        : `${editForm.contactType}: ${editForm.contactValue.trim()}`;
+
       const res = await fetch(`${API_BASE}/api/student_posts/${editPost._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -450,7 +479,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
           location: editForm.location,
           group_size: editForm.group_size,
           budget: editForm.budget,
-          contact_info: editForm.contact_info
+          contact_info: formattedContact
         })
       });
 
@@ -1025,7 +1054,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนผู้เรียน (คน)</label>
-                  <input type="number" name="group_size" min="1" value={editForm.group_size || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                  <input type="number" name="group_size" min="1" placeholder="1 = ตัวต่อตัว" value={editForm.group_size || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">งบประมาณ (บาท)</label>
@@ -1035,7 +1064,29 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
-                <input type="text" name="contact_info" value={editForm.contact_info || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 outline-none" />
+                <div className="flex gap-2">
+                  <select
+                    name="contactType"
+                    value={editForm.contactType || "Line ID"}
+                    onChange={handleEditChange}
+                    className="border rounded-lg p-2.5 w-1/3 outline-none bg-white"
+                  >
+                    <option value="Line ID">Line ID</option>
+                    <option value="เบอร์โทร">เบอร์โทร</option>
+                    <option value="Email">Email</option>
+                    <option value="Facebook">Facebook</option>
+                    <option value="อื่นๆ">อื่นๆ</option>
+                  </select>
+                  <input
+                    type="text"
+                    name="contactValue"
+                    value={editForm.contactValue || ""}
+                    onChange={handleEditChange}
+                    required
+                    className="w-full border rounded-lg p-2.5 outline-none"
+                    placeholder={editForm.contactType === "อื่นๆ" ? "ระบุข้อมูลติดต่อ" : `ระบุ ${editForm.contactType || "Line ID"}`}
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">
