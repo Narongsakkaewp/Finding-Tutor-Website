@@ -7,8 +7,8 @@ const transporter = nodemailer.createTransport({
     secure: false, // Use STARTTLS
     requireTLS: true,
     auth: {
-        user: process.env.EMAIL_USER || 's6603052413159@email.kmutnb.ac.th',
-        pass: process.env.EMAIL_PASS || 'mbtb ixlb oulm zlea' // แนะนำให้ใช้ App Password ของ Gmail
+        user: process.env.MAIL_USER || 's6603052413159@email.kmutnb.ac.th',
+        pass: process.env.MAIL_PASS || 'mbtb ixlb oulm zlea' // แนะนำให้ใช้ App Password ของ Gmail
     }
 });
 
