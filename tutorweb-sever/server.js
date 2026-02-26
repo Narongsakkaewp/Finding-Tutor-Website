@@ -77,7 +77,9 @@ initCron();
 
 // ตั้งค่า Email Sender
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true, // Use TLS
   auth: {
     user: 's6603052413159@email.kmutnb.ac.th',
     pass: 'mbtb ixlb oulm zlea'
