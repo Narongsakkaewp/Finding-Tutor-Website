@@ -305,12 +305,12 @@ async function sendNotificationIfNotExists(conn, userId, type, message, relatedI
 
 // Initialize Cron
 function initCron() {
-    // Run every 1 minute for faster testing
-    cron.schedule('* * * * *', () => {
+    // Run every 2 hours
+    cron.schedule('0 */2 * * *', () => {
         checkAndSendNotifications();
     });
 
-    console.log('✅ Scheduler Initialized (Every 1 minute)');
+    console.log('✅ Scheduler Initialized (Every 2 hours)');
 }
 
 function isTimePassed(timeStr, hoursToWait = 2) {

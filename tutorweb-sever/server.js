@@ -457,9 +457,10 @@ app.post('/api/reviews', async (req, res) => {
     // Insert Review with detailed ratings
     const [result] = await pool.query(
       `INSERT INTO reviews
-        (tutor_id, student_id, post_id, post_type, rating, rating_punctuality, rating_worth, rating_teaching, comment, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        (booking_id, tutor_id, student_id, post_id, post_type, rating, rating_punctuality, rating_worth, rating_teaching, comment, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
+        req.body.booking_id || 0, // Fallback to 0 if unused
         tutor_id, student_id, post_id || 0, post_type || 'unknown',
         rating,
         rating_punctuality || rating, // Fallback to overall if not provided
@@ -4368,9 +4369,9 @@ app.post('/api/reviews', async (req, res) => {
     // 3. Insert Review
     await pool.query(
       `INSERT INTO reviews 
-       (tutor_id, student_id, rating, comment, created_at, post_id, post_type, rating_punctuality, rating_worth, rating_teaching)
-       VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
-      [tId, sId, rating, comment || '', inputPostId, finalPostType, rating_punctuality || 5, rating_worth || 5, rating_teaching || 5]
+       (booking_id, tutor_id, student_id, rating, comment, created_at, post_id, post_type, rating_punctuality, rating_worth, rating_teaching)
+       VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
+      [req.body.booking_id || 0, tId, sId, rating, comment || '', inputPostId, finalPostType, rating_punctuality || 5, rating_worth || 5, rating_teaching || 5]
     );
 
     // 4. Notify Tutor
