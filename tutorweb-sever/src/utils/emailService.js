@@ -64,7 +64,7 @@ async function sendBookingConfirmationEmail(toEmail, details) {
             <p>โปรดเตรียมตัวให้พร้อมก่อนเวลาเริ่มเรียน หากมีข้อสงสัย สามารถติดต่อได้ผ่านช่องทางติดต่อที่ระบุไว้ในโพสต์</p>
             <br>
             <center>
-                <a href="${FRONTEND_URL}/schedule" class="btn">ดูตารางเรียนของฉัน</a>
+                <a href="${FRONTEND_URL}/?page=student_calendar" class="btn">ดูตารางเรียนแบบเต็ม</a>
             </center>
         `;
 
@@ -116,7 +116,7 @@ async function sendReviewReminderEmail(toEmail, details) {
 
             <br>
             <center>
-                <a href="${FRONTEND_URL}/posts/${type === 'tutor' ? 'tutor' : 'student'}/${postId}" class="btn">เขียนรีวิวตอนนี้</a>
+                <a href="${FRONTEND_URL}/?page=mypost_details&postId=${postId}&postType=${type === 'tutor' ? 'tutor' : 'student'}" class="btn">เขียนรีวิวตอนนี้</a>
             </center>
             <br>
             <p style="font-size: 14px; color: #6b7280;">*หากคุณรีวิวไปแล้ว โปรดเพิกเฉยต่ออีเมลนี้</p>
@@ -178,7 +178,7 @@ async function sendClassReminderEmail(toEmail, details) {
             <p>ขอให้เป็นวันที่ดีของการเรียนรู้นะคะ!</p>
             <br>
             <center>
-                <a href="${FRONTEND_URL}/schedule" class="btn">ดูตารางเรียนแบบเต็ม</a>
+                <a href="${FRONTEND_URL}/?page=student_calendar" class="btn">ดูตารางเรียนแบบเต็ม</a>
             </center>
         `;
 

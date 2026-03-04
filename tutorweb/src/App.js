@@ -62,6 +62,31 @@ function App() {
     return localStorage.getItem('selectedPostType') || null;
   });
 
+  // [NEW] Handle Deep Links from Emails
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pageParam = params.get('page');
+    const postIdParam = params.get('postId');
+    const postTypeParam = params.get('postType');
+
+    if (pageParam) {
+      setCurrentPage(pageParam);
+      localStorage.setItem('currentPage', pageParam);
+
+      if (postIdParam) {
+        setSelectedPostId(Number(postIdParam));
+        localStorage.setItem('selectedPostId', postIdParam);
+      }
+      if (postTypeParam) {
+        setSelectedPostType(postTypeParam);
+        localStorage.setItem('selectedPostType', postTypeParam);
+      }
+
+      // Clean up URL so it doesn't get stuck in a loop and looks cleaner
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   const [backPage, setBackPage] = useState(() => {
     return localStorage.getItem('backPage') || 'mypost';
   });
