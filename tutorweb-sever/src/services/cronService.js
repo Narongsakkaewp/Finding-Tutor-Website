@@ -69,10 +69,11 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
     // --- A. Student Posts (Student requests Tutor, Join Approved) ---
     // Owner = Student, Joiner = Tutor (usually, unless study buddy)
     const [studentPosts] = await conn.query(`
-    SELECT sp.student_post_id, sp.subject, sp.preferred_days, sp.preferred_time,
+    SELECT sp.student_post_id, sp.subject, sp.preferred_days, sp.preferred_time, sp.location,
            sp.student_id AS owner_id, j.user_id AS joiner_id,
            ro.email AS owner_email, rj.email AS joiner_email,
-           ro.name AS owner_name, rj.name AS joiner_name
+           ro.name AS owner_name, ro.lastname AS owner_lastname,
+           rj.name AS joiner_name, rj.lastname AS joiner_lastname
     FROM student_posts sp
     JOIN student_post_joins j ON sp.student_post_id = j.student_post_id
     JOIN register ro ON ro.user_id = sp.student_id
@@ -93,14 +94,20 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                 const commonDetails = {
                     courseName: post.subject,
                     time: post.preferred_time,
-                    date: dateStr
+                    date: dateStr,
+                    location: post.location || 'ไม่ได้ระบุ'
                 };
+
+                // For Student Posts, usually Owner=Student, Joiner=Tutor.
+                const tutorName = `${post.joiner_name} ${post.joiner_lastname}`;
+                const studentName = `${post.owner_name} ${post.owner_lastname}`;
 
                 // Send to Owner (Student)
                 if (sentOwner) {
                     sendClassReminderEmail(post.owner_email, {
                         ...commonDetails,
-                        partnerName: post.joiner_name || 'เพื่อน/ติวเตอร์',
+                        tutorName: tutorName,
+                        studentNames: 'เรียนตัวต่อตัว',
                         role: 'student'
                     });
                 }
@@ -108,8 +115,9 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                 if (sentJoiner) {
                     sendClassReminderEmail(post.joiner_email, {
                         ...commonDetails,
-                        partnerName: post.owner_name || 'นักเรียน',
-                        role: 'student' // or tutor, ambiguous for study buddy, safe to say student/user
+                        tutorName: tutorName,
+                        studentNames: `${studentName} (เรียนตัวต่อตัว)`,
+                        role: 'tutor'
                     });
                 }
             }
@@ -119,10 +127,11 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
     // --- B. Tutor Posts (Tutor announces Class, Student Joined) ---
     // Owner = Tutor, Joiner = Student
     const [tutorPosts] = await conn.query(`
-    SELECT tp.tutor_post_id, tp.subject, tp.teaching_days, tp.teaching_time,
+    SELECT tp.tutor_post_id, tp.subject, tp.teaching_days, tp.teaching_time, tp.location,
            tp.tutor_id AS owner_id, j.user_id AS joiner_id,
            ro.email AS owner_email, rj.email AS joiner_email,
-           ro.name AS owner_name, rj.name AS joiner_name
+           ro.name AS owner_name, ro.lastname AS owner_lastname,
+           rj.name AS joiner_name, rj.lastname AS joiner_lastname
     FROM tutor_posts tp
     JOIN tutor_post_joins j ON tp.tutor_post_id = j.tutor_post_id
     JOIN register ro ON ro.user_id = tp.tutor_id
@@ -143,14 +152,19 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                 const commonDetails = {
                     courseName: post.subject,
                     time: post.teaching_time,
-                    date: dateStr
+                    date: dateStr,
+                    location: post.location || 'ไม่ได้ระบุ'
                 };
+
+                const tutorName = `${post.owner_name} ${post.owner_lastname}`;
+                const studentName = `${post.joiner_name} ${post.joiner_lastname}`;
 
                 // Send to Owner (Tutor)
                 if (sentOwner) {
                     sendClassReminderEmail(post.owner_email, {
                         ...commonDetails,
-                        partnerName: post.joiner_name || 'นักเรียน',
+                        tutorName: tutorName,
+                        studentNames: `${studentName} (เรียนตัวต่อตัว)`, // simplified 1-on-1 text
                         role: 'tutor'
                     });
                 }
@@ -158,7 +172,8 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                 if (sentJoiner) {
                     sendClassReminderEmail(post.joiner_email, {
                         ...commonDetails,
-                        partnerName: post.owner_name || 'ติวเตอร์',
+                        tutorName: tutorName,
+                        studentNames: 'เรียนตัวต่อตัว',
                         role: 'student'
                     });
                 }
@@ -169,10 +184,11 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
     // --- C. Student Post OFFERS (Tutor Offers to Teach, Approved) ---
     // Owner = Student, Joiner = Tutor (Offer-er)
     const [offers] = await conn.query(`
-    SELECT sp.student_post_id, sp.subject, sp.preferred_days, sp.preferred_time,
+    SELECT sp.student_post_id, sp.subject, sp.preferred_days, sp.preferred_time, sp.location,
            sp.student_id AS owner_id, o.tutor_id AS joiner_id,
            ro.email AS owner_email, rj.email AS joiner_email,
-           ro.name AS owner_name, rj.name AS joiner_name
+           ro.name AS owner_name, ro.lastname AS owner_lastname,
+           rj.name AS joiner_name, rj.lastname AS joiner_lastname
     FROM student_posts sp
     JOIN student_post_offers o ON sp.student_post_id = o.student_post_id
     JOIN register ro ON ro.user_id = sp.student_id
@@ -194,14 +210,19 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                 const commonDetails = {
                     courseName: post.subject,
                     time: post.preferred_time,
-                    date: dateStr
+                    date: dateStr,
+                    location: post.location || 'ไม่ได้ระบุ'
                 };
+
+                const tutorName = `${post.joiner_name} ${post.joiner_lastname}`;
+                const studentName = `${post.owner_name} ${post.owner_lastname}`;
 
                 // Send to Owner (Student)
                 if (sentOwner) {
                     sendClassReminderEmail(post.owner_email, {
                         ...commonDetails,
-                        partnerName: post.joiner_name || 'ติวเตอร์',
+                        tutorName: tutorName,
+                        studentNames: 'เรียนตัวต่อตัว',
                         role: 'student'
                     });
                 }
@@ -209,7 +230,8 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                 if (sentJoiner) {
                     sendClassReminderEmail(post.joiner_email, {
                         ...commonDetails,
-                        partnerName: post.owner_name || 'นักเรียน',
+                        tutorName: tutorName,
+                        studentNames: `${studentName} (เรียนตัวต่อตัว)`,
                         role: 'tutor'
                     });
                 }
@@ -344,7 +366,8 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
         SELECT sp.student_post_id, sp.subject, sp.preferred_days, sp.preferred_time,
                sp.student_id AS student_id, o.tutor_id AS tutor_id,
                rs.email AS student_email, rt.email AS tutor_email,
-               rs.name AS student_name, rt.name AS tutor_name
+               rs.name AS student_name, rs.lastname AS student_lastname,
+               rt.name AS tutor_name, rt.lastname AS tutor_lastname
         FROM student_posts sp
         JOIN student_post_offers o ON sp.student_post_id = o.student_post_id
         JOIN register rs ON rs.user_id = sp.student_id
@@ -373,7 +396,7 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                         sendReviewReminderEmail(post.student_email, {
                             courseName: post.subject,
                             date: dateStr,
-                            partnerName: post.tutor_name || 'ติวเตอร์',
+                            partnerName: `ติวเตอร์ ${post.tutor_name} ${post.tutor_lastname}`,
                             postId: post.student_post_id,
                             type: 'student'
                         });
@@ -386,7 +409,7 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
             // 2. Notify Joiners (Study Buddies)
             try {
                 const [joiners] = await conn.query(
-                    `SELECT j.user_id, r.email, r.name 
+                    `SELECT j.user_id, r.email, r.name, r.lastname 
                      FROM student_post_joins j 
                      JOIN register r ON r.user_id = j.user_id
                      WHERE j.student_post_id = ? AND j.status = 'approved'`,
@@ -408,7 +431,7 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                             sendReviewReminderEmail(joiner.email, {
                                 courseName: post.subject,
                                 date: dateStr,
-                                partnerName: 'เพื่อนร่วมติว/ติวเตอร์',
+                                partnerName: `ติวเตอร์ ${post.tutor_name} ${post.tutor_lastname}`,
                                 postId: post.student_post_id,
                                 type: 'student'
                             });
@@ -425,7 +448,7 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
     const [joins] = await conn.query(`
          SELECT tp.tutor_post_id, tp.subject, tp.teaching_days, tp.teaching_time,
                 tp.tutor_id AS tutor_id, j.user_id AS student_id,
-                rs.email AS student_email, rt.name AS tutor_name
+                rs.email AS student_email, rt.name AS tutor_name, rt.lastname AS tutor_lastname
          FROM tutor_posts tp
          JOIN tutor_post_joins j ON tp.tutor_post_id = j.tutor_post_id
          JOIN register rs ON rs.user_id = j.user_id
@@ -453,7 +476,7 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                         sendReviewReminderEmail(post.student_email, {
                             courseName: post.subject,
                             date: dateStr,
-                            partnerName: `ติวเตอร์ ${post.tutor_name || ''}`,
+                            partnerName: `ติวเตอร์ ${post.tutor_name} ${post.tutor_lastname}`,
                             postId: post.tutor_post_id,
                             type: 'tutor'
                         });

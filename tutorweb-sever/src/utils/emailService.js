@@ -36,6 +36,8 @@ const wrapHtml = (title, bodyContent) => `
 </html>
 `;
 
+const FRONTEND_URL = process.env.FRONTEND_URL || "https://finding-tutor.up.railway.app";
+
 /**
  * Send Booking Confirmation Email
  * Sent to Student and Tutor when a request is APPROVED.
@@ -62,7 +64,7 @@ async function sendBookingConfirmationEmail(toEmail, details) {
             <p>โปรดเตรียมตัวให้พร้อมก่อนเวลาเริ่มเรียน หากมีข้อสงสัย สามารถติดต่อได้ผ่านช่องทางติดต่อที่ระบุไว้ในโพสต์</p>
             <br>
             <center>
-                <a href="http://localhost:5173/schedule" class="btn">ดูตารางเรียนของฉัน</a>
+                <a href="${FRONTEND_URL}/schedule" class="btn">ดูตารางเรียนของฉัน</a>
             </center>
         `;
 
@@ -114,7 +116,7 @@ async function sendReviewReminderEmail(toEmail, details) {
 
             <br>
             <center>
-                <a href="http://localhost:5173/posts/${type === 'tutor' ? 'tutor' : 'student'}/${postId}" class="btn">เขียนรีวิวตอนนี้</a>
+                <a href="${FRONTEND_URL}/posts/${type === 'tutor' ? 'tutor' : 'student'}/${postId}" class="btn">เขียนรีวิวตอนนี้</a>
             </center>
             <br>
             <p style="font-size: 14px; color: #6b7280;">*หากคุณรีวิวไปแล้ว โปรดเพิกเฉยต่ออีเมลนี้</p>
@@ -157,7 +159,7 @@ async function sendClassReminderEmail(toEmail, details) {
     if (!toEmail) return;
 
     try {
-        const { courseName, time, partnerName, role, date } = details;
+        const { courseName, time, tutorName, studentNames, location, role, date } = details;
         const subject = `📅 แจ้งเตือนตารางเรียน/สอน วันที่ ${date}`;
 
         const body = `
@@ -166,15 +168,17 @@ async function sendClassReminderEmail(toEmail, details) {
             
             <div class="info-box">
                 <p><strong>วิชา:</strong> ${courseName}</p>
-                <p><strong>เรียนกับ:</strong> ${partnerName}</p>
+                <p><strong>สอนโดย:</strong> ${tutorName || 'ไม่ระบุ'}</p>
+                <p><strong>เรียนกับ:</strong> ${studentNames || 'ไม่ระบุ'}</p>
                 <p><strong>📅 วันที่:</strong> ${date}</p>
                 <p><strong>⏰ เวลา:</strong> ${time || 'ตามตกลง'}</p>
+                <p><strong>📍 สถานที่:</strong> ${location || 'ไม่ระบุ'}</p>
             </div>
 
             <p>ขอให้เป็นวันที่ดีของการเรียนรู้นะคะ!</p>
             <br>
             <center>
-                <a href="http://localhost:5173/schedule" class="btn">ดูตารางเรียนแบบเต็ม</a>
+                <a href="${FRONTEND_URL}/schedule" class="btn">ดูตารางเรียนแบบเต็ม</a>
             </center>
         `;
 
