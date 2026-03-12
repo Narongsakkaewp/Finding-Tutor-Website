@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import {
   Search, Star, BookOpen, Users, MapPin, Calendar, Clock, DollarSign,
-  MessageSquarePlus, CalendarCheck, Sparkles, CheckCircle
+  MessageSquarePlus, CalendarCheck, Sparkles, CheckCircle, MessageSquareText
 } from "lucide-react";
 import SmartSearch from "../components/SmartSearch";
+import TutorPostForm from "../components/TutorPostForm";
 import { API_BASE } from '../config';
 
 // Config
@@ -163,11 +164,15 @@ function StudentPostsList({ searchKey }) {
               <Badge icon={MapPin} text={p.location || "Online"} color="amber" />
               <Badge icon={DollarSign} text={`งบ ${p.budget || 0}`} color="emerald" />
               <Badge icon={Calendar} text={p.preferred_days || "-"} color="blue" />
+              {p.comment_count > 0 && <Badge icon={MessageSquareText} text={`${p.comment_count} ความคิดเห็น`} color="indigo" />}
             </div>
 
             {/* [NEW] Join Count & Tutor Badge */}
             <div className="mt-3 text-xs text-gray-500 flex items-center flex-wrap gap-2">
-              <span>เข้าร่วมแล้ว: <b>{p.join_count || 0}</b> / {p.group_size || 0} คน</span>
+              <span className="flex flex-col gap-0.5">
+                <span>จำนวนผู้เรียน: <b>{p.join_count || 0} / {p.group_size || 0}</b> คน</span>
+                <span className="text-[10px] text-gray-400">(ว่างอีก {Math.max(0, (p.group_size || 0) - (p.join_count || 0))} คน)</span>
+              </span>
               {isTaken && (
                 <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-bold border border-indigo-100">
                   ได้ติวเตอร์แล้ว
@@ -223,6 +228,7 @@ function MyTutorPosts({ tutorId }) {
             <Badge text={p.meta?.teaching_days} color="blue" />
             <Badge text={p.meta?.teaching_time} color="rose" />
             <Badge text={p.meta?.location} color="amber" />
+            {p.comment_count > 0 && <Badge text={`${p.comment_count} ความคิดเห็น`} color="indigo" />}
           </div>
         </div>
       ))}
@@ -235,6 +241,7 @@ export default function TutorHome() {
   const [query, setQuery] = useState("");
   const user = JSON.parse(localStorage.getItem("user"));
   const user_id = user?.user_id || 0;
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // รับค่าจาก SmartSearch
   const handleSearch = (val) => {
@@ -274,7 +281,7 @@ export default function TutorHome() {
                 </div>
 
                 <div className="flex gap-3">
-                  <button className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-500 transition-colors flex items-center gap-2 shadow-lg shadow-indigo-900/50">
+                  <button onClick={() => setShowCreateModal(true)} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-500 transition-colors flex items-center gap-2 shadow-lg shadow-indigo-900/50">
                     <MessageSquarePlus size={20} /> ลงประกาศรับสอน
                   </button>
                 </div>
@@ -301,6 +308,24 @@ export default function TutorHome() {
           <SectionHeader title="ประกาศรับสอนของคุณ" subtitle="จัดการโพสต์และอัปเดตข้อมูล" icon={BookOpen} />
           <MyTutorPosts tutorId={user_id} />
         </section>
+
+        {showCreateModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onClick={() => setShowCreateModal(false)} />
+            <div className="relative w-full max-w-2xl bg-white rounded-[2rem] shadow-2xl overflow-hidden">
+              <div className="p-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                <TutorPostForm
+                  tutorId={user_id}
+                  onClose={() => setShowCreateModal(false)}
+                  onSuccess={() => {
+                    setShowCreateModal(false);
+                    window.location.reload(); // Refresh to show new post
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

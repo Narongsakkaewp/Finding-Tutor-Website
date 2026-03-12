@@ -218,6 +218,7 @@ function App() {
             onReadAll={() => setNewNotificationCount(0)}
             onReadOne={() => setNewNotificationCount(prev => Math.max(0, prev - 1))}
             onOpenPost={(id, type, path) => openPostDetails(id, 'notification', type)} // Pass type if needed
+            onViewProfile={handleViewProfile}
           />
         );
       case 'student_info': return <StudentInfo user={user} setCurrentPage={setCurrentPage} />;
@@ -246,7 +247,13 @@ function App() {
       case 'favorite': return <Favorite onViewProfile={handleViewProfile} />;
       case 'profile':
         if (userType === 'tutor') {
-          return <TutorProfile setCurrentPage={setCurrentPage} onEditProfile={handleEditProfile} />;
+          return <TutorProfile
+            setCurrentPage={setCurrentPage}
+            user={user}
+            onEditProfile={handleEditProfile}
+            onOpenPost={(id, type) => openPostDetails(id, 'profile', type)}
+            onViewProfile={handleViewProfile}
+          />;
         } else {
           return <Profile
             setCurrentPage={setCurrentPage}

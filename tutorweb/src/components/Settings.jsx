@@ -360,14 +360,12 @@ export default function Settings() {
                         <h2 className="text-xl font-bold text-red-700">ลบบัญชีผู้ใช้</h2>
                     </div>
                     <p className="text-red-600/80 mb-6 text-sm">
-                        เมื่อคุณลบบัญชี ข้อมูลทั้งหมดรวมถึงประวัติการสอน โพสต์ และรีวิวจะถูกลบถาวรและไม่สามารถกู้คืนได้
+                        บัญชีของคุณจะเข้าสู่สถานะระงับการใช้งาน ข้อมูลของคุณจะถูกซ่อนจากระบบ อย่างไรก็ตาม หากคุณเปลี่ยนใจ คุณสามารถกลับมาเข้าสู่ระบบเพื่อกู้คืนบัญชีนี้ได้ภายใน 30 วัน
                     </p>
                     <button
                         onClick={() => setShowDeleteModal(true)}
                         className="bg-white border border-red-200 text-red-600 px-6 py-2 rounded-xl hover:bg-red-600 hover:text-white transition-colors font-medium"
-                    >
-                        ลบบัญชีของฉันถาวร
-                    </button>
+                    >ลบบัญชีของฉัน</button>
                 </section>
 
             </div>

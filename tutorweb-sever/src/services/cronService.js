@@ -40,7 +40,11 @@ async function checkAndSendNotifications() {
         await processNotifications(conn, todayNames, today, 'schedule_today', 'วันนี้คุณมีนัดติว/สอน');
         await processCalendarEvents(conn, today, 'schedule_today', 'วันนี้คุณมีนัดติว/สอน');
 
-        // 3. Check for Reviews (Today + Yesterday)
+        // 3. Clean up deleted accounts (Hard delete after 60 days)
+        console.log("?? [Cron] Cleaning up soft-deleted accounts (>60 days)...");
+        await cleanupDeletedAccounts(conn);
+
+        // 4. Check for Reviews (Today + Yesterday)
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayNames = getDayNames(yesterday);
@@ -512,4 +516,25 @@ async function checkMissedReviewRequests(daysBack = 7) {
 
 module.exports = { initCron, checkAndSendNotifications, checkMissedReviewRequests };
 
+
+
+
+async function cleanupDeletedAccounts(conn) {
+    try {
+        const [rows] = await conn.query(
+            "SELECT user_id, email FROM register WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL 60 DAY"
+        );
+        if (rows.length > 0) {
+            console.log(`    > Found  accounts to permanently delete.`);
+            for (const row of rows) {
+                await conn.query('DELETE FROM register WHERE user_id = ?', [row.user_id]);
+                console.log(`      - Permanently deleted user  ()`);
+            }
+        } else {
+            console.log('    > No accounts to permanently delete today.');
+        }
+    } catch (e) {
+        console.error('? [Cron] Error cleaning deleted accounts:', e.message);
+    }
+}
 

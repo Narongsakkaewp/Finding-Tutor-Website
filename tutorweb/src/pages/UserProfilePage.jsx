@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Mail, Phone, MapPin, Clock, ArrowLeft, Star, Users, DollarSign, User, GraduationCap, BookOpen, Briefcase, Lightbulb, Calendar, MoreVertical, X, Eye, EyeOff, Flag } from 'lucide-react';
 import ReportModal from '../components/ReportModal';
-import { API_BASE } from '../config';
+import { API_BASE as API_URL } from '../config';
 
 function UserProfilePage({ userId, onBack }) {
     const [user, setUser] = useState(null);
@@ -28,7 +28,7 @@ function UserProfilePage({ userId, onBack }) {
             setError("");
 
             // 1. Fetch Basic Info
-            let res = await fetch(`${API_BASE}/api/profile/${userId}`);
+            let res = await fetch(`${API_URL}/api/profile/${userId}`);
             if (!res.ok) throw new Error("ไม่พบข้อมูลผู้ใช้นี้");
 
             let userData = await res.json();
@@ -37,7 +37,7 @@ function UserProfilePage({ userId, onBack }) {
             const isTutorReal = realRole === 'tutor' || realRole === 'teacher';
 
             if (isTutorReal) {
-                const resTutor = await fetch(`${API_BASE}/api/tutor-profile/${userId}`);
+                const resTutor = await fetch(`${API_URL}/api/tutor-profile/${userId}`);
                 if (resTutor.ok) {
                     userData = await resTutor.json();
                 }
@@ -58,8 +58,8 @@ function UserProfilePage({ userId, onBack }) {
             setUser(userData);
 
             const [postsS, postsT] = await Promise.all([
-                fetch(`${API_BASE}/api/student_posts?student_id=${userId}`).then(r => r.ok ? r.json() : []),
-                fetch(`${API_BASE}/api/tutor-posts?tutorId=${userId}`).then(r => r.ok ? r.json().then(j => j.items) : [])
+                fetch(`${API_URL}/api/student_posts?student_id=${userId}`).then(r => r.ok ? r.json() : []),
+                fetch(`${API_URL}/api/tutor-posts?tutorId=${userId}`).then(r => r.ok ? r.json().then(j => j.items) : [])
             ]);
 
             const list1 = (Array.isArray(postsS) ? postsS : []).map(p => ({ ...p, post_type: 'student', createdAt: p.createdAt || p.created_at }));
@@ -371,7 +371,7 @@ function UserProfilePage({ userId, onBack }) {
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <Calendar size={16} className="text-indigo-400" />
-                                                        <span className="font-medium text-gray-500 text-xs">วันที่สอน :</span>
+                                                        <span className="font-medium text-gray-500 text-xs">วันที่ :</span>
                                                         <span className="text-gray-800">{date}</span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
@@ -385,16 +385,16 @@ function UserProfilePage({ userId, onBack }) {
                                                         <span className="text-gray-800 truncate">{location}</span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <DollarSign size={16} className="text-emerald-500" />
+                                                        <span className="text-emerald-500">฿</span>
                                                         <span className="font-medium text-gray-500 text-xs">ราคา :</span>
-                                                        <span className="text-gray-800 font-bold">
+                                                        <span className="text-gray-800">
                                                             {price ? `${Number(price).toLocaleString()} บาท/ชม.` : "-"}
                                                         </span>
                                                     </div>
                                                     {groupSize && (
                                                         <div className="flex items-center gap-2">
                                                             <Users size={16} className="text-blue-500" />
-                                                            <span className="font-medium text-gray-500 text-xs">รับ :</span>
+                                                            <span className="font-medium text-gray-500 text-xs">จำนวนผู้เรียน :</span>
                                                             <span className="text-gray-800">{groupSize} คน</span>
                                                         </div>
                                                     )}

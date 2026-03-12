@@ -132,31 +132,97 @@ const calculateIsExpired = (post) => {
 
 // --- 🚀 Exports ---
 
-// 🌟 1. Get Recommended Tutors (For Students) - V2 (Check Grade + Relevance + Recency)
+// 🌟 1. Get Recommended Tutors (For Students) - อัปเกรดเป็น Hybrid Weighted System V4 (เพิ่มประวัติการตั้งโพสต์)
 exports.getRecommendations = async (req, res) => {
     try {
         const pool = req.db;
         const userId = Number(req.query.user_id) || 0;
 
-        let userGrade = "";
         let rows = [];
         let basedOnKeywords = [];
 
-        // 1. ดึงระดับชั้นของผู้ใช้ปัจจุบัน (เพื่อเอามากรองโพสต์)
-        if (userId) {
-            const [profile] = await pool.query('SELECT grade_level FROM student_profiles WHERE user_id = ?', [userId]);
-            if (profile.length > 0 && profile[0].grade_level) {
-                userGrade = profile[0].grade_level;
-            }
+        if (userId === 0) {
+            return getLatestTutorPostsFallback(pool, res, userId);
         }
 
-        // 2. ดึงประวัติค้นหาล่าสุด 3 รายการ
-        const [history] = await pool.query(
-            'SELECT keyword, MAX(created_at) as last_searched FROM search_history WHERE user_id = ? GROUP BY keyword ORDER BY last_searched DESC LIMIT 3',
+        const keywordWeights = {};
+
+        // Helper: ฟังก์ชันเพิ่มคะแนนเฉพาะ "คำศัพท์วิชา" (เวอร์ชันบดคำละเอียด)
+        const addWeight = (keyword, score) => {
+            if (!keyword) return;
+            const rawWords = keyword.split(/[\s,\-\/]+/);
+            rawWords.forEach(word => {
+                const terms = expandKeywords(word);
+                terms.forEach(t => {
+                    const k = t.toLowerCase().trim();
+                    const excluded = ['ประถมศึกษา', 'มัธยมต้น', 'มัธยมปลาย', 'ปริญญาตรี', 'บุคคลทั่วไป', 'ทั่วไป', 'วิชา', 'เรียน', 'ติว'];
+                    if (k.length > 1 && !excluded.includes(k)) {
+                        keywordWeights[k] = (keywordWeights[k] || 0) + score;
+                    }
+                });
+            });
+        };
+
+        // 🎯 1. ดึงข้อมูลจาก Profile นักเรียน
+        let userGrade = "";
+        const [profile] = await pool.query(
+            'SELECT grade_level, faculty, major, about, interested_subjects FROM student_profiles WHERE user_id = ?',
             [userId]
         );
 
-        // 3. ดึง Candidates (Tutor Posts) ทั้งหมดที่ Active มาเตรียมไว้ (ดึงมา 100 โพสต์ล่าสุดเพื่อเอามาคัดเลือก)
+        if (profile.length > 0) {
+            const p = profile[0];
+            userGrade = p.grade_level || "";
+
+            if (p.faculty) addWeight(p.faculty, 4);
+            if (p.major) addWeight(p.major, 5);
+            if (p.interested_subjects) p.interested_subjects.split(',').forEach(sub => addWeight(sub, 10));
+            if (p.about) p.about.split(/[\s,]+/).forEach(word => addWeight(word, 1));
+        }
+
+        // =========================================================
+        // 🌟 1.5 [NEW] ดึง "ชื่อวิชา" จากโพสต์ที่ตัวเองเคยสร้าง (My Posts) 
+        // =========================================================
+        const [myPosts] = await pool.query(
+            `SELECT subject FROM student_posts WHERE student_id = ? AND is_active = 1`,
+            [userId]
+        );
+        // ถ้าเคยตั้งโพสต์วิชาไหน ให้คะแนนหนักมากๆ (15 คะแนน) เพราะคือความต้องการปัจจุบันสุดๆ
+        myPosts.forEach(post => addWeight(post.subject, 15));
+        // =========================================================
+
+        // 🔍 2. ดึงประวัติการค้นหา
+        const [searches] = await pool.query(
+            `SELECT keyword, COUNT(*) as freq 
+             FROM search_history 
+             WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+             GROUP BY keyword`, [userId]
+        );
+        searches.forEach(s => addWeight(s.keyword, s.freq * 3));
+
+        // 👆 3. ดึงประวัติการคลิกดู (Interactions)
+        try {
+            const [interactions] = await pool.query(
+                `SELECT subject_keyword, COUNT(*) as clicks 
+                 FROM user_interactions 
+                 WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+                 GROUP BY subject_keyword`, [userId]
+            );
+            interactions.forEach(i => addWeight(i.subject_keyword, i.clicks * 2));
+        } catch (e) { }
+
+        // --- ส่วนที่เหลือเหมือนเดิมทั้งหมด (เรียงคะแนน, Query, และ ส่งกลับ) ---
+        const topKeywords = Object.entries(keywordWeights)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 6);
+
+        if (topKeywords.length === 0) {
+            return getLatestTutorPostsFallback(pool, res, userId);
+        }
+
+        basedOnKeywords = topKeywords.map(k => k[0]);
+
+        // 🚀 4. ดึง Candidate โพสต์ติวเตอร์ทั้งหมด แล้วให้คะแนน
         const [candidates] = await pool.query(`
             SELECT tp.*, r.name, r.lastname, r.email, r.username, 
                    tpro.profile_picture_url, tpro.phone, tpro.nickname, 
@@ -175,116 +241,60 @@ exports.getRecommendations = async (req, res) => {
             LEFT JOIN posts_favorites fme ON fme.post_id = tp.tutor_post_id AND fme.post_type='tutor' AND fme.user_id = ?
             WHERE COALESCE(tp.is_active, 1) = 1
             ORDER BY tp.created_at DESC
-            LIMIT 100
+            LIMIT 150
         `, [userId, userId]);
 
-        // 4. ถ้ามีประวัติค้นหา ให้ทำการประมวลผลคะแนน
-        if (history.length > 0) {
-            const rawKeywords = history.map(h => h.keyword.toLowerCase());
-            basedOnKeywords = rawKeywords;
+        // 🧠 คำนวณคะแนน Relevance Score ของแต่ละโพสต์อย่างฉลาด
+        candidates.forEach(tutor => {
+            let score = 0;
+            const subj = (tutor.subject || "").toLowerCase();
+            const desc = (tutor.description || "").toLowerCase();
+            const targetGrades = (tutor.target_student_level || "");
 
-            // ขยายคำค้นหา (เช่น Java -> program, code, python, c++, react)
-            let relatedKeywords = [];
-            rawKeywords.forEach(kw => {
-                relatedKeywords = relatedKeywords.concat(expandKeywords(kw));
-            });
-            relatedKeywords = [...new Set(relatedKeywords)].filter(k => !rawKeywords.includes(k));
-
-            const primaryKw = rawKeywords[0]; // คำค้นหาอันดับ 1
-
-            // 🧠 Scoring Engine: ให้คะแนนแต่ละโพสต์
-            candidates.forEach(tutor => {
-                let score = 0;
-                const subj = (tutor.subject || "").toLowerCase();
-                const desc = (tutor.description || "").toLowerCase();
-                const targetGrades = tutor.target_student_level || "";
-
-                // --- กฎข้อ 1: กรองระดับชั้น (สำคัญที่สุด) ---
-                if (userGrade && targetGrades) {
-                    // ถ้าระดับชั้นไม่ตรงกัน และ ไม่ใช่เป้าหมาย "บุคคลทั่วไป" ให้ติดลบเพื่อเตะออก
-                    if (!targetGrades.includes(userGrade) && !targetGrades.includes("บุคคลทั่วไป")) {
-                        score -= 1000;
-                    } else {
-                        score += 20; // ตรงชั้นเรียน
-                    }
-                }
-
-                // --- กฎข้อ 2: คะแนนวิชา (ความแม่นยำ) ---
-                if (score >= 0) {
-                    if (subj.includes(primaryKw)) {
-                        score += 200; // 🥇 ตรงเป๊ะในชื่อวิชา (Java)
-                    } else if (desc.includes(primaryKw)) {
-                        score += 100; // 🥈 ตรงเป๊ะในรายละเอียด
-                    } else {
-                        // เช็คคำที่เกี่ยวข้องกัน (เช่น Python, React, Code)
-                        let isRelatedMatch = false;
-                        for (let kw of relatedKeywords) {
-                            if (subj.includes(kw)) {
-                                score += 80; // 🥉 เป็นวิชาในหมวดเดียวกัน
-                                isRelatedMatch = true;
-                                break;
-                            }
-                        }
-                        if (!isRelatedMatch) {
-                            for (let kw of relatedKeywords) {
-                                if (desc.includes(kw)) {
-                                    score += 40; // 🏅 มีคำในหมวดเดียวกันในรายละเอียด
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                tutor.relevance_score = score;
-                tutor.matched_topic = primaryKw;
-            });
-
-            // กรองเอาเฉพาะอันที่คะแนน >= 0 และเรียงตามคะแนนความแม่นยำ (ถ้าเท่ากัน เอาของใหม่ขึ้นก่อน)
-            rows = candidates
-                .filter(t => t.relevance_score >= 0)
-                .sort((a, b) => {
-                    if (b.relevance_score !== a.relevance_score) {
-                        return b.relevance_score - a.relevance_score;
-                    }
-                    return new Date(b.created_at) - new Date(a.created_at);
-                });
-        }
-
-        // 5. Fallback & Smart Fill: เติมโพสต์ให้ครบ 12 อัน (กรองระดับชั้นด้วย)
-        if (rows.length < 12) {
-            let fillers = candidates;
-
-            // กรองระดับชั้นสำหรับ Filler
-            if (userGrade) {
-                fillers = fillers.filter(t => {
-                    const tg = t.target_student_level || "";
-                    return !tg || tg.includes(userGrade) || tg.includes("บุคคลทั่วไป");
-                });
+            // ⛔ 1. กรองระดับชั้น (ถ้าไม่ตรง ข้ามให้คะแนนติดลบเลย)
+            if (userGrade && targetGrades && !targetGrades.includes(userGrade) && !targetGrades.includes("บุคคลทั่วไป")) {
+                tutor.relevance_score = -1000;
+                return;
             }
 
-            // คัดโพสต์ที่ไม่ซ้ำกับที่เลือกมาแล้ว เอาของใหม่ล่าสุดมาเติม
-            const existingIds = rows.map(r => r.tutor_post_id);
-            fillers = fillers
-                .filter(t => !existingIds.includes(t.tutor_post_id))
+            // ✅ 2. เช็คคะแนน "วิชา" 
+            topKeywords.forEach(([kw, weight]) => {
+                if (subj.includes(kw)) {
+                    score += (weight * 3);
+                } else if (desc.includes(kw)) {
+                    score += weight;
+                }
+            });
+
+            // ✅ 3. โบนัสความตรงเป้าหมาย (ให้เฉพาะถ้าวิชาตรงกันเท่านั้น)
+            if (score > 0 && userGrade && targetGrades.includes(userGrade)) {
+                score += 5;
+            }
+
+            tutor.relevance_score = score;
+        });
+
+        // 5. กรองอันที่ได้คะแนนความสนใจ > 0 ขึ้นมา
+        rows = candidates
+            .filter(t => t.relevance_score > 0)
+            .sort((a, b) => b.relevance_score - a.relevance_score)
+            .slice(0, 12);
+
+        // 6. ถ้าหาโพสต์ตรงใจไม่ครบ 12 อัน ให้สุ่มโพสต์ล่าสุด "ที่ระดับชั้นตรง" มาเติม
+        if (rows.length < 12) {
+            let fillers = candidates
+                .filter(t => !rows.find(r => r.tutor_post_id === t.tutor_post_id) && t.relevance_score > -1000)
                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                 .slice(0, 12 - rows.length);
-
             rows = [...rows, ...fillers];
-
-            if (history.length === 0) {
-                basedOnKeywords = [];
-            }
         }
 
-        rows = rows.slice(0, 12); // ส่งกลับแค่ 12 การ์ด
-
-        // 6. Map ข้อมูลส่งกลับให้ Frontend (แก้ให้ข้อมูลมาครบเหมือนเดิม)
+        // 7. Map ส่งกลับ
         const items = rows.map(r => ({
-            ...r, // 🌟 เพิ่มบรรทัดนี้: เพื่อกระจายข้อมูลจาก DB (name, price, location) ให้อยู่ชั้นนอกสุด
+            ...r,
             id: r.tutor_post_id,
             _id: r.tutor_post_id,
-            post_type: 'tutor', // บังคับว่าเป็นโพสต์ติวเตอร์
+            post_type: 'tutor',
             user: {
                 first_name: r.name,
                 last_name: r.lastname,
@@ -303,23 +313,76 @@ exports.getRecommendations = async (req, res) => {
             favorited: !!r.favorited,
             rating: Number(r.avg_rating || 0),
             reviews: Number(r.review_count || 0),
-            is_expired: calculateIsExpired(r), // เพิ่ม flag สำหรับเช็คว่าโพสต์หมดอายุ
+            is_expired: calculateIsExpired(r),
             joined: r.my_join_status === 'approved' || r.my_join_status === 'pending',
             pending_me: r.my_join_status === 'pending',
-            join_count: Number(r.join_count || 0)
+            join_count: Number(r.join_count || 0),
+            relevance_score: r.relevance_score || 0
         }));
 
         res.json({
-            items: items,
-            based_on: basedOnKeywords.length > 0 ? `ความสนใจเรื่อง "${basedOnKeywords[0]}" และอื่นๆ` : "โพสต์แนะนำสำหรับคุณในระดับชั้นของคุณ",
-            basedOn: basedOnKeywords
+            success: true,
+            based_on: basedOnKeywords.length > 0 ? `วิเคราะห์จากความสนใจของคุณ: ${basedOnKeywords.join(', ')}` : "โพสต์แนะนำในระดับชั้นของคุณ",
+            items: items
         });
 
     } catch (err) {
-        console.error(err);
+        console.error("Advanced Recommendation Error:", err);
         res.status(500).json({ error: err.message });
     }
 };
+
+// ฟังก์ชัน Fallback แยกมาเพื่อให้โค้ดอ่านง่าย
+async function getLatestTutorPostsFallback(pool, res) {
+    try {
+        const [latest] = await pool.query(`
+            SELECT tp.*, r.name, r.lastname, r.username, tpro.profile_picture_url,
+                   COALESCE(rv.avg_rating, 0) AS avg_rating,
+                   COALESCE(rv.review_count, 0) AS review_count,
+                   (SELECT COUNT(*) FROM tutor_post_joins WHERE tutor_post_id = tp.tutor_post_id AND status='approved') AS join_count
+            FROM tutor_posts tp
+            LEFT JOIN register r ON tp.tutor_id = r.user_id
+            LEFT JOIN tutor_profiles tpro ON tp.tutor_id = tpro.user_id
+            LEFT JOIN (SELECT tutor_id, AVG(rating) as avg_rating, COUNT(*) as review_count FROM reviews GROUP BY tutor_id) rv ON tp.tutor_id = rv.tutor_id
+            WHERE COALESCE(tp.is_active, 1) = 1
+            ORDER BY tp.created_at DESC 
+            LIMIT 12
+        `);
+
+        const items = latest.map(r => ({
+            ...r,
+            id: r.tutor_post_id,
+            _id: r.tutor_post_id,
+            post_type: 'tutor',
+            user: {
+                first_name: r.name,
+                last_name: r.lastname,
+                profile_image: r.profile_picture_url || '/../blank_avatar.jpg',
+                username: r.username
+            },
+            meta: {
+                target_student_level: r.target_student_level || 'ไม่ระบุ',
+                teaching_days: r.teaching_days,
+                teaching_time: r.teaching_time,
+                location: r.location,
+                price: Number(r.price || 0),
+                contact_info: r.contact_info
+            },
+            rating: Number(r.avg_rating || 0),
+            reviews: Number(r.review_count || 0),
+            join_count: Number(r.join_count || 0),
+            is_expired: calculateIsExpired(r)
+        }));
+
+        res.json({
+            success: true,
+            based_on: "โพสต์แนะนำในระดับชั้นของคุณ",
+            items: items
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'Fallback Error' });
+    }
+}
 
 // 2. Get Student Requests (For Tutors) - 🌟 เพิ่ม Smart Matching
 exports.getStudentRequestsForTutor = async (req, res) => {

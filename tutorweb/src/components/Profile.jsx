@@ -5,6 +5,7 @@ import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, Graduatio
 import LongdoLocationPicker from './LongdoLocationPicker';
 import ReportModal from "./ReportModal";
 import { API_BASE } from '../config';
+import { useTabRestoration, useScrollRestoration } from '../hooks/useRestoration';
 
 const postGradeLevelOptions = [
   { value: "ประถมศึกษา", label: "ประถมศึกษา" },
@@ -26,6 +27,7 @@ const normalizePost = (p = {}) => ({
     group_size: p.meta?.group_size ?? p.group_size ?? "",
     budget: p.meta?.budget ?? p.budget ?? "",
   },
+  comment_count: Number(p.comment_count ?? 0),
 });
 
 const fullNameOf = (u) =>
@@ -39,6 +41,43 @@ const toLocalYMD = (date) => {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const DateTimeDisplay = ({ daysStr, timesStr }) => {
+  const days = daysStr ? daysStr.split(',').map(d => d.trim()) : [];
+  return (
+    <div className="flex flex-col gap-1.5">
+      {days.length > 0 ? (
+        days.map((day, idx) => (
+          <div key={idx} className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+            <span className="font-semibold">{day}</span>
+            <span className="text-indigo-300">|</span>
+            <span>{timesStr || "ไม่ระบุเวลา"}</span>
+          </div>
+        ))
+      ) : (
+        <div className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+          <span>ไม่ระบุกำหนดการ</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ContactLink = ({ value }) => {
+  if (!value) return <span className="text-gray-400 italic">ไม่ระบุ</span>;
+  if (value.startsWith('http')) return <a href={value} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 underline font-medium break-all">{value}</a>;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return <a href={`mailto:${value}`} className="text-indigo-600 hover:text-indigo-800 underline font-medium break-all">{value}</a>;
+  if (/^[\d\s-]{9,15}$/.test(value)) return <a href={`tel:${value.replace(/[\s-]/g, '')}`} className="text-indigo-600 hover:text-indigo-800 underline font-medium">{value}</a>;
+  return <span className="text-gray-800 break-all">{value}</span>;
+};
+
+const LocationLink = ({ value }) => {
+  if (!value || value.trim() === '') return <span>ไม่ระบุ</span>;
+  if (/ออนไลน์|online/i.test(value)) return <span>{value}</span>;
+  return <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`} target="_blank" rel="noopener noreferrer" className="hover:underline hover:text-teal-800 transition-colors" title="ดูแผนที่">{value}</a>;
 };
 
 /* ---------- Subcomponents ---------- */
@@ -216,8 +255,11 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dailyEvents, setDailyEvents] = useState([]);
 
-  // ✅ Tabs State
-  const [activeTab, setActiveTab] = useState('posts'); // 'posts' | 'history'
+  // ✅ Tabs State (Preserved)
+  const [activeTab, setActiveTab] = useTabRestoration('student_profile', 'posts'); // 'posts' | 'history'
+
+  // ✅ Scroll Restoration
+  useScrollRestoration('student_profile', [posts, events, loading]);
 
   const [editPost, setEditPost] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -622,6 +664,18 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                 </p>
               </div>
 
+              {/* Interested Subjects Display */}
+              {profile.interested_subjects && typeof profile.interested_subjects === 'string' && profile.interested_subjects.trim().length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <span className="text-sm font-bold text-gray-700 py-1">วิชาที่สนใจ:</span>
+                  {profile.interested_subjects.split(',').map((subj, idx) => (
+                    <span key={idx} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-sm font-bold border border-indigo-100 shadow-sm">
+                      {subj.trim()}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {/* Contact Chips */}
               <div className="flex flex-wrap gap-3">
                 <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-colors group cursor-pointer">
@@ -705,28 +759,45 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                       {posts.filter((p) => !hiddenPostIds.has(p._id ?? p.id)).map((p) => {
                         const id = p._id ?? p.id;
                         return (
-                          <div key={id} className="bg-white border border-gray-100 rounded-[2rem] p-8 relative overflow-hidden shadow-sm">
+                          <div
+                            key={id}
+                            className="bg-white border border-gray-100 p-5 sm:p-6 rounded-[1.5rem] shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col relative group"
+                            onClick={() => {
+                              if (onOpenPost) onOpenPost(id, p.post_type || 'student');
+                            }}
+                          >
                             {/* Decorative Highlight */}
                             <div className="absolute top-0 left-0 w-1.5 h-full" />
 
                             {/* Post Header */}
-                            <div className="flex items-center justify-between mb-6">
-                              <div className="flex items-center gap-4">
-                                <div className="relative">
-                                  <img src={profile.avatarUrl || "/../blank_avatar.jpg"} alt="avatar" className="w-12 h-12 rounded-xl object-cover ring-2 ring-indigo-50" />
-                                </div>
+                            <div className="flex items-start justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                {profile?.avatarUrl && profile.avatarUrl !== "/../blank_avatar.jpg" ? (
+                                  <img src={profile.avatarUrl} alt="avatar" className="w-12 h-12 rounded-[1rem] object-cover shrink-0 border border-gray-100 group-hover:border-indigo-500 transition-colors" />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-[1rem] bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xl shrink-0 group-hover:bg-indigo-100 group-hover:text-indigo-700 transition-colors">
+                                    {profile?.fullName ? profile.fullName.substring(0, 2).toUpperCase() : "U"}
+                                  </div>
+                                )}
                                 <div>
-                                  <div className="text-lg font-black text-gray-900 tracking-tight">{profile.fullName}</div>
-                                  <div className="flex items-center gap-2 text-[11px] text-gray-400 font-bold">
-                                    <Clock size={12} />
-                                    {new Date(p.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} น.
+                                  <div className="text-[15px] font-bold text-gray-900 group-hover:text-indigo-600 group-hover:underline transition-colors">{profile.fullName}</div>
+                                  {profile?.username && <div className="text-xs text-indigo-500 font-medium -mt-0.5 mb-0.5">@{profile.username}</div>}
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-rose-100 text-rose-700">นักเรียน</span>
+                                    <span className="text-xs text-gray-400">•</span>
+                                    <span className="text-xs text-gray-500 font-medium">
+                                      {new Date(p.createdAt).toLocaleString('th-TH')}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
                               <div className="relative">
                                 <button
-                                  onClick={() => handleToggleMenu(id)}
-                                  className="p-2 rounded-xl text-gray-400 hover:bg-gray-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleMenu(id);
+                                  }}
+                                  className="p-2 rounded-full text-gray-400 hover:bg-gray-100 transition-colors hover:text-gray-600"
                                 >
                                   <MoreVertical size={20} />
                                 </button>
@@ -743,41 +814,54 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                             </div>
 
                             {/* Post Body */}
-                            <div className="space-y-4">
-                              <div className="inline-flex px-4 py-2 bg-indigo-50 text-indigo-700 rounded-2xl text-sm font-bold">
-                                วิชา: {p.subject}
-                              </div>
-                              <p className="text-gray-600 leading-relaxed max-w-2xl text-[15px]">
-                                {p.content}
-                              </p>
+                            <h3 className="text-xl font-black text-gray-900 mb-1">{p.subject}</h3>
+                            <p className="mb-4 text-gray-700 whitespace-pre-line leading-relaxed text-[15px]">{p.content}</p>
 
-                              {/* Post Meta Grid */}
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
-                                <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-2xl border border-transparent">
-                                  <div className="text-indigo-500"><Calendar size={18} /></div>
-                                  <span className="text-xs font-bold text-gray-700">{p.meta?.preferred_days || "-"}</span>
+                            <div className="space-y-3 mt-4 border-t border-gray-100 pt-4">
+                              <div className="flex flex-wrap gap-2 text-sm mb-4">
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50/50 text-blue-700 font-bold border border-blue-100">
+                                  <GraduationCap size={16} className="shrink-0 text-blue-500" />
+                                  {p.meta?.grade_level || profile?.gradeLevel || "ไม่ระบุ"}
+                                </span>
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50/50 text-emerald-700 font-bold border border-emerald-100">
+                                  <span className="text-emerald-500 bg-emerald-100 rounded-full w-5 h-5 flex items-center justify-center font-black text-xs">฿</span>
+                                  {p.meta?.budget || "0"} บาท/ชั่วโมง
+                                </span>
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50/50 text-teal-700 font-bold border border-teal-100">
+                                  <MapPin size={16} className="shrink-0 text-teal-500" />
+                                  <LocationLink value={p.meta?.location} />
+                                </span>
+                              </div>
+
+                              <div className="bg-indigo-50/40 p-3.5 rounded-xl border border-indigo-100/60 mb-3 text-sm">
+                                <div className="flex items-center gap-2 font-bold text-indigo-900 mb-2">
+                                  <Calendar size={16} className="text-indigo-600" /> วันที่และเวลาเรียน:
                                 </div>
-                                <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-2xl border border-transparent">
-                                  <div className="text-purple-500"><Clock size={18} /></div>
-                                  <span className="text-xs font-bold text-gray-700">{p.meta?.preferred_time || "-"}</span>
+                                <div className="ml-6 text-indigo-800 font-medium">
+                                  <DateTimeDisplay daysStr={p.meta?.preferred_days} timesStr={p.meta?.preferred_time} />
                                 </div>
-                                <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-2xl border border-transparent">
-                                  <div className="text-blue-500"><MapPin size={18} /></div>
-                                  <span className="text-xs font-bold text-gray-700 truncate">{p.meta?.location || "ออนไลน์"}</span>
+                              </div>
+
+                              <div className="flex flex-col gap-2 text-sm">
+                                <div className="flex items-center gap-2 bg-amber-50/40 p-3.5 rounded-xl border border-amber-100/60 text-sm">
+                                  <Mail size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                                  <div className="font-medium text-amber-900">
+                                    <span className="font-bold">ข้อมูลติดต่อ: </span>
+                                    <div onClick={(e) => e.stopPropagation()} className="inline-block"><ContactLink value={p.meta?.contact_info || profile?.phone || profile?.email} /></div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
 
+                            {/* Expanding Space */}
+                            <div className="flex-grow"></div>
+
                             {/* Post Footer */}
-                            <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">งบประมาณ</div>
-                                <div className="flex items-baseline gap-1">
-                                  <span className="text-xl font-black text-indigo-600">฿{p.meta?.budget || "0"}</span>
-                                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">/ชม.</span>
-                                </div>
+                            <div className="mt-6 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-gray-50">
+                              <div className="text-sm font-medium text-gray-700">
+                                จำนวนผู้เรียน: <b className="font-bold text-indigo-700 underline underline-offset-2">{p.meta?.group_size || 1}</b> คน
                               </div>
-                              <button className="px-5 py-2 bg-[#111827] text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">
+                              <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl border bg-white border-gray-200 hover:bg-gray-50 hover:text-gray-700 text-gray-500 font-bold shadow-sm transition-colors focus:outline-none">
                                 ดูรายละเอียด
                               </button>
                             </div>
@@ -793,51 +877,78 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                     <Empty line="ยังไม่มีประวัติการเรียนในขณะนี้" />
                   ) : (
                     <div className="space-y-6">
-                      {studyHistory.map((item, idx) => (
-                        <div key={idx} className="group bg-white border border-gray-100 rounded-3xl p-6 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all duration-300">
-                          <div className="flex flex-col md:flex-row gap-6">
-                            <div className="w-16 h-16 shrink-0 rounded-[1.4rem] bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300 shadow-sm">
-                              <item.icon size={28} />
+                      {studyHistory.map((item, idx) => {
+                        const evtDate = item.event_date ? new Date(item.event_date.split('T')[0] + 'T12:00:00Z').toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : (item.created_at ? new Date(item.created_at).toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : "");
+                        return (
+                          <div
+                            key={idx}
+                            className="bg-white border border-gray-100 p-5 sm:p-6 rounded-[1.5rem] shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col relative group"
+                            onClick={() => {
+                              if (onOpenPost && item.post_id) {
+                                const type = item.source?.includes('tutor_post') || item.source === 'tutor_self_teaching' || item.source === 'calendar_tutor' ? 'tutor' : 'student';
+                                onOpenPost(item.post_id, type);
+                              }
+                            }}
+                          >
+                            <div className="flex items-start justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                {profile?.avatarUrl && profile.avatarUrl !== "/../blank_avatar.jpg" ? (
+                                  <img src={profile.avatarUrl} alt="profile" className="w-12 h-12 rounded-[1rem] object-cover shrink-0 border border-gray-100 group-hover:border-indigo-500 transition-colors" />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-[1rem] bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xl shrink-0 group-hover:bg-indigo-100 group-hover:text-indigo-700 transition-colors">
+                                    {profile?.fullName ? profile.fullName.substring(0, 2).toUpperCase() : "U"}
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="font-bold text-gray-900 text-[15px] group-hover:text-indigo-600 group-hover:underline transition-colors">{profile?.fullName || "ผู้ใช้"}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-indigo-100 text-indigo-700">{item.typeLabel}</span>
+                                    <span className="text-xs text-gray-400">•</span>
+                                    <span className="text-xs text-gray-500 font-medium">
+                                      {item.created_at ? new Date(item.created_at).toLocaleString("th-TH") : evtDate}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
 
-                            <div className="flex-grow">
-                              <div className="flex flex-wrap justify-between items-start gap-4 mb-4">
-                                <div>
-                                  <h4 className="text-xl font-black text-gray-900 mb-1">{item.title}</h4>
-                                  <div className="flex items-center gap-2">
-                                    <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-black rounded-lg uppercase tracking-wider">
-                                      {item.typeLabel}
-                                    </span>
-                                    <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">
-                                      {item.event_date ? new Date(item.event_date.split('T')[0] + 'T12:00:00Z').toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : (item.created_at ? new Date(item.created_at).toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' }) : "")}
-                                    </span>
-                                  </div>
+                            <h3 className="text-xl font-black text-gray-900 mb-1">{item.title}</h3>
+                            <p className="mb-4 text-gray-700 whitespace-pre-line leading-relaxed text-[15px]">วิชา: {item.subject || "-"}</p>
+
+                            <div className="space-y-3 mt-4 border-t border-gray-100 pt-4">
+                              <div className="bg-indigo-50/40 p-3.5 rounded-xl border border-indigo-100/60 mb-3 text-sm">
+                                <div className="flex items-center gap-2 font-bold text-indigo-900 mb-2">
+                                  <Calendar size={16} className="text-indigo-600" /> วันที่และเวลาเรียน:
                                 </div>
-                                <button className="px-5 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-black hover:bg-indigo-600 hover:text-white transition-all">
-                                  รายละเอียด
-                                </button>
+                                <div className="ml-6 text-indigo-800 font-medium">
+                                  <DateTimeDisplay daysStr={evtDate} timesStr={item.event_time ? item.event_time.substring(0, 5) : null} />
+                                </div>
                               </div>
 
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-2 bg-gray-50 rounded-xl text-gray-400 group-hover:text-indigo-500 transition-colors"><BookOpen size={16} /></div>
-                                  <div>
-                                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">วิชา</div>
-                                    <div className="text-sm font-bold text-gray-700">{item.subject}</div>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <div className="p-2 bg-gray-50 rounded-xl text-gray-400 group-hover:text-purple-500 transition-colors"><MapPin size={16} /></div>
-                                  <div>
-                                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">สถานที่</div>
-                                    <div className="text-sm font-bold text-gray-700">{item.location || "ไม่ระบุ (ออนไลน์)"}</div>
+                              <div className="flex flex-col gap-2 text-sm">
+                                <div className="flex items-center gap-2 bg-teal-50/40 p-3.5 rounded-xl border border-teal-100/60 text-sm">
+                                  <MapPin size={16} className="text-teal-600 mt-0.5 shrink-0" />
+                                  <div className="font-medium text-teal-900">
+                                    <span className="font-bold">สถานที่: </span>
+                                    <div onClick={(e) => e.stopPropagation()} className="inline-block"><LocationLink value={item.location || "ออนไลน์"} /></div>
                                   </div>
                                 </div>
                               </div>
+                            </div>
+
+                            <div className="flex-grow"></div>
+
+                            <div className="mt-6 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-gray-50">
+                              {/* <div className="text-sm font-medium text-gray-700">
+                                งบประมาณ: <b className="font-bold text-indigo-700 underline underline-offset-2">฿{item.budget || "0"}</b> /ชั่วโมง
+                              </div> */}
+                              <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl border bg-white border-gray-200 hover:bg-gray-50 hover:text-gray-700 text-gray-500 font-bold shadow-sm transition-colors focus:outline-none">
+                                ดูรายละเอียด
+                              </button>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </Card>
@@ -878,7 +989,12 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                       {dailyEvents.map((ev, index) => (
                         <li
                           key={ev.event_id || index}
-                          onClick={() => onOpenPost && onOpenPost(ev.post_id)}
+                          onClick={() => {
+                            if (onOpenPost && ev.post_id) {
+                              const type = ev.source?.includes('tutor_post') || ev.source === 'tutor_self_teaching' ? 'tutor' : 'student';
+                              onOpenPost(ev.post_id, type);
+                            }
+                          }}
                           className="group bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-100 transition-all cursor-pointer"
                         >
                           <div className="flex items-center gap-3">

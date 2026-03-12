@@ -1,6 +1,8 @@
+// src/components/MyPostForm.jsx
 import React, { useState, useEffect } from "react";
 import LongdoLocationPicker from './LongdoLocationPicker';
 import { API_BASE } from '../config';
+import { Calendar, Clock, Plus, X } from "lucide-react"; // 🌟 นำเข้า Icon เพิ่มเติม
 
 const postGradeLevelOptions = [
     { value: "ประถมศึกษา", label: "ประถมศึกษา" },
@@ -27,7 +29,12 @@ export default function MyPostForm({
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState(initialData);
 
-    // ✅ Contact Info State
+    // ✅ State สำหรับจัดการ วัน/เวลา (แบบหลายรายการ)
+    const [dateList, setDateList] = useState([]);
+    const [tempDate, setTempDate] = useState("");
+    const [tempTime, setTempTime] = useState("");
+
+    // Contact Info State
     const [contactType, setContactType] = useState('Line ID');
     const [contactValue, setContactValue] = useState('');
 
@@ -37,6 +44,7 @@ export default function MyPostForm({
     const platformOptions = ["Zoom", "Google Meet", "Microsoft Teams", "Discord", "Line Call", "Other"];
 
     useEffect(() => {
+        // จัดการ Location
         if (formData.location) {
             if (formData.location.startsWith("Online:") || formData.location === "Online" || formData.location === "ออนไลน์") {
                 setTeachingMode("online");
@@ -56,7 +64,7 @@ export default function MyPostForm({
             }
         }
 
-        // Initialize contact parsing if editing
+        // จัดการ Contact
         if (formData.contact_info) {
             const ci = formData.contact_info;
             if (ci.startsWith("Line ID:")) {
@@ -77,7 +85,27 @@ export default function MyPostForm({
                 setContactValue(ci.trim());
             }
         }
-    }, [formData.location, formData.contact_info]);
+
+        // 🌟 แปลงวันที่เดิมเป็น Array ตอนเข้าโหมด Edit
+        if (editMode && initialData) {
+            const daysStr = feedType === "student" ? initialData.preferred_days : initialData.teaching_days;
+            const timesStr = feedType === "student" ? initialData.preferred_time : initialData.teaching_time;
+
+            if (daysStr) {
+                const dArr = daysStr.split(',').map(d => d.trim());
+                const tArr = (timesStr || "").split(',').map(t => t.trim());
+                const loadedList = dArr.map((d, i) => ({
+                    date: d,
+                    time: tArr[i] || "" // ถ้าไม่มีเวลาให้ว่างไว้
+                })).filter(x => x.date);
+                setDateList(loadedList);
+            } else {
+                setDateList([]);
+            }
+        } else {
+            setDateList([]); // Reset ตอนเปิดฟอร์มใหม่
+        }
+    }, [formData.location, formData.contact_info, editMode, initialData, feedType]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -99,39 +127,55 @@ export default function MyPostForm({
         setFormData(prev => ({ ...prev, location: address }));
     };
 
+    // 🌟 ฟังก์ชันจัดการเพิ่ม/ลบ วันเวลา
+    const handleAddDateTime = () => {
+        if (!tempDate) return alert("กรุณาเลือกวันที่ครับ");
+        if (dateList.some(item => item.date === tempDate)) {
+            return alert("คุณได้เลือกวันที่นี้ไปแล้วครับ");
+        }
+        setDateList([...dateList, { date: tempDate, time: tempTime }]);
+        setTempDate("");
+        setTempTime("");
+    };
+
+    const handleRemoveDateTime = (indexToRemove) => {
+        setDateList(dateList.filter((_, idx) => idx !== indexToRemove));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!user?.user_id) return alert("กรุณาเข้าสู่ระบบก่อนโพสต์");
 
+        // 🌟 ตรวจสอบว่าได้ใส่วันเวลาอย่างน้อย 1 วันหรือไม่
+        if (dateList.length === 0) {
+            return alert("กรุณากำหนดวันและเวลาที่ต้องการเรียนหรือสอนอย่างน้อย 1 วันครับ");
+        }
+
+        // แปลง Array กลับไปเป็น String คั่นด้วยลูกน้ำเพื่อส่งเข้า Database
+        const daysString = dateList.map(item => item.date).join(', ');
+        const timesString = dateList.map(item => item.time || "--:--").join(', ');
+
         try {
             setLoading(true);
-
             const method = editMode ? "PUT" : "POST";
             const idPart = editMode ? `/${editingPostId}` : "";
 
             if (feedType === "student") {
-                const required = ["subject", "description", "preferred_days", "preferred_time", "group_size", "budget", "grade_level"];
+                // ลบ preferred_days, preferred_time ออกจาก required check เพราะเราเช็คด้านบนแล้ว
+                const required = ["subject", "description", "group_size", "budget", "grade_level"];
                 for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
-
                 if (!contactValue.trim()) return alert("กรุณากรอกข้อมูลติดต่อ");
 
-                // Validate Location
-                if (teachingMode === "onsite" && !formData.location.trim()) {
-                    return alert("กรุณาระบุสถานที่");
-                }
-                if (teachingMode === "online" && !platform) {
-                    return alert("กรุณาระบุแพลตฟอร์ม");
-                }
-                if (teachingMode === "online" && platform === "Other" && !customPlatform.trim()) {
-                    return alert("กรุณาระบุชื่อแพลตฟอร์ม");
-                }
+                if (teachingMode === "onsite" && !formData.location.trim()) return alert("กรุณาระบุสถานที่");
+                if (teachingMode === "online" && !platform) return alert("กรุณาระบุแพลตฟอร์ม");
+                if (teachingMode === "online" && platform === "Other" && !customPlatform.trim()) return alert("กรุณาระบุชื่อแพลตฟอร์ม");
 
                 const payload = {
                     user_id: meId,
                     subject: formData.subject.trim(),
                     description: formData.description.trim(),
-                    preferred_days: formData.preferred_days,
-                    preferred_time: formData.preferred_time,
+                    preferred_days: daysString, // 🌟 ส่งค่าวันใหม่
+                    preferred_time: timesString, // 🌟 ส่งค่าเวลาใหม่
                     grade_level: formData.grade_level,
                     location: teachingMode === 'online'
                         ? `Online: ${platform === 'Other' ? customPlatform : platform}`
@@ -140,6 +184,7 @@ export default function MyPostForm({
                     budget: Number(formData.budget),
                     contact_info: contactType === "อื่นๆ" ? contactValue.trim() : `${contactType}: ${contactValue.trim()}`,
                 };
+
                 const res = await fetch(`${API_BASE}/api/student_posts${idPart}`, {
                     method: method,
                     headers: { "Content-Type": "application/json" },
@@ -148,30 +193,22 @@ export default function MyPostForm({
                 if (!res.ok) throw new Error("เกิดข้อผิดพลาด");
 
             } else {
-                const required = ["subject", "description", "teaching_days", "teaching_time", "price"];
+                const required = ["subject", "description", "price"];
                 for (const k of required) if (!String(formData[k]).trim()) return alert("กรุณากรอกข้อมูลให้ครบ");
-
                 if (!contactValue.trim()) return alert("กรุณากรอกข้อมูลติดต่อ");
 
-                if (teachingMode === "onsite" && !formData.location.trim()) {
-                    return alert("กรุณาระบุสถานที่");
-                }
+                if (teachingMode === "onsite" && !formData.location.trim()) return alert("กรุณาระบุสถานที่");
                 if (teachingMode === "online" && !platform) return alert("กรุณาระบุแพลตฟอร์ม");
-
-                if (formData.target_student_level.length === 0) {
-                    return alert("กรุณาเลือกระดับชั้นที่สอนอย่างน้อย 1 ระดับ");
-                }
-                if (!isTutor) {
-                    throw new Error("เฉพาะติวเตอร์เท่านั้นที่โพสต์ฝั่งติวเตอร์ได้");
-                }
+                if (formData.target_student_level.length === 0) return alert("กรุณาเลือกระดับชั้นที่สอนอย่างน้อย 1 ระดับ");
+                if (!isTutor) throw new Error("เฉพาะติวเตอร์เท่านั้นที่โพสต์ฝั่งติวเตอร์ได้");
 
                 const payload = {
                     tutor_id: tutorId,
                     subject: formData.subject.trim(),
                     description: formData.description.trim(),
                     target_student_level: formData.target_student_level.join(','),
-                    teaching_days: formData.teaching_days,
-                    teaching_time: formData.teaching_time,
+                    teaching_days: daysString, // 🌟 ส่งค่าวันใหม่
+                    teaching_time: timesString, // 🌟 ส่งค่าเวลาใหม่
                     location: teachingMode === 'online'
                         ? `Online: ${platform === 'Other' ? customPlatform : platform}`
                         : formData.location.trim(),
@@ -200,6 +237,78 @@ export default function MyPostForm({
         }
     };
 
+    // 🌟 Component แยกสำหรับเรนเดอร์กล่องใส่วันเวลา
+    const renderDateTimeSection = () => (
+        <div className="md:col-span-2 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+            <label className="block text-sm font-bold text-gray-700 mb-3">
+                กำหนดวันและเวลาที่ต้องการเรียนหรือสอน <span className="text-red-500">*</span>
+            </label>
+
+            {/* แถบกรอกข้อมูลเพิ่ม */}
+            <div className="flex flex-wrap items-end gap-3 mb-4">
+                <div className="flex-1 min-w-[140px]">
+                    <label className="block text-xs text-gray-500 mb-1">วันที่</label>
+                    <input
+                        type="date"
+                        min={today}
+                        value={tempDate}
+                        onChange={(e) => setTempDate(e.target.value)}
+                        className="border border-gray-300 rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                </div>
+                <div className="flex-1 min-w-[120px]">
+                    <label className="block text-xs text-gray-500 mb-1">เวลา</label>
+                    <input
+                        type="time"
+                        value={tempTime}
+                        onChange={(e) => setTempTime(e.target.value)}
+                        className="border border-gray-300 rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                </div>
+                <button
+                    type="button"
+                    onClick={handleAddDateTime}
+                    className="bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-bold hover:bg-indigo-700 flex items-center gap-1 transition-colors shadow-sm"
+                >
+                    <Plus size={16} /> เพิ่ม
+                </button>
+            </div>
+
+            {/* แสดงรายการวันที่ที่ถูกเลือกไว้แล้ว */}
+            {dateList.length > 0 ? (
+                <ul className="space-y-2 mt-2">
+                    {dateList.map((item, idx) => (
+                        <li key={idx} className="flex items-center justify-between bg-white p-3 px-4 rounded-lg border border-gray-200 shadow-sm animate-in fade-in zoom-in duration-200">
+                            <span className="flex items-center gap-3 text-sm text-gray-700 font-medium">
+                                <span className="flex items-center gap-1.5 text-indigo-600">
+                                    <Calendar size={16} />
+                                    {new Date(item.date).toLocaleDateString("th-TH")}
+                                </span>
+                                {item.time && (
+                                    <span className="flex items-center gap-1.5 text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md">
+                                        <Clock size={14} />
+                                        {item.time}
+                                    </span>
+                                )}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => handleRemoveDateTime(idx)}
+                                className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-md transition-colors"
+                            >
+                                <X size={18} />
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            ) : (
+                <div className="text-sm text-gray-400 text-center py-5 border-2 border-dashed border-indigo-100 rounded-lg bg-white/50">
+                    ยังไม่ได้เลือกวันและเวลาครับ
+                </div>
+            )}
+        </div>
+    );
+
     return (
         <form onSubmit={handleSubmit} className="space-y-5">
             {/* วิชา/หัวข้อ */}
@@ -216,25 +325,18 @@ export default function MyPostForm({
 
             {feedType === "student" ? (
                 <>
-                    {/* วันและเวลาที่สะดวก */}
                     <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">วันที่สะดวก</label>
-                            <input type="date" name="preferred_days" value={formData.preferred_days} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" min={today} />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">เวลาที่สะดวก</label>
-                            <input type="time" name="preferred_time" value={formData.preferred_time} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-                    </div>
+                        {/* 🌟 กล่องใส่วันเวลาใหม่ */}
+                        {renderDateTimeSection()}
 
-                    {/* ระดับชั้น */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">ระดับชั้นของผู้เรียน</label>
-                        <select name="grade_level" value={formData.grade_level} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                            <option value="">-- กรุณาเลือก --</option>
-                            {postGradeLevelOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
+                        {/* ระดับชั้น */}
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">ระดับชั้นของผู้เรียน</label>
+                            <select name="grade_level" value={formData.grade_level} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                                <option value="">-- กรุณาเลือก --</option>
+                                {postGradeLevelOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                            </select>
+                        </div>
                     </div>
 
                     {/* สถานที่ (With Toggle) */}
@@ -242,28 +344,11 @@ export default function MyPostForm({
                         <label className="block text-sm font-bold text-gray-700 mb-3">รูปแบบการเรียน</label>
                         <div className="flex gap-4 mb-4">
                             <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="teaching_mode"
-                                    value="onsite"
-                                    checked={teachingMode === "onsite"}
-                                    onChange={() => setTeachingMode("onsite")}
-                                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                                />
+                                <input type="radio" name="teaching_mode" value="onsite" checked={teachingMode === "onsite"} onChange={() => setTeachingMode("onsite")} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
                                 <span className="text-gray-900">เรียนที่สถานที่ (On-site)</span>
                             </label>
                             <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="teaching_mode"
-                                    value="online"
-                                    checked={teachingMode === "online"}
-                                    onChange={() => {
-                                        setTeachingMode("online");
-                                        if (!platform) setPlatform("Google Meet"); // Default
-                                    }}
-                                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                                />
+                                <input type="radio" name="teaching_mode" value="online" checked={teachingMode === "online"} onChange={() => { setTeachingMode("online"); if (!platform) setPlatform("Google Meet"); }} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
                                 <span className="text-gray-900">เรียนออนไลน์ (Online)</span>
                             </label>
                         </div>
@@ -271,35 +356,20 @@ export default function MyPostForm({
                         {teachingMode === "onsite" ? (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">ปักหมุดสถานที่</label>
-                                <LongdoLocationPicker
-                                    onLocationSelect={handleLocationSelect}
-                                    defaultLocation={formData.location?.startsWith("Online:") ? "" : formData.location}
-                                    showMap={false}
-                                />
+                                <LongdoLocationPicker onLocationSelect={handleLocationSelect} defaultLocation={formData.location?.startsWith("Online:") ? "" : formData.location} showMap={false} />
                             </div>
                         ) : (
                             <div className="grid md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">แพลตฟอร์มที่ใช้</label>
-                                    <select
-                                        value={platform}
-                                        onChange={(e) => setPlatform(e.target.value)}
-                                        className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                                    >
+                                    <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white">
                                         {platformOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                     </select>
                                 </div>
                                 {platform === "Other" && (
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">ระบุแพลตฟอร์มอื่น ๆ</label>
-                                        <input
-                                            type="text"
-                                            value={customPlatform}
-                                            onChange={(e) => setCustomPlatform(e.target.value)}
-                                            className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none"
-                                            placeholder="เช่น Skype"
-                                            required
-                                        />
+                                        <input type="text" value={customPlatform} onChange={(e) => setCustomPlatform(e.target.value)} className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" placeholder="เช่น Skype" required />
                                     </div>
                                 )}
                             </div>
@@ -313,34 +383,8 @@ export default function MyPostForm({
                             <input type="number" name="group_size" min="1" placeholder="1 = ตัวต่อตัว" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">งบประมาณ (ราคาต่อชั่วโมง)</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">ราคา (ต่อชั่วโมง)</label>
                             <input type="number" name="budget" min="0" value={formData.budget} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-                    </div>
-
-                    {/* ข้อมูลติดต่อ */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
-                        <div className="flex gap-2">
-                            <select
-                                value={contactType}
-                                onChange={(e) => setContactType(e.target.value)}
-                                className="border rounded-lg p-2.5 w-1/3 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                            >
-                                <option value="Line ID">Line ID</option>
-                                <option value="เบอร์โทร">เบอร์โทร</option>
-                                <option value="Email">Email</option>
-                                <option value="Facebook">Facebook</option>
-                                <option value="อื่นๆ">อื่นๆ</option>
-                            </select>
-                            <input
-                                type="text"
-                                value={contactValue}
-                                onChange={(e) => setContactValue(e.target.value)}
-                                required
-                                className="border rounded-lg p-2.5 w-2/3 focus:ring-2 focus:ring-blue-500 outline-none"
-                                placeholder={contactType === "อื่นๆ" ? "ระบุข้อมูลติดต่อ" : `ระบุ ${contactType}`}
-                            />
                         </div>
                     </div>
                 </>
@@ -351,17 +395,8 @@ export default function MyPostForm({
                         <label className="block text-sm font-bold text-gray-800 mb-3">ระดับชั้นที่รับสอน (เลือกได้มากกว่า 1)</label>
                         <div className="flex flex-wrap gap-3">
                             {postGradeLevelOptions.map(option => (
-                                <label
-                                    key={option.value}
-                                    className="flex items-center space-x-2 cursor-pointer px-3 py-2 bg-white hover:bg-blue-50 border border-gray-200 rounded-lg transition-all shadow-sm select-none">
-                                    <input
-                                        id={`level-${option.value}`}
-                                        type="checkbox"
-                                        value={option.value}
-                                        checked={(formData.target_student_level || []).includes(option.value)}
-                                        onChange={() => handleLevelChange(option.value)}
-                                        className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
-                                    />
+                                <label key={option.value} className="flex items-center space-x-2 cursor-pointer px-3 py-2 bg-white hover:bg-blue-50 border border-gray-200 rounded-lg transition-all shadow-sm select-none">
+                                    <input id={`level-${option.value}`} type="checkbox" value={option.value} checked={(formData.target_student_level || []).includes(option.value)} onChange={() => handleLevelChange(option.value)} className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer" />
                                     <span className="text-sm text-gray-700 whitespace-nowrap">{option.label}</span>
                                 </label>
                             ))}
@@ -369,15 +404,10 @@ export default function MyPostForm({
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">วันที่สะดวกสอน</label>
-                            <input type="date" name="teaching_days" value={formData.teaching_days} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" min={today} />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">เวลาที่สะดวกสอน</label>
-                            <input type="time" name="teaching_time" value={formData.teaching_time} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-                        <div>
+                        {/* 🌟 กล่องใส่วันเวลาใหม่ */}
+                        {renderDateTimeSection()}
+
+                        <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนผู้เรียน (คน)</label>
                             <input type="number" name="group_size" min="0" placeholder="1 = ตัวต่อตัว" value={formData.group_size} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
@@ -388,28 +418,11 @@ export default function MyPostForm({
                             <label className="block text-sm font-bold text-gray-700 mb-3">รูปแบบการสอน</label>
                             <div className="flex gap-4 mb-4">
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="tutor_teaching_mode"
-                                        value="onsite"
-                                        checked={teachingMode === "onsite"}
-                                        onChange={() => setTeachingMode("onsite")}
-                                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                                    />
+                                    <input type="radio" name="tutor_teaching_mode" value="onsite" checked={teachingMode === "onsite"} onChange={() => setTeachingMode("onsite")} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
                                     <span className="text-gray-900">สอนที่สถานที่ (On-site)</span>
                                 </label>
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="tutor_teaching_mode"
-                                        value="online"
-                                        checked={teachingMode === "online"}
-                                        onChange={() => {
-                                            setTeachingMode("online");
-                                            if (!platform) setPlatform("Google Meet");
-                                        }}
-                                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                                    />
+                                    <input type="radio" name="tutor_teaching_mode" value="online" checked={teachingMode === "online"} onChange={() => { setTeachingMode("online"); if (!platform) setPlatform("Google Meet"); }} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
                                     <span className="text-gray-900">สอนออนไลน์ (Online)</span>
                                 </label>
                             </div>
@@ -417,35 +430,20 @@ export default function MyPostForm({
                             {teachingMode === "onsite" ? (
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">ปักหมุดสถานที่</label>
-                                    <LongdoLocationPicker
-                                        onLocationSelect={handleLocationSelect}
-                                        defaultLocation={formData.location?.startsWith("Online:") ? "" : formData.location}
-                                        showMap={false}
-                                    />
+                                    <LongdoLocationPicker onLocationSelect={handleLocationSelect} defaultLocation={formData.location?.startsWith("Online:") ? "" : formData.location} showMap={false} />
                                 </div>
                             ) : (
                                 <div className="grid md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">แพลตฟอร์มที่ใช้</label>
-                                        <select
-                                            value={platform}
-                                            onChange={(e) => setPlatform(e.target.value)}
-                                            className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                                        >
+                                        <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white">
                                             {platformOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                         </select>
                                     </div>
                                     {platform === "Other" && (
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">ระบุแพลตฟอร์มอื่น ๆ</label>
-                                            <input
-                                                type="text"
-                                                value={customPlatform}
-                                                onChange={(e) => setCustomPlatform(e.target.value)}
-                                                className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none"
-                                                placeholder="เช่น Skype"
-                                                required
-                                            />
+                                            <input type="text" value={customPlatform} onChange={(e) => setCustomPlatform(e.target.value)} className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" placeholder="เช่น Skype" required />
                                         </div>
                                     )}
                                 </div>
@@ -453,36 +451,27 @@ export default function MyPostForm({
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">ราคาต่อชั่วโมง (บาท)</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">ราคา (ต่อชั่วโมง)</label>
                             <input type="number" name="price" min="0" value={formData.price} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
-                            <div className="flex gap-2">
-                                <select
-                                    value={contactType}
-                                    onChange={(e) => setContactType(e.target.value)}
-                                    className="border rounded-lg p-2.5 w-1/3 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                                >
-                                    <option value="Line ID">Line ID</option>
-                                    <option value="เบอร์โทร">เบอร์โทร</option>
-                                    <option value="Email">Email</option>
-                                    <option value="Facebook">Facebook</option>
-                                    <option value="อื่นๆ">อื่นๆ</option>
-                                </select>
-                                <input
-                                    type="text"
-                                    value={contactValue}
-                                    onChange={(e) => setContactValue(e.target.value)}
-                                    required
-                                    className="border rounded-lg p-2.5 w-2/3 focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder={contactType === "อื่นๆ" ? "ระบุข้อมูลติดต่อ" : `ระบุ ${contactType}`}
-                                />
-                            </div>
                         </div>
                     </div>
                 </>
             )}
+
+            {/* ข้อมูลติดต่อ (ส่วนรวมที่ใช้เหมือนกัน) */}
+            <div className="pt-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
+                <div className="flex gap-2">
+                    <select value={contactType} onChange={(e) => setContactType(e.target.value)} className="border rounded-lg p-2.5 w-1/3 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="Line ID">Line ID</option>
+                        <option value="เบอร์โทร">เบอร์โทร</option>
+                        <option value="Email">Email</option>
+                        <option value="Facebook">Facebook</option>
+                        <option value="อื่นๆ">อื่นๆ</option>
+                    </select>
+                    <input type="text" value={contactValue} onChange={(e) => setContactValue(e.target.value)} required className="border rounded-lg p-2.5 w-2/3 focus:ring-2 focus:ring-blue-500 outline-none" placeholder={contactType === "อื่นๆ" ? "ระบุข้อมูลติดต่อ" : `ระบุ ${contactType}`} />
+                </div>
+            </div>
 
             <div className="flex justify-end gap-3 pt-6 border-t mt-4">
                 <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium transition-colors">ยกเลิก</button>

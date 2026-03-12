@@ -1,6 +1,7 @@
 // src/pages/Favorite.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { API_BASE } from '../config';
+import { useTabRestoration, useScrollRestoration } from '../hooks/useRestoration';
 import {
   Heart, Users, BookOpen, Search, Filter, Trash2,
   Sparkles, MapPin, DollarSign, User, X, Calendar, Phone, GraduationCap

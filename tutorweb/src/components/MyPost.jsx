@@ -1,14 +1,15 @@
 // src/components/MyPost.jsx
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  MapPin, Calendar, Clock, Users, DollarSign, Heart,
+  MapPin, Calendar, Clock, Users, DollarSign, Heart, BahtSign,
   Filter, Search, Plus, X, ChevronDown, Mail, Phone, User, Star,
-  MoreHorizontal, Edit, Trash2, Flag
+  MoreHorizontal, Edit, Trash2, Flag, MessageSquareText, GraduationCap
 } from "lucide-react";
 import ReportModal from "./ReportModal";
 import MyPostForm from "./MyPostForm";
 import SmartSearch from "./SmartSearch";
 import { API_BASE } from '../config';
+import { useScrollRestoration } from '../hooks/useRestoration';
 
 /* ---------- helpers ---------- */
 function pickUser() {
@@ -49,7 +50,8 @@ const normalizeStudentPost = (p = {}) => ({
   pending_me: !!p.pending_me,
   fav_count: Number(p.fav_count ?? 0),
   favorited: !!p.favorited,
-  has_tutor: !!p.has_tutor, // [NEW]
+  has_tutor: !!p.has_tutor,
+  comment_count: Number(p.comment_count ?? 0),
   tutor: p.tutor || null,
   approved_tutor_name: p.approved_tutor_name || null,
   post_type: "student",
@@ -61,7 +63,7 @@ const normalizeStudentPost = (p = {}) => ({
     phone: p.phone || "",
     username: p.username || p.user?.username || "",
   },
-  cancel_requested: !!p.cancel_requested, // [NEW]
+  cancel_requested: !!p.cancel_requested,
 });
 
 const normalizeTutorPost = (p = {}) => {
@@ -97,6 +99,7 @@ const normalizeTutorPost = (p = {}) => {
     joined: !!p.joined,
     pending_me: !!p.pending_me,
     group_size: Number(p.group_size ?? p.meta?.group_size ?? 0),
+    comment_count: Number(p.comment_count ?? 0),
     post_type: "tutor",
     user: p.user || {
       first_name: first,
@@ -119,6 +122,28 @@ const postGradeLevelOptions = [
 ];
 
 const today = new Date().toISOString().split("T")[0];
+
+// --- Helper: แสดงผลวันที่และเวลาแบบหลายรายการ ---
+const DateTimeDisplay = ({ daysStr, timesStr }) => {
+  if (!daysStr) return <span>-</span>;
+
+  const daysArr = daysStr.split(',').map(d => d.trim());
+  const timesArr = (timesStr || "").split(',').map(t => t.trim());
+
+  return (
+    <ul className="list-disc pl-4 space-y-0.5">
+      {daysArr.map((day, idx) => {
+        const time = timesArr[idx] || timesArr[0] || "-"; // ถ้าไม่ได้ระบุเวลา ให้ดึงเวลาช่องแรกมาใช้
+        const formattedDate = new Date(day).toLocaleDateString("th-TH");
+        return (
+          <li key={idx} className="text-gray-700">
+            {formattedDate} <span className="text-blue-600 font-medium ml-1">({time})</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
 
 // --- Helper: ลิงก์สถานที่ไป Google Maps ---
 const LocationLink = ({ value }) => {
@@ -373,19 +398,8 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
     fetchPosts();
   }, [fetchPosts]);
 
-  // ✅ Restore Scroll Position after posts are loaded
-  useEffect(() => {
-    if (posts.length > 0) {
-      const savedScroll = localStorage.getItem("myPostScrollPosition");
-      if (savedScroll) {
-        // Delay to ensure the DOM has painted the list of posts
-        setTimeout(() => {
-          window.scrollTo(0, parseInt(savedScroll, 10));
-          localStorage.removeItem("myPostScrollPosition");
-        }, 150);
-      }
-    }
-  }, [posts]);
+  // ✅ Scroll Restoration (Automatically saves current position and restores it)
+  useScrollRestoration('mypost', [posts]);
 
 
 
@@ -876,58 +890,97 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                   <h3 className="text-xl font-bold">{post.subject}</h3>
                   <p className="mb-2 whitespace-pre-line">{post.description}</p>
 
-                  {/* Post Details */}
+                  {/* 🌟 Post Details นักเรียน */}
+                  {/* ========================================== */}
                   {post.post_type === "student" ? (
-                    <div className="text-sm text-gray-600 grid md:grid-cols-2 gap-y-1">
-                      <p><span className="font-bold text-red-500">📚 ระดับชั้น: </span> {post.grade_level}</p>
+                    <div className="space-y-3 mt-4 border-t border-gray-100 pt-3">
 
-                      {/* ✅ แก้ไข: ใช้ LocationLink */}
-                      <p className="flex items-start gap-1">
-                        <span className="font-bold shrink-0">📍 สถานที่: </span>
-                        <LocationLink value={post.location} />
-                      </p>
+                      {/* แถวที่ 1: ข้อมูลสรุป (ใช้ Flex Wrap เป็นป้าย Tag) */}
+                      <div className="flex flex-wrap gap-2 text-sm">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 text-blue-700 font-medium border border-blue-100">
+                          <GraduationCap size={16} className="shrink-0" />
+                          {post.grade_level}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-medium border border-emerald-100">
+                          <span className="text-emerald-600 bg-emerald-100 rounded-full w-5 h-5 flex items-center justify-center font-black text-xs">
+                            ฿
+                          </span>
+                          {post.budget} บาท/ชั่วโมง
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gray-50 text-gray-700 font-medium border border-gray-200">
+                          <LocationLink value={post.location} />
+                        </span>
+                      </div>
 
-                      <p><span className="font-bold">👥 จำนวนคน: </span> {post.group_size} คน</p>
-                      <p><span className="font-bold">💰 งบประมาณ: </span> {post.budget} บาท</p>
-                      <p><span className="font-bold">📅 วันสะดวก: </span> {post.preferred_days}</p>
-                      <p><span className="font-bold">⏰ เวลา: </span> {post.preferred_time}</p>
+                      {/* แถวที่ 2: กล่องวันและเวลาเรียน (แยกให้ชัดเจน) */}
+                      <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
+                        <div className="flex items-center gap-1.5 font-bold text-indigo-900 mb-2 text-sm">
+                          <Calendar size={16} /> วันที่และเวลาเรียน:
+                        </div>
+                        <div className="text-sm ml-1">
+                          <DateTimeDisplay daysStr={post.preferred_days} timesStr={post.preferred_time} />
+                        </div>
+                      </div>
 
-                      {/* ✅ แก้ไข: ใช้ ContactLink */}
-                      <p className="flex items-start gap-1">
-                        <span className="font-bold shrink-0">✉️ ข้อมูลติดต่อ: </span>
-                        <ContactLink value={post.contact_info} />
-                      </p>
+                      {/* แถวที่ 3: ข้อมูลติดต่อ & ติวเตอร์ */}
+                      <div className="flex flex-col gap-2 text-sm">
+                        <div className="flex items-start gap-2 bg-amber-50/50 p-2.5 rounded-lg border border-amber-100">
+                          <Mail size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                          <div>
+                            <span className="font-bold text-amber-900">ข้อมูลติดต่อ: </span>
+                            <ContactLink value={post.contact_info} />
+                          </div>
+                        </div>
 
-                      {/* แสดงชื่อติวเตอร์ที่สอน (ถ้ามี) */}
-                      {post.tutor && (
-                        <p className="md:col-span-2 flex items-start gap-1 mt-1 p-2 bg-blue-50 border border-blue-100 rounded-lg">
-                          <span className="font-bold text-blue-800 shrink-0">👨‍🏫 ติวเตอร์ที่สอน: </span>
-                          <span className="text-blue-900 font-semibold">{post.tutor.name} {post.tutor.lastname}</span>
-                        </p>
-                      )}
+                        {post.tutor && (
+                          <div className="flex items-start gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                            <span className="font-bold text-blue-800 shrink-0">👨‍🏫 ติวเตอร์ที่สอน: </span>
+                            <span className="text-blue-900 font-semibold">{post.tutor.name} {post.tutor.lastname}</span>
+                          </div>
+                        )}
+                      </div>
+
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-600 grid md:grid-cols-2 gap-y-1">
-                      <p>📚 ระดับชั้นที่สอน: {post.meta?.target_student_level}</p>
-                      <p>📅 วันที่สอน: {post.meta?.teaching_days}</p>
-                      <p>⏰ ช่วงเวลา: {post.meta?.teaching_time}</p>
 
-                      {/* ✅ แก้ไข: ใช้ LocationLink */}
-                      <p className="flex items-start gap-1">
-                        <span className="font-bold shrink-0">📍 สถานที่: </span>
-                        <LocationLink value={post.meta?.location} />
-                      </p>
+                    //  Post Details ติวเตอร์
+                    <div className="space-y-3 mt-4 border-t border-gray-100 pt-3">
 
-                      {typeof post.group_size === 'number' && post.group_size > 0 ? (
-                        <p>👥 จำนวนคน: {post.group_size} คน</p>
-                      ) : null}
-                      <p>💸 ราคา: {Number(post.meta?.price || 0).toFixed(2)} บาท/ชม.</p>
+                      {/* แถวที่ 1: ข้อมูลสรุป (ใช้ Flex Wrap เป็นป้าย Tag) */}
+                      <div className="flex flex-wrap gap-2 text-sm">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 text-blue-700 font-medium border border-blue-100" title={post.meta?.target_student_level}>
+                          <GraduationCap size={16} className="shrink-0" />
+                          <span className="truncate max-w-[150px]">{post.meta?.target_student_level}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-medium border border-emerald-100">
+                          <span className="text-emerald-600 bg-emerald-100 rounded-full w-5 h-5 flex items-center justify-center font-black text-xs">
+                            ฿
+                          </span>
+                          {Number(post.meta?.price || 0).toFixed(0)} บาท/ชั่วโมง
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gray-50 text-gray-700 font-medium border border-gray-200">
+                          <LocationLink value={post.meta?.location} />
+                        </span>
+                      </div>
 
-                      {/* ✅ แก้ไข: ใช้ ContactLink */}
-                      <p className="md:col-span-2 flex items-start gap-1">
-                        <span className="font-bold shrink-0">☎️ ติดต่อ: </span>
-                        <ContactLink value={post.meta?.contact_info} />
-                      </p>
+                      {/* แถวที่ 2: กล่องวันและเวลาเรียน (แยกให้ชัดเจนแบบมีพื้นหลัง) */}
+                      <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
+                        <div className="flex items-center gap-1.5 font-bold text-indigo-900 mb-2 text-sm">
+                          <Calendar size={16} /> วันที่และเวลาที่สะดวกสอน:
+                        </div>
+                        <div className="text-sm ml-1">
+                          <DateTimeDisplay daysStr={post.meta?.teaching_days} timesStr={post.meta?.teaching_time} />
+                        </div>
+                      </div>
+
+                      {/* แถวที่ 3: ข้อมูลติดต่อ */}
+                      <div className="flex items-start gap-2 bg-amber-50/50 p-2.5 rounded-lg border border-amber-100 text-sm">
+                        <Mail size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-bold text-amber-900">ช่องทางติดต่อ: </span>
+                          <ContactLink value={post.meta?.contact_info} />
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -941,11 +994,14 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                         }
                       }}
                     >
-                      เข้าร่วมแล้ว :{" "}
-                      <b className="underline">
+                      จำนวนผู้เรียน:{" "}
+                      <b className="underline text-blue-700">
                         {post.post_type === "tutor" ? (post.join_count || 0) : (post.join_count || 0) + 1} / {post.group_size}
                       </b>{" "}
                       คน
+                      <span className="text-gray-500 ml-1 text-xs">
+                        ({post.post_type === "student" ? "รวมเจ้าของโพสต์แล้ว, " : ""}ว่างอีก <span className="text-blue-700 font-semibold">{Math.max(0, post.group_size - (post.post_type === "tutor" ? (post.join_count || 0) : (post.join_count || 0) + 1))}</span> คน)
+                      </span>
                     </div>
 
 
@@ -953,6 +1009,20 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                       <button disabled={favBusy} onClick={() => toggleFavorite(post)} className={`flex items-center gap-1 px-3 py-1.5 rounded-full border transition ${post.favorited ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-white border-gray-200 text-gray-600'} disabled:opacity-60`}>
                         <Heart size={16} fill={post.favorited ? 'currentColor' : 'none'} />
                         <span className="text-sm">{Number(post.fav_count || 0)}</span>
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onOpenDetails) {
+                            localStorage.setItem("myPostScrollPosition", window.scrollY);
+                            onOpenDetails(post.id, 'mypost', post.post_type);
+                          }
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-full border bg-white border-gray-200 hover:bg-gray-50 text-gray-600 focus:outline-none transition-colors"
+                      >
+                        <MessageSquareText size={16} />
+                        <span className="text-sm">{Number(post.comment_count || 0)}</span>
                       </button>
 
                       {/* Action Buttons (Join/Unjoin) - LOGIC ที่แก้ไขให้ถูกต้อง */}

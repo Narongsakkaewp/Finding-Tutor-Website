@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Star, MapPin, User, Search, DollarSign, ExternalLink } from "lucide-react";
+import { useScrollRestoration } from '../hooks/useRestoration';
 
 // --------------------------- Components: ProfileImage --------------------------- (Duplicate from Home.jsx or import it if shared)
 import { API_BASE } from '../config';
@@ -8,6 +9,9 @@ export default function TutorSearchList({ searchKey, onOpen }) {
     const [tutors, setTutors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+
+    // ✅ Scroll Restoration
+    useScrollRestoration('tutor_search', [tutors, loading]);
 
     useEffect(() => {
         let ignore = false;

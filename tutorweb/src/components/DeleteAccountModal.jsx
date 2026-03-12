@@ -40,7 +40,7 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
 
-      alert("ลบบัญชีเรียบร้อยแล้ว ขอบคุณที่เคยใช้งานบริการของเราครับ");
+      alert(data.hint || "ลบบัญชีเรียบร้อยแล้ว ขอบคุณที่เคยใช้งานบริการของเราครับ");
       onLogout();
 
     } catch (err) {
@@ -115,7 +115,7 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
               </div>
               <h4 className="text-xl font-bold text-gray-800">ยืนยันการลบบัญชี?</h4>
               <p className="text-sm text-gray-500 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                การดำเนินการนี้ไม่สามารถย้อนกลับได้ ข้อมูลโปรไฟล์, โพสต์, และประวัติการใช้งานทั้งหมดของคุณจะถูกลบถาวร
+                บัญชีของคุณจะเข้าสู่สถานะระงับการใช้งาน ข้อมูลของคุณจะถูกซ่อนจากระบบ อย่างไรก็ตาม หากคุณเปลี่ยนใจ คุณสามารถกลับมาเข้าสู่ระบบเพื่อกู้คืนบัญชีนี้ได้ภายใน 30 วัน
               </p>
 
               <div className="pt-4 flex justify-center gap-3 w-full">
@@ -130,7 +130,7 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
                   disabled={loading}
                   className="flex-[2] px-4 py-3 bg-rose-600 text-white font-bold rounded-xl shadow-lg hover:bg-rose-700 transition-all flex items-center justify-center gap-2"
                 >
-                  {loading ? <Loader2 size={20} className="animate-spin" /> : "ยืนยันลบถาวร"}
+                  {loading ? <Loader2 size={20} className="animate-spin" /> : "ยืนยันลบบัญชี"}
                 </button>
               </div>
             </div>
@@ -140,3 +140,4 @@ export default function DeleteAccountModal({ isOpen, onClose, user, userType, on
     </div>
   );
 }
+

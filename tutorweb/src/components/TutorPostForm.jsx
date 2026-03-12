@@ -17,12 +17,16 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
         subject: "",
         description: "", // content in backend
         target_student_level: [],
-        teaching_days: "",
-        teaching_time: "",
         group_size: "",
         price: "",
         contact_info: ""
     });
+
+    // Date/Time list state
+    const [dateList, setDateList] = useState([]);
+    const [tempDate, setTempDate] = useState("");
+    const [tempTime, setTempTime] = useState("");
+    const today = new Date().toISOString().split("T")[0];
 
     // ✅ New State for Online/Onsite
     const [teachingMode, setTeachingMode] = useState("onsite"); // onsite | online
@@ -54,6 +58,24 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
             } else {
                 setTeachingMode("onsite");
             }
+        }
+
+        if (initialData) {
+            const daysStr = initialData.teaching_days;
+            const timesStr = initialData.teaching_time;
+            if (daysStr) {
+                const dArr = daysStr.split(',').map(d => d.trim());
+                const tArr = (timesStr || "").split(',').map(t => t.trim());
+                const loadedList = dArr.map((d, i) => ({
+                    date: d,
+                    time: tArr[i] || ""
+                })).filter(x => x.date);
+                setDateList(loadedList);
+            } else {
+                setDateList([]);
+            }
+        } else {
+            setDateList([]);
         }
 
         // Initialize contact parsing if editing
@@ -99,11 +121,29 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
         setFormData(prev => ({ ...prev, location: address }));
     };
 
+    const handleAddDateTime = () => {
+        if (!tempDate) return alert("กรุณาเลือกวันที่");
+        if (dateList.some(item => item.date === tempDate)) {
+            return alert("คุณได้เลือกวันที่นี้ไปแล้ว");
+        }
+        setDateList([...dateList, { date: tempDate, time: tempTime }]);
+        setTempDate("");
+        setTempTime("");
+    };
+
+    const handleRemoveDateTime = (indexToRemove) => {
+        setDateList(dateList.filter((_, idx) => idx !== indexToRemove));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!tutorId) return alert("กรุณาเข้าสู่ระบบก่อนโพสต์");
 
-        const required = ["subject", "description", "teaching_days", "teaching_time", "price"];
+        if (dateList.length === 0) {
+            return alert("กรุณากำหนดวันและเวลาที่ต้องการสอนอย่างน้อย 1 วัน");
+        }
+
+        const required = ["subject", "description", "price"];
         for (const k of required) {
             if (!String(formData[k] || "").trim()) return alert(`กรุณากรอกข้อมูลให้ครบ (${k})`);
         }
@@ -133,15 +173,16 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
                 ? `${API_BASE}/api/tutor-posts/${initialData.id}`
                 : `${API_BASE}/api/tutor-posts`;
 
+            const daysString = dateList.map(item => item.date).join(', ');
+            const timesString = dateList.map(item => item.time || "--:--").join(', ');
+
             const payload = {
                 tutor_id: tutorId,
                 subject: formData.subject.trim(),
                 description: formData.description.trim(), // Check backend mapping (content vs description)
                 target_student_level: formData.target_student_level.join(','),
-                teaching_days: formData.teaching_days,
-                teaching_time: formData.teaching_time,
-                teaching_days: formData.teaching_days,
-                teaching_time: formData.teaching_time,
+                teaching_days: daysString,
+                teaching_time: timesString,
                 location: teachingMode === 'online'
                     ? `Online: ${platform === 'Other' ? customPlatform : platform}`
                     : formData.location.trim(),
@@ -206,15 +247,68 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
             </div>
 
             {/* วันและเวลาที่สะดวก */}
-            <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">วันที่สอน</label>
-                    <input type="date" name="teaching_days" value={formData.teaching_days} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none" />
+            <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                <label className="block text-sm font-bold text-gray-700 mb-3">
+                    กำหนดวันและเวลาที่ต้องการสอน <span className="text-red-500">*</span>
+                </label>
+                <div className="flex flex-wrap items-end gap-3 mb-4">
+                    <div className="flex-1 min-w-[140px]">
+                        <label className="block text-xs text-gray-500 mb-1">วันที่</label>
+                        <input
+                            type="date"
+                            min={today}
+                            value={tempDate}
+                            onChange={(e) => setTempDate(e.target.value)}
+                            className="border border-gray-300 rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                    </div>
+                    <div className="flex-1 min-w-[120px]">
+                        <label className="block text-xs text-gray-500 mb-1">เวลา</label>
+                        <input
+                            type="time"
+                            value={tempTime}
+                            onChange={(e) => setTempTime(e.target.value)}
+                            className="border border-gray-300 rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleAddDateTime}
+                        className="bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-bold hover:bg-indigo-700 flex items-center gap-1 transition-colors shadow-sm"
+                    >
+                        เพิ่ม
+                    </button>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ช่วงเวลาที่สอน</label>
-                    <input type="time" name="teaching_time" value={formData.teaching_time} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
+
+                {dateList.length > 0 ? (
+                    <ul className="space-y-2 mt-2">
+                        {dateList.map((item, idx) => (
+                            <li key={idx} className="flex items-center justify-between bg-white p-3 px-4 rounded-lg border border-gray-200 shadow-sm">
+                                <span className="flex items-center gap-3 text-sm text-gray-700 font-medium">
+                                    <span className="flex items-center gap-1.5 text-indigo-600">
+                                        {new Date(item.date).toLocaleDateString("th-TH")}
+                                    </span>
+                                    {item.time && (
+                                        <span className="flex items-center gap-1.5 text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md">
+                                            {item.time}
+                                        </span>
+                                    )}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveDateTime(idx)}
+                                    className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-md transition-colors"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <div className="text-sm text-gray-400 text-center py-5 border-2 border-dashed border-indigo-100 rounded-lg bg-white/50">
+                        ยังไม่ได้เลือกวันและเวลา
+                    </div>
+                )}
             </div>
 
             {/* สถานที่ (With Toggle) */}

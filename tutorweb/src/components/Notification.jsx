@@ -2,15 +2,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Review from "./Review";
 import { API_BASE } from '../config';
+import { useScrollRestoration } from '../hooks/useRestoration';
 import {
-  Bell, Check, Clock, ChevronRight, User, BookOpen, Calendar, CheckCircle, Shield
+  Bell, Check, Clock, ChevronRight, User, BookOpen, Calendar, CheckCircle, Shield, MessageCircle, Star
 } from "lucide-react";
 
-function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
+function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile }) {
   const [notifications, setNotifications] = useState([]);
   const [scheduleAlerts, setScheduleAlerts] = useState([]); // New Real-time alerts
   const [showMoreOlder, setShowMoreOlder] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // ✅ Scroll Restoration
+  useScrollRestoration('notification', [notifications, scheduleAlerts, loading]);
 
   const normalizedUserId = useMemo(() => {
     if (userId == null) return 0;
@@ -181,6 +185,10 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
 
     // --- Handle Review Request ---
     if (item.type === 'review_request') {
+      if (item.is_reviewed === 1) {
+        alert("คุณได้ส่งรีวิวสำหรับวิชานี้ไปแล้ว");
+        return;
+      }
       setReviewLoading(true);
       const tutor = await fetchTutorData(item.actor_id);
       setReviewLoading(false);
@@ -201,11 +209,23 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
       return;
     }
 
+    // --- Handle Received Review (Tutor Views Profile) ---
+    if (item.type === 'review_received') {
+      if (typeof onViewProfile === 'function') {
+        onViewProfile(userId); // View own profile
+      }
+      return;
+    }
+
     let path = null;
     if (item.type === 'join_request') path = `/feed?tab=student&open=${item.related_id}`;
     else if (item.type === 'tutor_join_request') path = `/feed?tab=tutor&open=${item.related_id}`;
     else if (item.type === 'join_approved') path = `/feed?tab=student&open=${item.related_id}`; // หรือไปที่ calendar
     else if (item.type === 'tutor_join_approved') path = `/feed?tab=tutor&open=${item.related_id}`;
+    else if (item.type === 'comment' || item.type === 'mention') {
+      const tab = item.inferred_post_type === 'tutor' ? 'tutor' : 'student';
+      path = `/feed?tab=${tab}&open=${item.related_id}`;
+    }
 
     if (typeof onOpenPost === "function" && path) {
       const url = new URL(path, window.location.origin);
@@ -269,6 +289,8 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
     if (type === 'offer') { badgeColor = "bg-purple-500"; BadgeIcon = BookOpen; }
     if (type.includes('schedule')) { badgeColor = "bg-orange-500"; BadgeIcon = Calendar; }
     if (type === 'system_alert') { badgeColor = "bg-blue-600"; BadgeIcon = Shield; } // ✅ System Alert
+    if (type === 'comment' || type === 'mention') { badgeColor = "bg-blue-400"; BadgeIcon = MessageCircle; }
+    if (type.includes('review')) { badgeColor = "bg-yellow-500"; BadgeIcon = Star; }
 
     return (
       <div className="relative shrink-0">
@@ -393,6 +415,32 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne }) {
               {item.message || `ได้เวลาให้คะแนนการเรียนวิชา ${subjectText}`}
             </span>
           </div>
+        );
+        break;
+      case "review_received":
+        content = (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-yellow-500 flex items-center gap-2">
+              ⭐ ได้รับรีวิวใหม่
+            </span>
+            <span className="text-gray-700">
+              {item.message || `นักเรียนได้รีวิวการสอนวิชา ${subjectText} ของคุณแล้ว`}
+            </span>
+          </div>
+        );
+        break;
+      case "comment":
+        content = (
+          <span>
+            <span className="font-bold text-gray-900">{actorName}</span> แสดงความคิดเห็นใน <span className="font-semibold text-indigo-600">"{subjectText}"</span>
+          </span>
+        );
+        break;
+      case "mention":
+        content = (
+          <span>
+            <span className="font-bold text-gray-900">{actorName}</span> กล่าวถึงคุณใน <span className="font-semibold text-indigo-600">"{subjectText}"</span>
+          </span>
         );
         break;
       default:

@@ -1,6 +1,7 @@
-// src/components/MyPostDetails.jsx
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { API_BASE } from '../config';
+import CommentSection from './CommentSection';
+import { GraduationCap, DollarSign, MapPin, Calendar, Mail, Clock } from "lucide-react";
 
 
 const ProfileImage = ({ src, alt, className }) => {
@@ -23,6 +24,63 @@ const ProfileImage = ({ src, alt, className }) => {
         }
       }}
     />
+  );
+};
+
+// --- Helper Components สำหรับตกแต่ง UI ---
+const LocationLink = ({ value }) => {
+  if (!value) return <span>-</span>;
+  const lowerValue = value.toLowerCase();
+  if (lowerValue.includes("online") || lowerValue.includes("ออนไลน์")) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-bold bg-green-100 text-green-800 border border-green-200">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+        </span>
+        {value}
+      </span>
+    );
+  }
+  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline hover:text-blue-800 break-words font-medium flex items-center gap-1" title="เปิดใน Google Maps">
+      <MapPin size={14} className="shrink-0" />
+      {value}
+    </a>
+  );
+};
+
+const ContactLink = ({ value }) => {
+  if (!value) return <span>-</span>;
+  const text = value.trim();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (emailRegex.test(text)) return <a href={`mailto:${text}`} className="text-indigo-600 hover:underline">{text}</a>;
+  const cleanNumber = text.replace(/[- \(\)]/g, '');
+  if (/^0\d{8,9}$/.test(cleanNumber)) return <a href={`tel:${cleanNumber}`} className="text-emerald-600 hover:underline">{text}</a>;
+  const lineMatch = text.match(/^(?:line|id|line\s*id)\s*[:\.]?\s*(.+)/i);
+  if (lineMatch) {
+    return <a href={`https://line.me/ti/p/~${lineMatch[1]}`} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline font-medium" title="เปิดใน Line">{text}</a>;
+  }
+  return <span>{text}</span>;
+};
+
+const DateTimeDisplay = ({ daysStr, timesStr }) => {
+  if (!daysStr) return <span>-</span>;
+  const daysArr = daysStr.split(',').map(d => d.trim());
+  const timesArr = (timesStr || "").split(',').map(t => t.trim());
+  return (
+    <ul className="list-disc pl-4 space-y-0.5">
+      {daysArr.map((day, idx) => {
+        const time = timesArr[idx] || timesArr[0] || "-";
+        const formattedDate = new Date(day).toLocaleDateString("th-TH");
+        return (
+          <li key={idx} className="text-gray-700">
+            {formattedDate} <span className="text-blue-600 font-medium ml-1">({time})</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 };
 
@@ -175,50 +233,6 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
   // ล็อกให้ปุ่มอนุมัติ/ปฏิเสธแสดงเสมอ
   const canModerate = true;
 
-  // เพิ่ม State สำหรับปุ่ม
-  const [busy, setBusy] = useState(false);
-  const userType = pickUserType();
-  const isUserTutor = userType === "tutor"; // คนดูเป็นติวเตอร์ไหม
-
-  const handleJoin = async () => {
-    if (isTutorPost) return; // Student posts only for now
-    if (isUserTutor) {
-      if (!window.confirm("ยืนยันที่จะเสนอสอนให้นักเรียนคนนี้?")) return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/student_posts/${postId}/join`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: me })
-      });
-      const data = await res.json();
-      if (!res.ok) return alert(data?.message || "Error joining");
-
-      // Update local state
-      setPost(p => ({ ...p, joined: true, pending_me: true, join_count: data.join_count }));
-    } catch (e) { alert(e.message); }
-    finally { setBusy(false); }
-  };
-
-  const handleUnjoin = async () => {
-    if (isTutorPost) return;
-    if (!window.confirm(isUserTutor ? "ต้องการยกเลิกข้อเสนอ?" : "ต้องการยกเลิกคำขอ?")) return;
-
-    setBusy(true);
-    try {
-      // Use query param for user_id to match server expectation
-      const res = await fetch(`${API_BASE}/api/student_posts/${postId}/join?user_id=${me}`, {
-        method: "DELETE"
-      });
-      const data = await res.json();
-      if (!res.ok) return alert(data?.message || "Error unjoining");
-
-      // Update local state: joined->false
-      setPost(p => ({ ...p, joined: false, pending_me: false, join_count: data.join_count }));
-    } catch (e) { alert(e.message); }
-    finally { setBusy(false); }
-  };
 
   // tutor?
   const isTutorPost = useMemo(() => {
@@ -280,63 +294,95 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-3xl mx-auto p-4">
-        <button
-          onClick={onBack}
-          className="mb-4 px-3 py-1 rounded border hover:bg-gray-50"
-        >
-          {backLabel}
-        </button>
+    <div className="min-h-screen bg-gray-50 py-6">
+      {/* 🌟 1. ปรับ Container เป็น max-w-4xl และใช้ flex-col เพื่อบังคับให้ทุกกล่องกว้างเท่ากันเป๊ะๆ */}
+      <div className="max-w-4xl mx-auto px-4 flex flex-col gap-6">
 
-        <div className="bg-white border rounded-2xl p-5 shadow-sm">
-          {/* ข้อมูลโพสต์ */}
-          <div className="flex items-center gap-3 mb-3">
+        {/* ปุ่มกลับ */}
+        <div>
+          <button
+            onClick={onBack}
+            className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 font-medium shadow-sm transition-colors"
+          >
+            {backLabel}
+          </button>
+        </div>
+
+        {/* 🌟 2. กล่องรายละเอียดโพสต์ (ใส่ w-full เพื่อให้ขยายเต็มพื้นที่ Container) */}
+        <div className="w-full bg-white border border-gray-200 rounded-2xl p-6 md:p-8 shadow-sm">
+          {/* ข้อมูล Header โพสต์ */}
+          <div className="flex items-center gap-4 mb-5">
             <ProfileImage
               src={ownerAvatar}
               alt="avatar"
-              className="w-12 h-12 rounded-full"
+              className="w-14 h-14 rounded-full object-cover border border-gray-100 shadow-sm"
             />
-            {/* <img
-              src={ownerAvatar}
-              onError={(e) => { e.target.onerror = null; e.target.src = "/blank_avatar.jpg"; }}
-              alt="avatar"
-              className="w-12 h-12 rounded-full"
-            /> */}
             <div>
-              <div className="font-semibold">{ownerName}</div>
-              <div className="text-xs text-gray-500">
+              <div className="text-lg font-bold text-gray-900">{ownerName}</div>
+              <div className="text-sm text-gray-500">
                 {new Date(post.createdAt).toLocaleString()}
               </div>
             </div>
           </div>
 
-          <h1 className="text-2xl font-bold">{post.subject}</h1>
-          <p className="mt-2 whitespace-pre-line">{post.description}</p>
+          <h1 className="text-2xl md:text-3xl font-black text-gray-900 mb-3">{post.subject}</h1>
+          <p className="text-gray-700 whitespace-pre-line text-base leading-relaxed mb-6">{post.description}</p>
 
-          <div className="grid sm:grid-cols-2 gap-y-1 text-sm text-gray-700 mt-4">
-            <div>📍 สถานที่: {locationText}</div>
-            <div>👥 จำนวนคน: {capacity ? capacity : "-"}</div>
-            <div>💰 งบประมาณ: {money} บาท</div>
-            <div>📅 วันสะดวก: {dayText}</div>
-            <div>⏰ เวลา: {timeText}</div>
-            <div>✉️ ติดต่อ: {contactText}</div>
+          {/* ========================================== */}
+          {/* 🌟 Post Details (Layout ใหม่ + ไอคอนเงินบาท) */}
+          {/* ========================================== */}
+          <div className="space-y-4 border-t border-gray-100 pt-6">
+
+            {/* แถวที่ 1: ป้าย Tag สรุปข้อมูลหลัก */}
+            <div className="flex flex-wrap gap-2 text-sm">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-medium border border-blue-100">
+                <GraduationCap size={16} className="shrink-0" />
+                {post.grade_level || post.meta?.target_student_level || "ไม่ระบุ"}
+              </span>
+
+              {/* 🌟 เปลี่ยนไอคอนดอลลาร์ เป็นสัญลักษณ์ ฿ (Baht) สไตล์คนไทย */}
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 font-bold border border-emerald-200 shadow-sm">
+                <span className="text-emerald-600 bg-emerald-100 rounded-full w-5 h-5 flex items-center justify-center font-black text-xs">
+                  ฿
+                </span>
+                {money} บาท/ชั่วโมง
+              </span>
+
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-50 text-gray-700 font-medium border border-gray-200">
+                <LocationLink value={locationText} />
+              </span>
+            </div>
+
+            {/* แถวที่ 2: กล่องวันและเวลา */}
+            <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+              <div className="flex items-center gap-2 font-bold text-indigo-900 mb-2 text-sm">
+                <Calendar size={18} className="text-indigo-600" />
+                {isTutorPost ? "วันที่และเวลาที่สะดวกสอน:" : "วันที่และเวลาเรียน:"}
+              </div>
+              <div className="text-sm ml-6">
+                <DateTimeDisplay daysStr={dayText} timesStr={timeText} />
+              </div>
+            </div>
+
+            {/* แถวที่ 3: กล่องข้อมูลติดต่อ */}
+            <div className="flex items-start gap-2 bg-amber-50/50 p-4 rounded-xl border border-amber-100 text-sm">
+              <Mail size={18} className="text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <span className="font-bold text-amber-900">ช่องทางการติดต่อ: </span>
+                <ContactLink value={contactText} />
+              </div>
+            </div>
+
           </div>
+          {/* ========================================== */}
 
-          {/* ติวเตอร์ (ย้ายไปรวมกับบล็อกชื่อผู้เข้าร่วมแล้ว) */}
-
-
-          {/* ✅ แสดงผู้เข้าร่วมเป็น 2/2 ถ้ามีจำนวนคน */}
+          {/* ✅ แสดงผู้เข้าร่วม (คลิกเพื่อเลื่อนลงไปดูได้) */}
           <div
-            className="mt-4 text-sm text-gray-600 border-t pt-3 cursor-pointer hover:text-blue-600"
+            className="mt-6 text-sm text-gray-600 border-t border-gray-100 pt-5 cursor-pointer hover:text-blue-600 transition-colors"
             onClick={() => {
               const el = document.getElementById("joiners-section");
               if (!el) return;
-
-              // เลื่อนหน้าจอลงไป
               el.scrollIntoView({ behavior: "smooth", block: "start" });
-
-              // ไฮไลต์ให้เห็นชัดว่ามาถึงตรงไหน
               el.classList.add("bg-yellow-100");
               setTimeout(() => {
                 el.classList.remove("bg-yellow-100");
@@ -345,11 +391,14 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
           >
             {capacity > 0 ? (
               <>
-                ผู้เข้าร่วม:{" "}
-                <b className="underline">
+                จำนวนผู้เรียน:{" "}
+                <b className="underline text-blue-700">
                   {joinedCount} / {capacity}
                 </b>{" "}
                 คน
+                <span className="text-gray-500 ml-1">
+                  ({!isTutorPost ? "รวมเจ้าของโพสต์แล้ว, " : ""}ว่างอีก <span className="text-green-600 font-semibold">{Math.max(0, capacity - joinedCount)}</span> คน)
+                </span>
                 {post.joined && (
                   <span className="ml-2 text-emerald-600 font-medium">
                     • คุณเข้าร่วมแล้ว
@@ -358,8 +407,9 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
               </>
             ) : (
               <>
-                ผู้เข้าร่วม:{" "}
-                <b className="underline">{joinedCount}</b> คน
+                จำนวนผู้เรียน:{" "}
+                <b className="underline text-blue-700">{joinedCount}</b> คน
+                {!isTutorPost && <span className="text-gray-500 ml-1">(รวมเจ้าของโพสต์แล้ว)</span>}
                 {post.joined && (
                   <span className="ml-2 text-emerald-600 font-medium">
                     • คุณเข้าร่วมแล้ว
@@ -369,9 +419,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
             )}
           </div>
 
-
-
-          {/* แสดงผู้เข้าร่วมและคำขอ (คำขอจะเห็นเฉพาะเจ้าของโพสต์) */}
+          {/* แสดงผู้เข้าร่วมและคำขอ */}
           <JoinRequestsManager
             postId={Number(postId)}
             canModerate={canModerate}
@@ -413,8 +461,21 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
               }
             }}
           />
-
         </div>
+
+        {/* 🌟 3. ส่วนความคิดเห็น (จับมาอยู่ใน Grid หลัก เพื่อให้ขยายกว้างเท่ากับโพสต์ด้านบนเป๊ะ 100%) */}
+        <div className="w-full">
+          <CommentSection
+            postId={postId}
+            postType={String(postType || "").toLowerCase().includes("tutor") ? "tutor" : "student"}
+            postOwnerId={post.owner_id || post.student_id || post.user_id}
+            currentUser={{
+              user_id: me,
+              profile_picture_url: JSON.parse(localStorage.getItem("user") || "{}")?.profile_picture_url || JSON.parse(localStorage.getItem("user") || "{}")?.profile_image
+            }}
+          />
+        </div>
+
       </div>
     </div>
   );
@@ -727,7 +788,6 @@ function JoinRequestsManager({ postId, postOwnerId, ownerName, ownerProfile, me,
           )}
         </>
       )}
-
     </div>
   );
 }

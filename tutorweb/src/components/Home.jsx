@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import {
   Heart, MapPin, Calendar, Search, Star, BookOpen, Users, ChevronRight,
   MessageSquarePlus, CalendarCheck, Sparkles, GraduationCap, Clock,
-  MonitorPlay, CheckCircle, Tag, DollarSign, User, Phone, Mail
+  MonitorPlay, CheckCircle, Tag, DollarSign, User, Phone, Mail, MessageSquareText
 } from "lucide-react";
 import AdminDashboard from './AdminDashboard';
 import ManageMyPosts from './ManageMyPosts';
@@ -11,6 +11,7 @@ import TutorSearchList from './TutorSearchList';
 import SmartSearch from './SmartSearch';
 import RecommendedTutors from './RecommendedTutors';
 import { API_BASE } from '../config';
+import { useTabRestoration, useScrollRestoration } from '../hooks/useRestoration';
 
 /** ---------------- Config ---------------- */
 /** ---------------- Utils ----------------- */
@@ -400,6 +401,7 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
               })()}
               {price > 0 && <Badge icon={DollarSign} text={`฿${price}`} color={isExpired ? "gray" : "emerald"} />}
               {/* {days && <Badge icon={Calendar} text={days} color="blue" />} */}
+              {p.comment_count > 0 && <Badge icon={MessageSquareText} text={`${p.comment_count} ความคิดเห็น`} color={isExpired ? "gray" : "blue"} />}
             </div>
 
             {isExpired ? (
@@ -411,7 +413,10 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
                 {isStudent && (
                   <div className="mt-3 pt-3 border-t border-gray-50 flex items-center flex-wrap justify-between gap-2 text-xs text-gray-500">
                     <div className="flex flex-col gap-1">
-                      <span>เข้าร่วมแล้ว: <b>{(p.join_count || 0) + 1}</b> / {p.group_size || 0} คน</span>
+                      <span className="flex flex-col gap-0.5">
+                        <span>จำนวนผู้เรียน: <b>{(p.join_count || 0) + 1} / {p.group_size || 0}</b> คน</span>
+                        <span className="text-[10px] text-gray-400">(รวมเจ้าของ, ว่างอีก {Math.max(0, (p.group_size || 0) - ((p.join_count || 0) + 1))} คน)</span>
+                      </span>
                       {p.has_tutor && (
                         <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-700 font-bold border border-purple-200 inline-block">
                           {p.tutor?.name ? `ได้ติวเตอร์แล้ว (${p.tutor.name})` : (p.approved_tutor_name ? `ได้ติวเตอร์แล้ว (${p.approved_tutor_name})` : 'ได้ติวเตอร์แล้ว')}
@@ -422,7 +427,10 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
                 )}
                 {!isStudent && (
                   <div className="mt-3 pt-3 border-t border-gray-50 flex items-center justify-between text-xs text-gray-500">
-                    <span>ผู้เข้าร่วม: <b>{p.join_count || 0}</b> / {p.group_size || 0} คน</span>
+                    <span className="flex flex-col gap-0.5">
+                      <span>จำนวนผู้เรียน: <b>{p.join_count || 0} / {p.group_size || 0}</b> คน</span>
+                      <span className="text-[10px] text-gray-400">(ว่างอีก {Math.max(0, (p.group_size || 0) - (p.join_count || 0))} คน)</span>
+                    </span>
                   </div>
                 )}
 
@@ -626,8 +634,11 @@ function HomeStudent() {
   const [loadErr, setLoadErr] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // ✅ New State: แท็บการค้นหา
-  const [searchTab, setSearchTab] = useState("tutors");
+  // ✅ Tabs State (Preserved)
+  const [searchTab, setSearchTab] = useTabRestoration('home_search', 'tutors');
+
+  // ✅ Scroll Restoration
+  useScrollRestoration('home', [tutors, loading, query]);
 
   // ✅ New State: Filters
   const [filters, setFilters] = useState({

@@ -109,7 +109,7 @@ async function sendReviewReminderEmail(toEmail, details) {
         const subject = `⭐ ให้คะแนนการเรียนของคุณ: ${courseName}`;
 
         const body = `
-            <p>สวัสดีค่ะ,</p>
+            <p>สวัสดีครับ,</p>
             <p>การเรียนวิชา <span class="highlight">"${courseName}"</span> เมื่อวันที่ <strong>${date}</strong> กับ <strong>${partnerName}</strong> เป็นอย่างไรบ้างคะ?</p>
             
             <p>ความคิดเห็นของคุณสำคัญมาก! ช่วยให้คะแนนและรีวิวเพื่อเป็นประโยชน์ต่อเพื่อนๆ ในชุมชนของเรา</p>
@@ -168,7 +168,7 @@ async function sendClassReminderEmail(toEmail, details) {
             
             <div class="info-box">
                 <p><strong>วิชา:</strong> ${courseName}</p>
-                <p><strong>สอนโดย:</strong> ${tutorName || 'ไม่ระบุ'}</p>
+                <p><strong>ชื่อผู้สอน:</strong> ${tutorName || 'ไม่ระบุ'}</p>
                 <p><strong>เรียนกับ:</strong> ${studentNames || 'ไม่ระบุ'}</p>
                 <p><strong>📅 วันที่:</strong> ${date}</p>
                 <p><strong>⏰ เวลา:</strong> ${time || 'ตามตกลง'}</p>

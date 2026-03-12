@@ -5,6 +5,7 @@ import {
     MapPin, Users, DollarSign, CalendarCheck, Edit, Trash2, MoreHorizontal, ArrowLeft
 } from "lucide-react";
 import TutorPostForm from "./TutorPostForm";
+import { useScrollRestoration } from '../hooks/useRestoration';
 import { API_BASE } from '../config';
 
 /* ---------- helpers ---------- */
@@ -56,6 +57,8 @@ const normalizeTutorPost = (p = {}) => {
         joined: !!p.joined,
         pending_me: !!p.pending_me,
         group_size: Number(p.group_size ?? p.meta?.group_size ?? 0),
+        comment_count: Number(p.comment_count ?? 0),
+        comment_count: Number(p.comment_count ?? 0),
         post_type: "tutor",
         user: p.user || {
             first_name: first,
@@ -154,6 +157,9 @@ export default function ManageMyPosts({ onBack }) {
     // Edit State
     const [editingPost, setEditingPost] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+    // ✅ Scroll Restoration
+    useScrollRestoration('manage_posts', [posts, loading]);
 
     const fetchMyPosts = useCallback(async () => {
         if (!tutorId) return;
@@ -306,3 +312,7 @@ export default function ManageMyPosts({ onBack }) {
         </div>
     );
 }
+
+
+
+
