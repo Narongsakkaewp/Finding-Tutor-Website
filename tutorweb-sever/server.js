@@ -1723,8 +1723,8 @@ async function doJoinUnified(type, postId, me) {
     if (cfg.joinsTable === 'tutor_post_joins') {
       await conn.query(
         `INSERT INTO tutor_post_joins
-          (tutor_post_id, user_id, status, requested_at, name, lastname)
-         SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
+          (tutor_post_id, user_id, status, requested_at, name, lastname, joined_at)
+         SELECT ?, ?, 'pending', NOW(), r.name, r.lastname, NULL
          FROM register r
          WHERE r.user_id = ?
          ON DUPLICATE KEY UPDATE
@@ -1739,8 +1739,8 @@ async function doJoinUnified(type, postId, me) {
       // student_post_joins
       await conn.query(
         `INSERT INTO student_post_joins
-          (student_post_id, user_id, status, requested_at, name, lastname)
-         SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
+          (student_post_id, user_id, status, requested_at, name, lastname, joined_at)
+         SELECT ?, ?, 'pending', NOW(), r.name, r.lastname, NULL
          FROM register r
          WHERE r.user_id = ?
          ON DUPLICATE KEY UPDATE
@@ -4105,8 +4105,8 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     if (isTutor) {
       // --- TUTOR: ลงใน student_post_offers ---
       await pool.query(
-        `INSERT INTO student_post_offers (student_post_id, tutor_id, status, requested_at, name, lastname)
-          SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
+        `INSERT INTO student_post_offers (student_post_id, tutor_id, status, requested_at, name, lastname, joined_at)
+          SELECT ?, ?, 'pending', NOW(), r.name, r.lastname, NULL
           FROM register r WHERE r.user_id = ?
           ON DUPLICATE KEY UPDATE
             status = IF(student_post_offers.status = 'approved', student_post_offers.status, 'pending'),
@@ -4124,8 +4124,8 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
     } else {
       // --- STUDENT: ลงใน student_post_joins ---
       await pool.query(
-        `INSERT INTO student_post_joins (student_post_id, user_id, status, requested_at, name, lastname)
-          SELECT ?, ?, 'pending', NOW(), r.name, r.lastname
+        `INSERT INTO student_post_joins (student_post_id, user_id, status, requested_at, name, lastname, joined_at)
+          SELECT ?, ?, 'pending', NOW(), r.name, r.lastname, NULL
           FROM register r WHERE r.user_id = ?
           ON DUPLICATE KEY UPDATE
             status = IF(student_post_joins.status = 'approved', student_post_joins.status, 'pending'),
