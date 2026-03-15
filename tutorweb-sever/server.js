@@ -2124,12 +2124,13 @@ app.get('/api/student_posts/:id/joiners', async (req, res) => {
         r.name,
         r.lastname,
         r.username,
-        sprof.profile_picture_url,
+        COALESCE(spro.profile_picture_url, tpro.profile_picture_url) AS profile_picture_url,
         j.joined_at,
         j.status
       FROM student_post_joins j
       JOIN register r ON r.user_id = j.user_id
-      LEFT JOIN student_profiles sprof ON r.user_id = sprof.user_id
+      LEFT JOIN student_profiles spro ON r.user_id = spro.user_id
+      LEFT JOIN tutor_profiles tpro ON r.user_id = tpro.user_id
       WHERE j.student_post_id = ? AND j.status = 'approved'
       ORDER BY j.joined_at ASC
     `, [postId]);
@@ -2152,10 +2153,12 @@ app.get('/api/tutor_posts/:id/joiners', async (req, res) => {
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid post id' });
 
     const [rows] = await pool.query(
-      `SELECT j.user_id, j.joined_at, r.name, r.lastname, r.username, sprof.profile_picture_url
+      `SELECT j.user_id, j.joined_at, r.name, r.lastname, r.username, 
+              COALESCE(spro.profile_picture_url, tpro.profile_picture_url) AS profile_picture_url
        FROM tutor_post_joins j
        LEFT JOIN register r ON r.user_id = j.user_id
-       LEFT JOIN student_profiles sprof ON r.user_id = sprof.user_id
+       LEFT JOIN student_profiles spro ON r.user_id = spro.user_id
+       LEFT JOIN tutor_profiles tpro ON r.user_id = tpro.user_id
       WHERE j.tutor_post_id = ? AND j.status = 'approved'
       ORDER BY j.joined_at ASC, j.user_id ASC`,
       [postId]
@@ -2189,11 +2192,13 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     const sqlStudent = `
       SELECT 
         j.student_post_id, j.user_id, j.status, j.requested_at,
-        j.name, j.lastname, r.email, r.username, sprof.profile_picture_url,
+        j.name, j.lastname, r.email, r.username, 
+        COALESCE(spro.profile_picture_url, tpro.profile_picture_url) AS profile_picture_url,
         'student' AS request_type
       FROM student_post_joins j
       LEFT JOIN register r ON r.user_id = j.user_id
-      LEFT JOIN student_profiles sprof ON r.user_id = sprof.user_id
+      LEFT JOIN student_profiles spro ON r.user_id = spro.user_id
+      LEFT JOIN tutor_profiles tpro ON r.user_id = tpro.user_id
       WHERE j.student_post_id = ? ${useFilter ? 'AND j.status = ?' : ''}
     `;
 
@@ -2201,11 +2206,13 @@ app.get('/api/student_posts/:id/requests', async (req, res) => {
     const sqlTutor = `
       SELECT 
         o.student_post_id, o.tutor_id AS user_id, o.status, o.requested_at,
-        o.name, o.lastname, r.email, r.username, tp.profile_picture_url,
+        o.name, o.lastname, r.email, r.username, 
+        COALESCE(spro.profile_picture_url, tpro.profile_picture_url) AS profile_picture_url,
         'tutor' AS request_type
       FROM student_post_offers o
       LEFT JOIN register r ON r.user_id = o.tutor_id
-      LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+      LEFT JOIN student_profiles spro ON r.user_id = spro.user_id
+      LEFT JOIN tutor_profiles tpro ON r.user_id = tpro.user_id
       WHERE o.student_post_id = ? ${useFilter ? 'AND o.status = ?' : ''}
     `;
 
