@@ -870,7 +870,6 @@ app.get('/api/tutors', async (req, res) => {
 
 // ---------- โพสต์ติวเตอร์ (ฟีด) ----------
 app.get('/api/tutor-posts', async (req, res) => {
-  console.log("📩 /api/tutor-posts called:", req.query);
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 100, 500);
@@ -883,36 +882,30 @@ app.get('/api/tutor-posts', async (req, res) => {
     const where = [];
     const params = [];
 
-    // --- เพิ่ม Logic ค้นหา (Search) ---
     if (Number.isInteger(tutorId)) {
       where.push('tp.tutor_id = ?');
       params.push(tutorId);
     }
 
-    // --- Advanced Filters ---
     const minPrice = Number(req.query.minPrice) || 0;
     const maxPrice = Number(req.query.maxPrice) || 999999;
     const locFilter = (req.query.location || '').trim();
     const gradeFilter = (req.query.gradeLevel || '').trim();
     const minRating = Number(req.query.minRating) || 0;
 
-    // Filter Price
     where.push('tp.price BETWEEN ? AND ?');
     params.push(minPrice, maxPrice);
 
-    // Filter Location
     if (locFilter) {
       where.push('tp.location LIKE ?');
       params.push(`%${locFilter}%`);
     }
 
-    // Filter Grade Level
     if (gradeFilter) {
       where.push('(tp.target_student_level LIKE ? OR tp.description LIKE ?)');
       params.push(`%${gradeFilter}%`, `%${gradeFilter}%`);
     }
 
-    // Filter Rating (needs to check COALESCE(rv.avg_rating, 0))
     if (minRating > 0) {
       where.push('COALESCE(rv.avg_rating, 0) >= ?');
       params.push(minRating);
@@ -920,29 +913,20 @@ app.get('/api/tutor-posts', async (req, res) => {
 
     let orderBy = 'ORDER BY tp.created_at DESC';
 
-    // 🌟 ระบบ Hybrid Search สำหรับ "แท็บคอร์สเรียน" (ใช้ tokenizeSearchTerm)
+    // 🌟 ระบบค้นหาแบบยืดหยุ่น (OR) แบบไม่พึ่งฟังก์ชันนอก
     if (subject) {
-      const keywordGroups = tokenizeSearchTerm(subject);
+      const searchWords = subject.trim().toLowerCase().split(/\s+/);
       const conditions = [];
+      const exactPhrase = subject.replace(/'/g, "''").toLowerCase();
 
-      keywordGroups.forEach(group => {
-        const synConditions = group.map(() =>
-          `(LOWER(tp.subject) LIKE ? OR LOWER(tp.description) LIKE ? OR LOWER(tpro.nickname) LIKE ?)`
-        ).join(' OR ');
-
-        conditions.push(`(${synConditions})`);
-
-        group.forEach(syn => {
-          const safeSyn = `%${syn}%`;
-          params.push(safeSyn, safeSyn, safeSyn);
-        });
+      searchWords.forEach(word => {
+        conditions.push(`(LOWER(tp.subject) LIKE ? OR LOWER(tp.description) LIKE ? OR LOWER(tpro.nickname) LIKE ?)`);
+        params.push(`%${word}%`, `%${word}%`, `%${word}%`);
       });
 
       if (conditions.length > 0) {
-        where.push(`(${conditions.join(' AND ')})`);
+        where.push(`(${conditions.join(' OR ')})`); // 🌟 ใช้ OR
       }
-      // 4. ให้คะแนนความแม่นยำ (Subject ต้องมาก่อนเสมอ)
-      const exactPhrase = subject.replace(/'/g, "''").toLowerCase();
 
       orderBy = `ORDER BY 
         (CASE 
@@ -959,9 +943,6 @@ app.get('/api/tutor-posts', async (req, res) => {
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    // ==========================================
-    // รัน Query ค้นหาข้อมูล
-    // ==========================================
     const [rows] = await pool.query(
       `
       SELECT
@@ -971,19 +952,14 @@ app.get('/api/tutor-posts', async (req, res) => {
         COALESCE(tp.created_at, NOW()) AS created_at,
         r.name, r.lastname, r.email, r.username, r.type,
         tpro.profile_picture_url, tpro.nickname, tpro.about_me, tpro.education, tpro.teaching_experience, tpro.phone,
-        -- Favorites
         COALESCE(fvc.c,0) AS fav_count,
         CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited,
-        -- Joins
         COALESCE(jc.c,0) AS join_count,
         CASE WHEN jme.user_id IS NULL THEN 0 ELSE 1 END AS joined,
         CASE WHEN jme_pending.user_id IS NULL THEN 0 ELSE 1 END AS pending_me,
         CASE WHEN jme_cancel.user_id IS NULL THEN 0 ELSE 1 END AS cancel_requested,
-        -- Reviews
-        -- Reviews
         COALESCE(rv.avg_rating, 0) AS avg_rating,
         COALESCE(rv.review_count, 0) AS review_count,
-        -- Comments
         COALESCE(cc.cnt, 0) AS comment_count
       FROM tutor_posts tp
       LEFT JOIN register r ON r.user_id = tp.tutor_id
@@ -1011,10 +987,8 @@ app.get('/api/tutor-posts', async (req, res) => {
         ON jme.tutor_post_id = tp.tutor_post_id AND jme.user_id = ? AND jme.status='approved'
       LEFT JOIN tutor_post_joins jme_pending
         ON jme_pending.tutor_post_id = tp.tutor_post_id AND jme_pending.user_id = ? AND jme_pending.status='pending'
-      -- [FIX] Check cancellation request
       LEFT JOIN tutor_post_joins jme_cancel
         ON jme_cancel.tutor_post_id = tp.tutor_post_id AND jme_cancel.user_id = ? AND jme_cancel.cancel_requested = 1
-      -- [NEW] Comment Count
       LEFT JOIN (
         SELECT post_id, COUNT(*) AS cnt
         FROM comments
@@ -1041,7 +1015,6 @@ app.get('/api/tutor-posts', async (req, res) => {
       params
     );
 
-    // Date Parsing Helper (reused)
     const parseDate = (dStr) => {
       if (!dStr) return null;
       if (dStr.match(/^\d{4}-\d{2}-\d{2}/)) return new Date(dStr);
@@ -1058,6 +1031,7 @@ app.get('/api/tutor-posts', async (req, res) => {
       }
       return null;
     };
+
     const now = new Date();
     now.setHours(0, 0, 0, 0);
 
@@ -1087,14 +1061,12 @@ app.get('/api/tutor-posts', async (req, res) => {
             phone: r.phone || '',
             role: r.type || 'tutor'
           },
-          // Profile Data added to top level for convenience
           nickname: r.nickname,
           about_me: r.about_me,
           education: r.education,
           teaching_experience: r.teaching_experience,
           phone: r.phone,
           email: r.email,
-
           meta: {
             target_student_level: r.target_student_level || 'ไม่ระบุ',
             teaching_days: r.teaching_days,
@@ -1103,13 +1075,13 @@ app.get('/api/tutor-posts', async (req, res) => {
             price: Number(r.price || 0),
             contact_info: r.contact_info
           },
-          is_expired: isExpired, // ✅ Add Flag
+          is_expired: isExpired,
           fav_count: Number(r.fav_count || 0),
           favorited: !!r.favorited,
           join_count: Number(r.join_count || 0),
           joined: !!r.joined,
           pending_me: !!r.pending_me,
-          cancel_requested: !!r.cancel_requested, // [NEW] send to frontend
+          cancel_requested: !!r.cancel_requested,
           rating: Number(r.avg_rating || 0),
           reviews: Number(r.review_count || 0),
           comment_count: Number(r.comment_count || 0),
@@ -1333,77 +1305,72 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// --------- Student Feed ----------
-// --------- Student Feed (แก้ไขให้รองรับ Search + ระดับชั้น) ----------
+// --------- Student Feed (แก้ไขให้รองรับ Search ยืดหยุ่น + เรียงคะแนน) ----------
 app.get('/api/student_posts', async (req, res) => {
   try {
     const me = Number(req.query.me) || 0;
-    const search = (req.query.search || '').trim(); // รับคำค้นหา
+    const search = (req.query.search || '').trim();
 
-    // 1. สร้างเงื่อนไขการค้นหา (Smart Search)
-    // ✅ Add Soft Delete Filter
     let searchClause = 'WHERE sp.is_active = 1';
-    // params: [join_me, pending_me, cancel_me, fav_me, offer_me (approved), offer_me (pending)]
     const queryParams = [me, me, me, me, me, me];
 
-    // Filter by student_id (owner)
     const ownerId = Number(req.query.student_id);
     if (ownerId > 0) {
       searchClause += ` AND sp.student_id = ?`;
       queryParams.push(ownerId);
     }
 
-    // --- Advanced Filters (Student Posts) ---
     const minPrice = Number(req.query.minPrice) || 0;
     const maxPrice = Number(req.query.maxPrice) || 999999;
     const locFilter = (req.query.location || '').trim();
     const gradeFilter = (req.query.gradeLevel || '').trim();
 
-    // Filter Budget (Price)
     searchClause += ' AND sp.budget BETWEEN ? AND ?';
     queryParams.push(minPrice, maxPrice);
 
-    // Filter Location
     if (locFilter) {
       searchClause += ' AND sp.location LIKE ?';
       queryParams.push(`%${locFilter}%`);
     }
 
-    // Filter Grade Level
     if (gradeFilter) {
       searchClause += ' AND sp.grade_level LIKE ?';
       queryParams.push(`%${gradeFilter}%`);
     }
 
+    let orderByClause = 'ORDER BY sp.student_post_id DESC';
+
+    // 🌟 ระบบค้นหาแบบยืดหยุ่น (OR) แบบไม่พึ่งฟังก์ชันนอก
     if (search) {
-      // ✅ ใช้ฟังก์ชัน tokenizeSearchTerm แบบใหม่ (Smart Search)
-      const keywordGroups = tokenizeSearchTerm(search);
+      const searchWords = search.trim().toLowerCase().split(/\s+/); // หั่นคำด้วยช่องว่าง
       const groupConditions = [];
+      const exactPhrase = search.replace(/'/g, "''").toLowerCase();
 
-      keywordGroups.forEach(group => {
-        const synConditions = group.map(() =>
-          `(LOWER(sp.subject) LIKE ? OR LOWER(sp.description) LIKE ?)`
-        ).join(' OR ');
-
-        groupConditions.push(`(${synConditions})`);
-
-        group.forEach(syn => {
-          queryParams.push(`%${syn}%`, `%${syn}%`);
-        });
+      searchWords.forEach(word => {
+        groupConditions.push(`(LOWER(sp.subject) LIKE ? OR LOWER(sp.description) LIKE ?)`);
+        queryParams.push(`%${word}%`, `%${word}%`);
       });
 
       if (groupConditions.length > 0) {
-        searchClause += ` AND (${groupConditions.join(' AND ')})`;
+        searchClause += ` AND (${groupConditions.join(' OR ')})`; // 🌟 ใช้ OR
       }
+
+      // ระบบจัดคะแนน
+      orderByClause = `ORDER BY 
+        (CASE 
+          WHEN LOWER(sp.subject) = '${exactPhrase}' THEN 100 
+          WHEN LOWER(sp.subject) LIKE '%${exactPhrase}%' THEN 80 
+          WHEN LOWER(sp.description) LIKE '%${exactPhrase}%' THEN 40
+          ELSE 10 
+        END) DESC, sp.student_post_id DESC`;
     }
 
-    // 2. รัน SQL Query
     const [rows] = await pool.query(`
       SELECT
         sp.student_post_id, sp.student_id, sp.subject, sp.description,
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
         sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
-        sp.grade_level,  /* ✅ เพิ่ม: ดึงระดับชั้นออกมาด้วย */
+        sp.grade_level, 
         r.name, r.lastname, r.email, r.username, r.type,
         spro.profile_picture_url, spro.phone,
         COALESCE(jc.join_count, 0) AS join_count,
@@ -1432,8 +1399,6 @@ app.get('/api/student_posts', async (req, res) => {
         ON jme.student_post_id = sp.student_post_id AND jme.user_id = ? AND jme.status='approved'
       LEFT JOIN student_post_joins jme_pending
         ON jme_pending.student_post_id = sp.student_post_id AND jme_pending.user_id = ? AND jme_pending.status='pending'
-      
-      -- [FIX] Check for cancellation request
       LEFT JOIN student_post_joins jme_cancel
         ON jme_cancel.student_post_id = sp.student_post_id AND jme_cancel.user_id = ? AND jme_cancel.cancel_requested = 1
       LEFT JOIN (
@@ -1444,33 +1409,24 @@ app.get('/api/student_posts', async (req, res) => {
       ) fvc ON fvc.post_id = sp.student_post_id
       LEFT JOIN posts_favorites fme
         ON fme.post_id = sp.student_post_id AND fme.post_type='student' AND fme.user_id = ?
-      
-      -- [FIX] Join offers to check status for Tutors
       LEFT JOIN student_post_offers ome 
         ON ome.student_post_id = sp.student_post_id AND ome.tutor_id = ? AND ome.status='approved'
       LEFT JOIN student_post_offers ome_pending
         ON ome_pending.student_post_id = sp.student_post_id AND ome_pending.tutor_id = ? AND ome_pending.status='pending'
-      
-      -- [NEW] Check if ANY tutor is approved
       LEFT JOIN (
         SELECT student_post_id, COUNT(*) as cnt
         FROM student_post_offers
         WHERE status='approved'
         GROUP BY student_post_id
       ) has_tutor ON has_tutor.student_post_id = sp.student_post_id
-      
-      -- [NEW] Get the approved tutor's details (picking the first one if multiple, though usually 1)
       LEFT JOIN (
         SELECT o.student_post_id, MAX(o.tutor_id) AS tutor_id, MAX(t_reg.name) AS name, MAX(t_reg.lastname) AS lastname, MAX(t_reg.username) AS username, MAX(tp.profile_picture_url) AS profile_picture_url
         FROM student_post_offers o
         JOIN register t_reg ON o.tutor_id = t_reg.user_id
         LEFT JOIN tutor_profiles tp ON t_reg.user_id = tp.user_id
         WHERE o.status = 'approved'
-        -- Use GROUP BY to ensure we only get one row per post in case of edge cases
         GROUP BY o.student_post_id
       ) approved_tutor_info ON approved_tutor_info.student_post_id = sp.student_post_id
-      
-      -- [NEW] Comment Count
       LEFT JOIN (
         SELECT post_id, COUNT(*) AS cnt
         FROM comments
@@ -1478,12 +1434,10 @@ app.get('/api/student_posts', async (req, res) => {
         GROUP BY post_id
       ) cc ON cc.post_id = sp.student_post_id
       
-      ${searchClause} /* ✅ ใส่เงื่อนไขค้นหาตรงนี้ */
-      
-      ORDER BY sp.student_post_id DESC
+      ${searchClause}
+      ${orderByClause}
     `, queryParams);
 
-    // 3. Map ข้อมูลส่งกลับ
     const posts = rows.map(r => ({
       id: r.student_post_id,
       owner_id: r.student_id,
@@ -1495,15 +1449,15 @@ app.get('/api/student_posts', async (req, res) => {
       group_size: Number(r.group_size || 0),
       budget: Number(r.budget || 0),
       contact_info: r.contact_info || '',
-      grade_level: r.grade_level || 'ไม่ระบุ', // ✅ ส่งระดับชั้นไปให้ Frontend
+      grade_level: r.grade_level || 'ไม่ระบุ',
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
       join_count: Number(r.join_count || 0),
       joined: !!r.joined,
       pending_me: !!r.pending_me,
       fav_count: Number(r.fav_count || 0),
       favorited: !!r.favorited,
-      cancel_requested: !!r.cancel_requested, // [NEW]
-      has_tutor: !!r.has_approved_tutor, // ✅ Send status to frontend
+      cancel_requested: !!r.cancel_requested,
+      has_tutor: !!r.has_approved_tutor,
       comment_count: Number(r.comment_count || 0),
       tutor: r.has_approved_tutor && r.approved_tutor_name ? {
         id: r.approved_tutor_id,
@@ -1527,7 +1481,7 @@ app.get('/api/student_posts', async (req, res) => {
     return res.json(posts);
   } catch (err) {
     console.error('FEED ERR', err);
-    return sendDbError(res, err);
+    return res.status(500).json({ message: 'Database error' });
   }
 });
 

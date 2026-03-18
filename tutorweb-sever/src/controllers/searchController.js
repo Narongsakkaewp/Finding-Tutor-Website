@@ -1,6 +1,5 @@
 // tutorweb-server/src/controllers/searchController.js
 
-// 🌟 1. อัปเกรด Dictionary ให้ครอบคลุมทุกวงการ (ดึงหมวดเว็บกลับมา)
 const SUBJECT_KNOWLEDGE_BASE = {
     // --- หมวดเขียนโปรแกรม & เว็บไซต์ ---
     'เว็บ': ['web', 'website', 'เขียนเว็บ', 'สร้างเว็บ', 'พัฒนาเว็บ', 'html', 'css', 'react', 'node', 'frontend', 'backend', 'เว็บไซต์'],
@@ -25,15 +24,12 @@ const SUBJECT_KNOWLEDGE_BASE = {
     'ชีว': ['bio', 'biology', 'ชีววิทยา', 'sci']
 };
 
-// 🌟 2. อัปเกรดฟังก์ชันบันทึกประวัติ (กันสแปม/Debounce)
 const logSearchHistory = async (pool, userId, keyword) => {
-    // ถ้าพิมพ์สั้นกว่า 2 ตัวอักษร ไม่ต้องบันทึกให้รก Database
     if (!keyword || keyword.trim().length < 2) return; 
     const cleanKeyword = keyword.trim();
 
     try {
         if (userId) {
-            // เช็คว่า 2 นาทีที่ผ่านมา เพิ่งพิมพ์คำว่าอะไรไป
             const [rows] = await pool.query(
                 `SELECT history_id, keyword FROM search_history 
                  WHERE user_id = ? AND created_at >= NOW() - INTERVAL 2 MINUTE 
@@ -45,18 +41,16 @@ const logSearchHistory = async (pool, userId, keyword) => {
                 const lastId = rows[0].history_id;
                 const lastKeyword = rows[0].keyword;
 
-                // ถ้ากำลังพิมพ์คำเดิมต่อ (เช่น "Rea" -> "React") ให้อัปเดตทับแถวเดิม!
                 if (cleanKeyword.toLowerCase().startsWith(lastKeyword.toLowerCase()) || cleanKeyword === lastKeyword) {
                     await pool.query(
                         'UPDATE search_history SET keyword = ?, created_at = NOW() WHERE history_id = ?',
                         [cleanKeyword, lastId]
                     );
-                    return; // จบการทำงาน ไม่ต้อง Insert ใหม่
+                    return; 
                 }
             }
         }
 
-        // ถ้าเป็นคำใหม่เลย ค่อย Insert
         await pool.query(
             'INSERT INTO search_history (user_id, keyword) VALUES (?, ?)',
             [userId || null, cleanKeyword]
@@ -75,64 +69,99 @@ exports.smartSearch = async (req, res) => {
             return res.json({ tutors: [], students: [], posts: [] });
         }
 
-        // เรียกใช้ฟังก์ชันประวัติการค้นหาฉบับอัปเกรด
         logSearchHistory(pool, user_id, q);
 
         const searchWords = q.trim().toLowerCase().split(/\s+/);
+        const exactPhrase = q.replace(/'/g, "''").toLowerCase();
+
         const conditions = [];
         const sqlParams = [];
         const studentConditions = [];
         const studentSqlParams = [];
+        
+        // 🌟 1. ระบบกระสอบเก็บคะแนน (Dynamic Scoring Engine)
+        const tutorScoreCases = [];
+        const studentScoreCases = [];
 
-        // 🌟 3. อัปเกรดระบบจับคำให้ "ยืดหยุ่น (Fuzzy Match)"
+        // 🌟 โบนัสคะแนนเต็ม (ถ้าเจอวลีตรงเป๊ะๆ เช่น "ฟิสิกส์ อะตอม" ติดกัน)
+        tutorScoreCases.push(`
+            (CASE 
+                WHEN LOWER(tp.subject) = '${exactPhrase}' THEN 500 
+                WHEN LOWER(tp.subject) LIKE '%${exactPhrase}%' THEN 200 
+                WHEN LOWER(tpro.can_teach_subjects) LIKE '%${exactPhrase}%' THEN 150 
+                WHEN LOWER(tp.description) LIKE '%${exactPhrase}%' THEN 50
+                ELSE 0 
+            END)
+        `);
+
+        studentScoreCases.push(`
+            (CASE 
+                WHEN LOWER(sp.subject) = '${exactPhrase}' THEN 500 
+                WHEN LOWER(sp.subject) LIKE '%${exactPhrase}%' THEN 200 
+                WHEN LOWER(sp.description) LIKE '%${exactPhrase}%' THEN 50
+                ELSE 0 
+            END)
+        `);
+
         searchWords.forEach(word => {
             let wordGroup = new Set([word]);
 
-            // กวาดสายตาดู Dictionary ทั้งหมด
+            // แตก Dictionary
             Object.keys(SUBJECT_KNOWLEDGE_BASE).forEach(key => {
                 const values = SUBJECT_KNOWLEDGE_BASE[key];
-                
-                // ถ้ารากศัพท์มันตรงกัน (เช่น พิมพ์ "เว็บไซต์" -> เจอคำว่า "เว็บ" ซ่อนอยู่)
-                // ระบบจะแตกหน่อคำศัพท์ที่เกี่ยวข้องทั้งหมดออกมาให้เลย!
                 if (word.includes(key) || key.includes(word) || values.some(v => word.includes(v) || v.includes(word))) {
                     wordGroup.add(key);
                     values.forEach(v => wordGroup.add(v));
                 }
             });
 
-            // เอาคำศัพท์ที่แตกหน่อมาสร้าง SQL OR Conditions
             const finalWordGroup = Array.from(wordGroup);
             
+            // สร้างเงื่อนไขการค้นหา
             const synConditions = finalWordGroup.map(() => `
-                (LOWER(tp.subject) LIKE ? OR 
-                 LOWER(tp.description) LIKE ? OR 
-                 LOWER(r.name) LIKE ? OR 
-                 LOWER(r.lastname) LIKE ? OR 
-                 LOWER(tpro.nickname) LIKE ? OR 
-                 LOWER(tpro.can_teach_subjects) LIKE ?)
+                (LOWER(tp.subject) LIKE ? OR LOWER(tp.description) LIKE ? OR LOWER(tpro.nickname) LIKE ? OR LOWER(tpro.can_teach_subjects) LIKE ?)
             `).join(' OR ');
             conditions.push(`(${synConditions})`);
 
             const studentSynConditions = finalWordGroup.map(() => `
-                (LOWER(sp.subject) LIKE ? OR 
-                 LOWER(sp.description) LIKE ? OR 
-                 LOWER(r.name) LIKE ? OR 
-                 LOWER(r.lastname) LIKE ?)
+                (LOWER(sp.subject) LIKE ? OR LOWER(sp.description) LIKE ?)
             `).join(' OR ');
             studentConditions.push(`(${studentSynConditions})`);
 
             finalWordGroup.forEach(syn => {
                 const safeSyn = `%${syn}%`;
-                sqlParams.push(safeSyn, safeSyn, safeSyn, safeSyn, safeSyn, safeSyn);
-                studentSqlParams.push(safeSyn, safeSyn, safeSyn, safeSyn);
+                sqlParams.push(safeSyn, safeSyn, safeSyn, safeSyn);
+                studentSqlParams.push(safeSyn, safeSyn);
             });
+
+            // 🌟 ให้คะแนนย่อยรายคำ (ถ้ามีคำว่า "ฟิสิกส์" ได้ +50, ถ้ามีคำว่า "อะตอม" ได้อีก +50)
+            const safeWord = word.replace(/'/g, "''");
+            tutorScoreCases.push(`
+                (CASE 
+                    WHEN LOWER(tp.subject) LIKE '%${safeWord}%' THEN 50 
+                    WHEN LOWER(tpro.can_teach_subjects) LIKE '%${safeWord}%' THEN 30 
+                    WHEN LOWER(tp.description) LIKE '%${safeWord}%' THEN 10
+                    ELSE 0 
+                END)
+            `);
+            studentScoreCases.push(`
+                (CASE 
+                    WHEN LOWER(sp.subject) LIKE '%${safeWord}%' THEN 50 
+                    WHEN LOWER(sp.description) LIKE '%${safeWord}%' THEN 10
+                    ELSE 0 
+                END)
+            `);
         });
 
-        const likeConditions = conditions.join(' AND ');
-        const studentLikeConditions = studentConditions.join(' AND ');
-        const exactPhrase = q.replace(/'/g, "''").toLowerCase();
+        // 🌟 2. เปลี่ยนกฎเหล็กจาก "บังคับเจอทุกคำ (AND)" เป็น "เจอคำไหนก็ได้ (OR)" เพื่อความยืดหยุ่น!
+        const likeConditions = conditions.join(' OR ');
+        const studentLikeConditions = studentConditions.join(' OR ');
 
-        // --- ค้นหาติวเตอร์ (Tutor Profiles) ---
+        // เอากระสอบคะแนนมาเทรวมกัน
+        const finalTutorScore = tutorScoreCases.join(' + ');
+        const finalStudentScore = studentScoreCases.join(' + ');
+
+        // --- ค้นหาติวเตอร์ ---
         const [tutors] = await pool.query(`
             SELECT 
                 tp.tutor_id, r.name, r.lastname, r.username, tpro.profile_picture_url, tpro.nickname,
@@ -140,16 +169,7 @@ exports.smartSearch = async (req, res) => {
                 tpro.can_teach_grades, tpro.can_teach_subjects, tpro.phone, tpro.address,
                 COALESCE(rv.avg_rating, 0) AS avg_rating,
                 COALESCE(rv.review_count, 0) AS review_count,
-                MAX(CASE 
-                    WHEN LOWER(tp.subject) = '${exactPhrase}' THEN 100 
-                    WHEN LOWER(tpro.nickname) = '${exactPhrase}' THEN 95 
-                    WHEN LOWER(tp.subject) LIKE '${exactPhrase}%' THEN 90 
-                    WHEN LOWER(tp.subject) LIKE '%${exactPhrase}%' THEN 80 
-                    WHEN LOWER(r.name) LIKE '%${exactPhrase}%' OR LOWER(r.lastname) LIKE '%${exactPhrase}%' THEN 75 
-                    WHEN LOWER(tpro.can_teach_subjects) LIKE '%${exactPhrase}%' THEN 60 
-                    WHEN LOWER(tp.description) LIKE '%${exactPhrase}%' THEN 40
-                    ELSE 10 
-                END) AS relevance_score,
+                MAX(${finalTutorScore}) AS relevance_score,
                 MAX(tp.created_at) AS latest_post,
                 COALESCE(tpro.address, 'ไม่ระบุสถานที่') AS tutor_location
             FROM tutor_posts tp
@@ -162,19 +182,13 @@ exports.smartSearch = async (req, res) => {
             LIMIT 20
         `, sqlParams);
 
-        // --- ค้นหาประกาศสอน (Tutor Posts) ---
+        // --- ค้นหาประกาศสอน ---
         const [posts] = await pool.query(`
             SELECT 
                 tp.*, 
                 r.name, r.lastname, r.username,
                 tpro.profile_picture_url, tpro.nickname,
-                (CASE 
-                    WHEN LOWER(tp.subject) = '${exactPhrase}' THEN 100 
-                    WHEN LOWER(tp.subject) LIKE '${exactPhrase}%' THEN 90 
-                    WHEN LOWER(tp.subject) LIKE '%${exactPhrase}%' THEN 80 
-                    WHEN LOWER(tp.description) LIKE '%${exactPhrase}%' THEN 40
-                    ELSE 10 
-                END) AS relevance_score
+                (${finalTutorScore}) AS relevance_score
             FROM tutor_posts tp
             LEFT JOIN register r ON tp.tutor_id = r.user_id
             LEFT JOIN tutor_profiles tpro ON tp.tutor_id = tpro.user_id
@@ -183,19 +197,13 @@ exports.smartSearch = async (req, res) => {
             LIMIT 20
         `, sqlParams);
 
-        // --- ค้นหานักเรียน (Student Posts) --- 
+        // --- ค้นหานักเรียน --- 
         const [students] = await pool.query(`
             SELECT 
                 sp.*, 
                 r.name, r.lastname, r.username,
                 spro.profile_picture_url,
-                (CASE 
-                    WHEN LOWER(sp.subject) = '${exactPhrase}' THEN 100 
-                    WHEN LOWER(sp.subject) LIKE '${exactPhrase}%' THEN 90 
-                    WHEN LOWER(sp.subject) LIKE '%${exactPhrase}%' THEN 80 
-                    WHEN LOWER(sp.description) LIKE '%${exactPhrase}%' THEN 40
-                    ELSE 10 
-                END) AS relevance_score,
+                (${finalStudentScore}) AS relevance_score,
                 sp.location
             FROM student_posts sp
             LEFT JOIN register r ON sp.student_id = r.user_id
@@ -264,7 +272,6 @@ exports.smartSearch = async (req, res) => {
     }
 };
 
-// API สำหรับดึง "คำที่ค้นหาบ่อยของฉัน" (Search History)
 exports.getMySearchHistory = async (req, res) => {
     try {
         const pool = req.db;
@@ -287,7 +294,6 @@ exports.getMySearchHistory = async (req, res) => {
     }
 };
 
-// API สำหรับลบประวัติการค้นหา
 exports.deleteSearchHistory = async (req, res) => {
     try {
         const pool = req.db;
@@ -311,7 +317,6 @@ exports.deleteSearchHistory = async (req, res) => {
     }
 };
 
-// API สำหรับดึง "วิชายอดฮิต"
 exports.getPopularSubjects = async (req, res) => {
     try {
         const pool = req.db;

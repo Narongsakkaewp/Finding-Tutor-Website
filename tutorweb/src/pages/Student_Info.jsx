@@ -319,7 +319,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
                 <input type="text" id="major" name="major" value={formData.major} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="ระบุสาขา หรือ สายวิทย์-คณิต" />
               </div>
               <div className="md:col-span-2">
-                <label htmlFor="interestedSubjects" className="block text-sm font-semibold text-gray-700 mb-1">วิชาที่สนใจเรียน (ค้นหาติวเตอร์ได้แม่นยำขึ้น)</label>
+                <label htmlFor="interestedSubjects" className="block text-sm font-semibold text-gray-700 mb-1">วิชาที่สนใจ</label>
                 <input type="text" id="interestedSubjects" name="interestedSubjects" value={formData.interestedSubjects || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="เช่น คณิตศาสตร์, ภาษาอังกฤษ, ออกแบบ" />
               </div>
             </div>

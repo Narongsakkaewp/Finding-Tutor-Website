@@ -335,7 +335,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
 
   const [formData, setFormData] = useState(initialFormData);
 
-  // Logic การกรองข้อมูล
+  // Logic การกรองข้อมูล (อัปเกรด: ค้นหาแบบ Google Style - ยืดหยุ่นและหั่นคำ)
   const filteredPosts = useMemo(() => {
     return posts.filter(p => {
       // 1. Filter by Level
@@ -350,22 +350,22 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
         passesLevel = String(levelData).includes(filterLevel);
       }
 
-      // 2. Filter by Search Query
+      // 2. Filter by Search Query (อัปเกรดใหม่!)
       let passesSearch = true;
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+        // 🌟 หั่นคำค้นหาด้วยช่องว่าง (Split by spaces)
+        const searchWords = searchQuery.toLowerCase().trim().split(/\s+/);
+
         const subject = String(p.subject || "").toLowerCase();
         const desc = String(p.description || p.content || "").toLowerCase();
         const loc = String(p.location || p.meta?.location || "").toLowerCase();
-
-        passesSearch = subject.includes(q) || desc.includes(q) || loc.includes(q);
+        const fullContent = `${subject} ${desc} ${loc}`;
+        passesSearch = searchWords.some(word => fullContent.includes(word));
       }
 
       return passesLevel && passesSearch;
     });
   }, [posts, filterLevel, searchQuery]);
-
-
 
   const fetchPosts = useCallback(async () => {
     try {
