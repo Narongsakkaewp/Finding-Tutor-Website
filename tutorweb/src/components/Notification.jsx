@@ -113,6 +113,14 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
   }, [notifications, scheduleAlerts]);
 
   const getItemPostType = (item) => item?.resolved_post_type || item?.post_type || item?.review_post_type || null;
+  const getSubjectFromMessage = (message) => {
+    const text = String(message || "").trim();
+    if (!text) return "";
+    const colonMatch = text.match(/วิชา\s*:\s*(.+?)(?:\s*\([^)]*\))?$/);
+    if (colonMatch?.[1]) return colonMatch[1].trim();
+    const simpleMatch = text.match(/วิชา\s+(.+)$/);
+    return simpleMatch?.[1]?.trim() || "";
+  };
 
   // --- ส่วนจัดการการแสดงผล ---
 
@@ -185,10 +193,12 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
       setReviewLoading(false);
 
       if (tutor) {
+        const messageSubject = getSubjectFromMessage(item.message);
         setReviewModal({
           notification_id: item.notification_id,
           post_id: item.related_id,
           actor_id: item.actor_id,
+          message_subject: messageSubject,
           post_type: getItemPostType(item) || (item.type === 'tutor_review_request' ? 'tutor_post' : 'student_post'),
           post_subject: item.post_subject || `โพสต์ #${item.related_id}`, // Pass subject from item
           tutorImage: item.actor_avatar, // Store avatar
@@ -587,7 +597,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
           studentId={normalizedUserId}
           postType={reviewModal.post_type}
           onClose={() => setReviewModal(null)}
-          initialSubject={reviewModal.post_subject}
+          initialSubject={reviewModal.message_subject || reviewModal.post_subject}
           initialTutorName={`${reviewModal.tutor.name || ''} ${reviewModal.tutor.lastname || ''}`.trim() || reviewModal.tutor.nickname}
           initialTutorImage={reviewModal.tutorImage || reviewModal.tutor.profile_picture_url}
         />

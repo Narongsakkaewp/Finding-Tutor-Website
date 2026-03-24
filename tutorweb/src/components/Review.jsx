@@ -27,13 +27,7 @@ const StarRow = ({ label, value, onChange }) => (
   </div>
 );
 
-const getPostUrl = (postId, postType) => {
-  const normalizedType = String(postType || "").toLowerCase();
-  if (!postId) return null;
-  if (normalizedType.includes("tutor")) return `${API_BASE}/api/tutor-posts/${postId}`;
-  if (normalizedType.includes("student")) return `${API_BASE}/api/student_posts/${postId}`;
-  return null;
-};
+const normalizeText = (value) => String(value || "").trim().toLowerCase();
 
 const Review = ({
   postId,
@@ -52,22 +46,67 @@ const Review = ({
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [resolvedSubject, setResolvedSubject] = useState(initialSubject || "");
+  const [resolvedPostType, setResolvedPostType] = useState(postType || "unknown");
 
   useEffect(() => {
     let isMounted = true;
     setResolvedSubject(initialSubject || "");
+    setResolvedPostType(postType || "unknown");
 
-    const url = getPostUrl(postId, postType);
-    if (!url) return undefined;
+    if (!postId) return undefined;
 
     (async () => {
       try {
-        const res = await fetch(url);
-        if (!res.ok) return;
-        const data = await res.json();
-        const subjectFromPost = data?.subject || data?.title || "";
-        if (isMounted && subjectFromPost) {
-          setResolvedSubject(subjectFromPost);
+        const [studentRes, tutorRes] = await Promise.allSettled([
+          fetch(`${API_BASE}/api/student_posts/${postId}`),
+          fetch(`${API_BASE}/api/tutor-posts/${postId}`),
+        ]);
+
+        const studentData =
+          studentRes.status === "fulfilled" && studentRes.value.ok
+            ? await studentRes.value.json()
+            : null;
+        const tutorData =
+          tutorRes.status === "fulfilled" && tutorRes.value.ok
+            ? await tutorRes.value.json()
+            : null;
+
+        const preferred = normalizeText(initialSubject);
+        const studentSubject = studentData?.subject || studentData?.title || "";
+        const tutorSubject = tutorData?.subject || tutorData?.title || "";
+
+        let nextSubject = initialSubject || "";
+        let nextPostType = postType || "unknown";
+
+        if (preferred) {
+          if (normalizeText(studentSubject) === preferred) {
+            nextSubject = studentSubject;
+            nextPostType = "student_post";
+          } else if (normalizeText(tutorSubject) === preferred) {
+            nextSubject = tutorSubject;
+            nextPostType = "tutor_post";
+          }
+        }
+
+        if (!nextSubject) {
+          if (String(postType || "").toLowerCase().includes("tutor") && tutorSubject) {
+            nextSubject = tutorSubject;
+            nextPostType = "tutor_post";
+          } else if (String(postType || "").toLowerCase().includes("student") && studentSubject) {
+            nextSubject = studentSubject;
+            nextPostType = "student_post";
+          } else if (studentSubject && !tutorSubject) {
+            nextSubject = studentSubject;
+            nextPostType = "student_post";
+          } else if (tutorSubject && !studentSubject) {
+            nextSubject = tutorSubject;
+            nextPostType = "tutor_post";
+          }
+        }
+
+        if (isMounted) {
+          if (nextSubject) setResolvedSubject(nextSubject);
+          if (nextPostType) setResolvedPostType(nextPostType);
         }
       } catch (err) {
         console.error("Review subject fetch error:", err);
@@ -98,7 +137,7 @@ const Review = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           post_id: postId,
-          post_type: postType || "unknown",
+          post_type: resolvedPostType || postType || "unknown",
           tutor_id: tutorId,
           student_id: studentId,
           rating,
@@ -110,7 +149,6 @@ const Review = ({
       });
 
       const data = await res.json();
-
       if (!res.ok || !data.success) {
         throw new Error(data.message || "ไม่สามารถส่งรีวิวได้");
       }
