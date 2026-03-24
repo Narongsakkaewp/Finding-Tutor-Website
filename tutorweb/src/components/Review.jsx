@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Star, X } from "lucide-react";
-import { API_BASE } from '../config';
+import { API_BASE } from "../config";
 
-// Helper Component for Star Row
 const StarRow = ({ label, value, onChange }) => (
   <div className="flex items-center justify-between">
     <span className="text-gray-700 font-medium w-32 text-sm">{label}</span>
@@ -16,7 +15,11 @@ const StarRow = ({ label, value, onChange }) => (
         >
           <Star
             size={24}
-            className={`transition-colors ${star <= value ? "text-yellow-400 fill-yellow-400" : "text-gray-300 hover:text-yellow-200"}`}
+            className={`transition-colors ${
+              star <= value
+                ? "text-yellow-400 fill-yellow-400"
+                : "text-gray-300 hover:text-yellow-200"
+            }`}
           />
         </button>
       ))}
@@ -24,19 +27,59 @@ const StarRow = ({ label, value, onChange }) => (
   </div>
 );
 
-const Review = ({ postId, tutorId, studentId, postType, onClose, initialSubject, initialTutorName, initialTutorImage }) => {
-  const [rating, setRating] = useState(0);    // ภาพรวม
-  const [punctuality, setPunctuality] = useState(0); // ตรงต่อเวลา
-  const [worth, setWorth] = useState(0);      // คุ้มค่า
-  const [teaching, setTeaching] = useState(0); // เนื้อหาที่สอน
+const getPostUrl = (postId, postType) => {
+  const normalizedType = String(postType || "").toLowerCase();
+  if (!postId) return null;
+  if (normalizedType.includes("tutor")) return `${API_BASE}/api/tutor-posts/${postId}`;
+  if (normalizedType.includes("student")) return `${API_BASE}/api/student_posts/${postId}`;
+  return null;
+};
 
+const Review = ({
+  postId,
+  tutorId,
+  studentId,
+  postType,
+  onClose,
+  initialSubject,
+  initialTutorName,
+  initialTutorImage,
+}) => {
+  const [rating, setRating] = useState(0);
+  const [punctuality, setPunctuality] = useState(0);
+  const [worth, setWorth] = useState(0);
+  const [teaching, setTeaching] = useState(0);
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resolvedSubject, setResolvedSubject] = useState(initialSubject || "");
 
-  // Use props if available, otherwise default to loading/error state
-  // We remove the internal fetch because often the parent has the context (Notification)
-  // If postId implies a different ID type, internal fetch might be fragile.
-  const subject = initialSubject || "ไม่ระบุวิชา";
+  useEffect(() => {
+    let isMounted = true;
+    setResolvedSubject(initialSubject || "");
+
+    const url = getPostUrl(postId, postType);
+    if (!url) return undefined;
+
+    (async () => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        const subjectFromPost = data?.subject || data?.title || "";
+        if (isMounted && subjectFromPost) {
+          setResolvedSubject(subjectFromPost);
+        }
+      } catch (err) {
+        console.error("Review subject fetch error:", err);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [initialSubject, postId, postType]);
+
+  const subject = resolvedSubject || "ไม่ระบุวิชา";
   const tutorName = initialTutorName || "ติวเตอร์";
 
   const handleSubmit = async (e) => {
@@ -55,8 +98,8 @@ const Review = ({ postId, tutorId, studentId, postType, onClose, initialSubject,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           post_id: postId,
-          post_type: postType || 'unknown',
-          tutor_id: tutorId, // Explicitly pass tutorId
+          post_type: postType || "unknown",
+          tutor_id: tutorId,
           student_id: studentId,
           rating,
           rating_punctuality: punctuality || rating,
@@ -74,10 +117,9 @@ const Review = ({ postId, tutorId, studentId, postType, onClose, initialSubject,
 
       alert("ขอบคุณสำหรับรีวิวของคุณ!");
       if (onClose) onClose();
-
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาด: " + err.message);
+      alert(`เกิดข้อผิดพลาด: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -87,8 +129,6 @@ const Review = ({ postId, tutorId, studentId, postType, onClose, initialSubject,
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200">
-
-        {/* Header (Blue Design) */}
         <div className="bg-indigo-600 px-6 py-4 flex justify-between items-center text-white">
           <h3 className="font-bold text-lg">รีวิวการเรียน</h3>
           <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full">
@@ -97,7 +137,6 @@ const Review = ({ postId, tutorId, studentId, postType, onClose, initialSubject,
         </div>
 
         <div className="p-6">
-          {/* Info Section */}
           <div className="flex flex-col items-center mb-6">
             <img
               src={initialTutorImage || "/../blank_avatar.jpg"}
@@ -128,10 +167,11 @@ const Review = ({ postId, tutorId, studentId, postType, onClose, initialSubject,
             <button
               type="submit"
               disabled={loading}
-              className={`w-full text-white font-medium py-3 px-4 rounded-xl shadow-lg transition-all transform active:scale-[0.98] ${loading
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-indigo-600 hover:bg-indigo-700 hover:shadow-indigo-200"
-                }`}
+              className={`w-full text-white font-medium py-3 px-4 rounded-xl shadow-lg transition-all transform active:scale-[0.98] ${
+                loading
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-700 hover:shadow-indigo-200"
+              }`}
             >
               {loading ? "กำลังส่ง..." : "ส่งรีวิว"}
             </button>
