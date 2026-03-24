@@ -885,7 +885,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                             className="bg-white border border-gray-100 p-5 sm:p-6 rounded-[1.5rem] shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col relative group"
                             onClick={() => {
                               if (onOpenPost && item.post_id) {
-                                const type = item.source?.includes('tutor_post') || item.source === 'tutor_self_teaching' || item.source === 'calendar_tutor' ? 'tutor' : 'student';
+                                const type = item.post_type || (item.source?.includes('tutor_post') || item.source === 'tutor_self_teaching' || item.source === 'calendar_tutor' ? 'tutor_post' : 'student_post');
                                 onOpenPost(item.post_id, type);
                               }
                             }}
@@ -991,7 +991,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                           key={ev.event_id || index}
                           onClick={() => {
                             if (onOpenPost && ev.post_id) {
-                              const type = ev.source?.includes('tutor_post') || ev.source === 'tutor_self_teaching' || ev.source === 'calendar_tutor' ? 'tutor' : 'student';
+                              const type = ev.post_type || (ev.source?.includes('tutor_post') || ev.source === 'tutor_self_teaching' || ev.source === 'calendar_tutor' ? 'tutor_post' : 'student_post');
                               onOpenPost(ev.post_id, type);
                             }
                           }}

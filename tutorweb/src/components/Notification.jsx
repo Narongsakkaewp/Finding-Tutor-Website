@@ -77,12 +77,12 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
   const groups = useMemo(() => {
     // [FIX] Create a Set of keys from scheduleAlerts to filter duplicates
     // We match by related_id and roughly the type (since scheduleAlerts might use specific types)
-    const alertKeys = new Set(scheduleAlerts.map(a => `${a.related_id}`));
+    const alertKeys = new Set(scheduleAlerts.map(a => `${a.related_id}:${a.post_type || a.resolved_post_type || ''}`));
 
     // Filter out notifications that are already shown in Schedule Alerts (Top Section)
     // Only filter if it's a schedule type notification
     const filtered = notifications.filter(n => {
-      if (n.type.includes('schedule') && alertKeys.has(String(n.related_id))) {
+      if (n.type.includes('schedule') && alertKeys.has(`${n.related_id}:${n.resolved_post_type || ''}`)) {
         return false;
       }
       return true;
@@ -112,6 +112,8 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
     return { latest, today, yesterday, older };
   }, [notifications, scheduleAlerts]);
 
+  const getItemPostType = (item) => item?.resolved_post_type || item?.post_type || item?.review_post_type || null;
+
   // --- ส่วนจัดการการแสดงผล ---
 
   const [offerModal, setOfferModal] = useState(null); // { tutor, post_id, actor_id, notification_id ... }
@@ -137,20 +139,9 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
 
     // Handle schedule alerts separately (they don't have notification_id for marking as read)
     if (item.is_schedule_alert) {
-      let path = null;
-      if (item.type.includes('schedule_student')) {
-        path = `/feed?tab=student&open=${item.related_id}`;
-      } else if (item.type.includes('schedule_tutor')) {
-        path = `/feed?tab=tutor&open=${item.related_id}`;
-      } else if (item.type === 'schedule_tomorrow' || item.type === 'schedule_today') {
-        path = `/feed?tab=student&open=${item.related_id}`;
-      }
-
-      if (typeof onOpenPost === "function" && path) {
-        const url = new URL(path, window.location.origin);
-        onOpenPost(url.searchParams.get("open"), item.type, path);
-      } else if (path) {
-        window.location.href = path;
+      const postType = getItemPostType(item);
+      if (typeof onOpenPost === "function" && postType) {
+        onOpenPost(item.related_id, postType);
       }
       return; // Exit early for schedule alerts
     }
@@ -198,7 +189,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
           notification_id: item.notification_id,
           post_id: item.related_id,
           actor_id: item.actor_id,
-          post_type: item.type === 'tutor_review_request' ? 'tutor_post' : 'student_post',
+          post_type: getItemPostType(item) || (item.type === 'tutor_review_request' ? 'tutor_post' : 'student_post'),
           post_subject: item.post_subject || `โพสต์ #${item.related_id}`, // Pass subject from item
           tutorImage: item.actor_avatar, // Store avatar
           tutor
@@ -217,21 +208,9 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
       return;
     }
 
-    let path = null;
-    if (item.type === 'join_request') path = `/feed?tab=student&open=${item.related_id}`;
-    else if (item.type === 'tutor_join_request') path = `/feed?tab=tutor&open=${item.related_id}`;
-    else if (item.type === 'join_approved') path = `/feed?tab=student&open=${item.related_id}`; // หรือไปที่ calendar
-    else if (item.type === 'tutor_join_approved') path = `/feed?tab=tutor&open=${item.related_id}`;
-    else if (item.type === 'comment' || item.type === 'mention') {
-      const tab = item.inferred_post_type === 'tutor' ? 'tutor' : 'student';
-      path = `/feed?tab=${tab}&open=${item.related_id}`;
-    }
-
-    if (typeof onOpenPost === "function" && path) {
-      const url = new URL(path, window.location.origin);
-      onOpenPost(url.searchParams.get("open"), item.type, path);
-    } else if (path) {
-      window.location.href = path;
+    const postType = getItemPostType(item);
+    if (typeof onOpenPost === "function" && postType) {
+      onOpenPost(item.related_id, postType);
     }
   };
 
@@ -655,7 +634,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
                 </h3>
                 <div className="space-y-3">
                   {scheduleAlerts.map((alert, idx) => (
-                    <div key={`alert-${idx}`} className="px-5 py-3 bg-white border-l-4 border-orange-400 rounded-r-xl shadow-sm hover:shadow-md transition-all">
+                    <div key={`alert-${alert.type}-${alert.related_id}-${alert.post_type || idx}`} className="px-5 py-3 bg-white border-l-4 border-orange-400 rounded-r-xl shadow-sm hover:shadow-md transition-all">
                       <NotificationItem item={{
                         type: alert.type,
                         post_subject: alert.post_subject,
@@ -663,7 +642,9 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
                         created_at: alert.created_at,
                         is_read: 0,
                         is_schedule_alert: true,
-                        related_id: alert.related_id
+                        related_id: alert.related_id,
+                        post_type: alert.post_type,
+                        resolved_post_type: alert.post_type
                       }} />
                     </div>
                   ))}

@@ -150,7 +150,13 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
 
   // โหลดโพสต์ (พยายามใช้ cache ก่อน)
   useEffect(() => {
-    const found = postsCache.find((p) => Number(p.id) === Number(postId));
+    const found = postsCache.find((p) => {
+      if (Number(p.id) !== Number(postId)) return false;
+      if (!postType) return true;
+      const cacheType = String(p.post_type || p.type || "").toLowerCase();
+      const wantedType = String(postType || "").toLowerCase().replace("_post", "");
+      return cacheType ? cacheType.includes(wantedType) : true;
+    });
     if (found) {
       setPost(found);
       setLoading(false);
@@ -198,30 +204,10 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
         }
 
         // ✅ Case 3: Fallback (If type mismatch or not found)
-        if (!single) {
-          // If we tried student and failed, maybe it's tutor?
-          if (!isTutorType) {
-            try {
-              const r2 = await fetch(`${API_BASE}/api/tutor-posts/${postId}`);
-              if (r2.ok) {
-                const t = await r2.json();
-                single = mapTutorToUnified(t);
-              }
-            } catch (e) { }
-          }
-          // If we tried tutor and failed, maybe it's student?
-          else {
-            try {
-              const rs = await fetch(`${API_BASE}/api/student_posts/${postId}`);
-              if (rs.ok) {
-                const s = await rs.json();
-                single = normalizePost(s);
-              }
-            } catch (e) { }
-          }
+        if (single) {
+          single.post_type = isTutorType ? "tutor_post" : "student_post";
+          setPost(single);
         }
-
-        if (single) setPost(single);
       } catch (e) {
         console.error(e);
       } finally {
@@ -445,7 +431,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
                 setPostsCache((arr) =>
                   Array.isArray(arr)
                     ? arr.map((pp) => {
-                      if (pp.id === post.id) {
+                      if (pp.id === post.id && String(pp.post_type || "").toLowerCase() === String(post.post_type || "").toLowerCase()) {
                         const updated = { ...pp, join_count: Number(newCount ?? pp.join_count) };
                         if (approvedTutor) {
                           updated.has_tutor = true;

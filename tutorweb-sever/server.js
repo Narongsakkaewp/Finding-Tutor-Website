@@ -448,22 +448,39 @@ app.post('/api/reviews', async (req, res) => {
 
     // Support tutor_post_id or post_id from frontend (normalize to post_id/tutor_id)
     const targetPostId = tutor_post_id || post_id;
+    const normalizedPostType =
+      post_type === 'student' ? 'student_post'
+        : post_type === 'tutor' ? 'tutor_post'
+          : post_type;
 
-    // 1. Try to resolve missing tutor_id OR missing post_type from tutor_posts
+    // Respect an explicit post_type from the client so colliding IDs across tables
+    // do not get reassigned to the wrong post type.
     if (targetPostId) {
-      // Check Tutor Posts
-      const [posts] = await pool.query('SELECT tutor_id FROM tutor_posts WHERE tutor_post_id = ?', [targetPostId]);
-      if (posts.length > 0) {
-        if (!tutor_id) tutor_id = posts[0].tutor_id;
-        post_id = targetPostId;
-        post_type = 'tutor_post';
-      } else {
-        // Check Student Posts (if not found in tutor_posts)
+      if (normalizedPostType === 'tutor_post') {
+        const [posts] = await pool.query('SELECT tutor_id FROM tutor_posts WHERE tutor_post_id = ?', [targetPostId]);
+        if (posts.length > 0) {
+          if (!tutor_id) tutor_id = posts[0].tutor_id;
+          post_id = targetPostId;
+          post_type = 'tutor_post';
+        }
+      } else if (normalizedPostType === 'student_post') {
         const [sp] = await pool.query('SELECT student_id FROM student_posts WHERE student_post_id = ?', [targetPostId]);
         if (sp.length > 0) {
           post_id = targetPostId;
           post_type = 'student_post';
-          // Note: For student posts, tutor_id must be provided by frontend as it's not the post owner
+        }
+      } else {
+        const [posts] = await pool.query('SELECT tutor_id FROM tutor_posts WHERE tutor_post_id = ?', [targetPostId]);
+        if (posts.length > 0) {
+          if (!tutor_id) tutor_id = posts[0].tutor_id;
+          post_id = targetPostId;
+          post_type = 'tutor_post';
+        } else {
+          const [sp] = await pool.query('SELECT student_id FROM student_posts WHERE student_post_id = ?', [targetPostId]);
+          if (sp.length > 0) {
+            post_id = targetPostId;
+            post_type = 'student_post';
+          }
         }
       }
     }
@@ -2613,6 +2630,27 @@ app.get('/api/schedule-alerts/:userId', async (req, res) => {
   }
 });
 
+function normalizePostTypeValue(postType) {
+  const value = String(postType || '').toLowerCase();
+  if (value.includes('tutor')) return 'tutor_post';
+  if (value.includes('student')) return 'student_post';
+  return null;
+}
+
+function resolvePostTypeFromCandidates(preferredType, studentSubject, tutorSubject, text) {
+  const normalizedPreferred = normalizePostTypeValue(preferredType);
+  const haystack = String(text || '').toLowerCase();
+  const studentHit = studentSubject && haystack.includes(String(studentSubject).toLowerCase());
+  const tutorHit = tutorSubject && haystack.includes(String(tutorSubject).toLowerCase());
+
+  if (studentHit && !tutorHit) return 'student_post';
+  if (tutorHit && !studentHit) return 'tutor_post';
+  if (normalizedPreferred) return normalizedPreferred;
+  if (studentSubject && !tutorSubject) return 'student_post';
+  if (tutorSubject && !studentSubject) return 'tutor_post';
+  return null;
+}
+
 app.get('/api/notifications/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -2630,13 +2668,30 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         au.name AS actor_firstname, 
         au.lastname AS actor_lastname,
         COALESCE(spro.profile_picture_url, tpro.profile_picture_url) AS actor_avatar,
+        CASE
+            WHEN n.type = 'review_request' THEN 'student_post'
+            WHEN n.type = 'tutor_review_request'
+                 AND sp_review_owner.student_post_id IS NOT NULL
+                 AND spo_review.student_post_id IS NOT NULL THEN 'student_post'
+            WHEN n.type = 'tutor_review_request'
+                 AND tp_review_join.tutor_post_id IS NOT NULL
+                 AND tpj_review.tutor_post_id IS NOT NULL THEN 'tutor_post'
+            ELSE NULL
+        END AS review_post_type,
         spo.status AS offer_status, -- [NEW] สถานะ Offer (ถ้ามี)
         CASE WHEN rvw.review_id IS NOT NULL THEN 1 ELSE 0 END AS is_reviewed, -- [NEW] สถานะการรีวิว
         
         -- ข้อมูลวิชา (Subject) จากโพสต์ที่เกี่ยวข้อง
         CASE
-            WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'review_request', 'system_alert') THEN sp.subject
-            WHEN n.type IN ('tutor_join_request', 'tutor_join_approved', 'tutor_join_rejected', 'tutor_review_request') THEN tp.subject
+            WHEN n.type = 'review_request' THEN COALESCE(sp_review_joiner.subject, sp.subject)
+            WHEN n.type = 'tutor_review_request'
+                 AND sp_review_owner.student_post_id IS NOT NULL
+                 AND spo_review.student_post_id IS NOT NULL THEN sp_review_owner.subject
+            WHEN n.type = 'tutor_review_request'
+                 AND tp_review_join.tutor_post_id IS NOT NULL
+                 AND tpj_review.tutor_post_id IS NOT NULL THEN tp_review_join.subject
+            WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'system_alert') THEN sp.subject
+            WHEN n.type IN ('tutor_join_request', 'tutor_join_approved', 'tutor_join_rejected') THEN tp.subject
             WHEN n.type IN ('comment', 'mention') THEN COALESCE(sp.subject, tp.subject)
             WHEN n.type LIKE 'schedule_student_%' THEN sp.subject
             WHEN n.type LIKE 'schedule_tutor_%' THEN tp.subject
@@ -2651,7 +2706,11 @@ app.get('/api/notifications/:user_id', async (req, res) => {
             WHEN sp.student_post_id IS NOT NULL AND tp.tutor_post_id IS NULL THEN 'student'
             WHEN tp.tutor_post_id IS NOT NULL AND sp.student_post_id IS NULL THEN 'tutor'
             ELSE NULL
-        END AS inferred_post_type
+        END AS inferred_post_type,
+        sp.subject AS student_subject_candidate,
+        tp.subject AS tutor_subject_candidate,
+        ce_student.subject AS calendar_student_subject,
+        ce_tutor.subject AS calendar_tutor_subject
 
       FROM notifications n
       LEFT JOIN register au ON au.user_id = n.actor_id
@@ -2662,6 +2721,43 @@ app.get('/api/notifications/:user_id', async (req, res) => {
       -- Join เพื่อเอาชื่อวิชา (Subject)
       LEFT JOIN student_posts sp ON n.related_id = sp.student_post_id
       LEFT JOIN tutor_posts tp ON n.related_id = tp.tutor_post_id
+      LEFT JOIN student_posts sp_review_owner
+        ON n.related_id = sp_review_owner.student_post_id
+       AND n.user_id = sp_review_owner.student_id
+       AND n.type = 'tutor_review_request'
+      LEFT JOIN student_post_offers spo_review
+        ON n.related_id = spo_review.student_post_id
+       AND n.actor_id = spo_review.tutor_id
+       AND spo_review.status = 'approved'
+       AND n.type = 'tutor_review_request'
+      LEFT JOIN tutor_posts tp_review_join
+        ON n.related_id = tp_review_join.tutor_post_id
+       AND n.actor_id = tp_review_join.tutor_id
+       AND n.type = 'tutor_review_request'
+      LEFT JOIN tutor_post_joins tpj_review
+        ON n.related_id = tpj_review.tutor_post_id
+       AND n.user_id = tpj_review.user_id
+       AND tpj_review.status = 'approved'
+       AND n.type = 'tutor_review_request'
+      LEFT JOIN student_posts sp_review_joiner
+        ON n.related_id = sp_review_joiner.student_post_id
+       AND n.type = 'review_request'
+      LEFT JOIN (
+        SELECT user_id, post_id, MAX(subject) AS subject
+        FROM calendar_events
+        WHERE post_type = 'student'
+        GROUP BY user_id, post_id
+      ) ce_student
+        ON n.user_id = ce_student.user_id
+       AND n.related_id = ce_student.post_id
+      LEFT JOIN (
+        SELECT user_id, post_id, MAX(subject) AS subject
+        FROM calendar_events
+        WHERE post_type = 'tutor'
+        GROUP BY user_id, post_id
+      ) ce_tutor
+        ON n.user_id = ce_tutor.user_id
+       AND n.related_id = ce_tutor.post_id
 
       -- [NEW] Join เพื่อเอาสถานะ Offer (สำหรับ type='offer')
       LEFT JOIN student_post_offers spo ON n.related_id = spo.student_post_id AND n.actor_id = spo.tutor_id AND n.type = 'offer'
@@ -2674,7 +2770,45 @@ app.get('/api/notifications/:user_id', async (req, res) => {
     `;
 
     const [results] = await pool.execute(sql, [user_id]);
-    res.json(results);
+
+    const explicitStudentTypes = new Set([
+      'join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted',
+      'review_request', 'schedule_student_today', 'schedule_student_tomorrow'
+    ]);
+    const explicitTutorTypes = new Set([
+      'tutor_join_request', 'tutor_join_approved', 'tutor_join_rejected',
+      'schedule_tutor_today', 'schedule_tutor_tomorrow'
+    ]);
+
+    const normalized = results.map((row) => {
+      const studentSubject = row.calendar_student_subject || row.student_subject_candidate || null;
+      const tutorSubject = row.calendar_tutor_subject || row.tutor_subject_candidate || null;
+      const preferredType =
+        row.review_post_type ||
+        (explicitStudentTypes.has(row.type) ? 'student_post' : null) ||
+        (explicitTutorTypes.has(row.type) ? 'tutor_post' : null) ||
+        (row.inferred_post_type === 'tutor' ? 'tutor_post' : row.inferred_post_type === 'student' ? 'student_post' : null);
+
+      const resolvedPostType = resolvePostTypeFromCandidates(
+        preferredType,
+        studentSubject,
+        tutorSubject,
+        `${row.message || ''} ${row.post_subject || ''}`
+      ) || preferredType;
+
+      const resolvedSubject =
+        resolvedPostType === 'student_post' ? (studentSubject || row.post_subject) :
+          resolvedPostType === 'tutor_post' ? (tutorSubject || row.post_subject) :
+            row.post_subject;
+
+      return {
+        ...row,
+        resolved_post_type: resolvedPostType,
+        post_subject: resolvedSubject,
+      };
+    }).map(({ student_subject_candidate, tutor_subject_candidate, calendar_student_subject, calendar_tutor_subject, ...rest }) => rest);
+
+    res.json(normalized);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
@@ -3054,31 +3188,43 @@ app.get('/api/calendar/:userId', async (req, res) => {
 
     // 1) ดึงอีเวนต์นัดหมาย (Calendar Events)
     const [rowsCal] = await pool.query(
-      `SELECT event_id, user_id, post_id, post_type, title, subject, event_date, event_time, location, created_at
-       FROM calendar_events
-       WHERE user_id = ?
-         AND (event_date BETWEEN ? AND ? OR event_date IS NULL)
-       ORDER BY COALESCE(event_date, ?) ASC`,
+      `SELECT ce.event_id, ce.user_id, ce.post_id, ce.post_type, ce.title, ce.subject, ce.event_date, ce.event_time, ce.location, ce.created_at,
+              sp.subject AS student_subject_candidate,
+              tp.subject AS tutor_subject_candidate
+       FROM calendar_events ce
+       LEFT JOIN student_posts sp ON ce.post_id = sp.student_post_id
+       LEFT JOIN tutor_posts tp ON ce.post_id = tp.tutor_post_id
+       WHERE ce.user_id = ?
+         AND (ce.event_date BETWEEN ? AND ? OR ce.event_date IS NULL)
+       ORDER BY COALESCE(ce.event_date, ?) ASC`,
       [userId, start, end, today]
     );
 
     const uniqueCalMap = new Map();
     rowsCal.forEach(r => {
       const eDate = parseDateFromPreferredDays(r.event_date); // บังคับให้เป็น String YYYY-MM-DD
-      const pType = r.post_type || 'student';
-      const key = r.post_id ? `post-${r.post_id}-${pType}-${eDate}` : `evt-${r.event_id}`;
+      const resolvedType = resolvePostTypeFromCandidates(
+        r.post_type,
+        r.student_subject_candidate,
+        r.tutor_subject_candidate,
+        `${r.subject || ''} ${r.title || ''}`
+      ) || normalizePostTypeValue(r.post_type) || 'student_post';
+      const key = r.post_id ? `post-${r.post_id}-${resolvedType}-${eDate}-${r.event_time || ''}` : `evt-${r.event_id}`;
       if (!uniqueCalMap.has(key)) {
         uniqueCalMap.set(key, {
           event_id: r.event_id,
           user_id: r.user_id,
           post_id: r.post_id,
           title: r.title,
-          subject: r.subject,
+          post_type: resolvedType,
+          subject: resolvedType === 'tutor_post'
+            ? (r.tutor_subject_candidate || r.subject)
+            : (r.student_subject_candidate || r.subject),
           event_date: eDate,
           event_time: r.event_time,
           location: r.location || null,
           created_at: r.created_at,
-          source: pType === 'tutor' ? 'calendar_tutor' : 'calendar_student'
+          source: resolvedType === 'tutor_post' ? 'calendar_tutor' : 'calendar_student'
         });
       }
     });
@@ -3097,6 +3243,7 @@ app.get('/api/calendar/:userId', async (req, res) => {
         event_id: `sp-${p.student_post_id}-${idx}`,
         user_id: p.student_id,
         post_id: p.student_post_id,
+        post_type: 'student_post',
         title: `โพสต์ของคุณ: ${p.subject || 'เรียนพิเศษ'}`,
         subject: p.subject || null,
         event_date: dt.event_date,
@@ -3120,6 +3267,7 @@ app.get('/api/calendar/:userId', async (req, res) => {
         event_id: `tp-${p.tutor_post_id}-${idx}`,
         user_id: p.tutor_id,
         post_id: p.tutor_post_id,
+        post_type: 'tutor_post',
         title: `โพสต์ของติวเตอร์ (สอน): ${p.subject || 'วิชาทั่วไป'}`,
         subject: p.subject || null,
         event_date: dt.event_date,
@@ -3148,6 +3296,7 @@ app.get('/api/calendar/:userId', async (req, res) => {
         event_id: `offer-${p.student_post_id}-${idx}`,
         user_id: userId,
         post_id: p.student_post_id,
+        post_type: 'student_post',
         title: `สอนน้อง: ${p.subject || 'เรียนพิเศษ'} (${studentName})`,
         subject: p.subject || null,
         event_date: dt.event_date,
@@ -3176,6 +3325,7 @@ app.get('/api/calendar/:userId', async (req, res) => {
         event_id: `join-sp-${p.student_post_id}-${idx}`,
         user_id: userId,
         post_id: p.student_post_id,
+        post_type: 'student_post',
         title: `นัดติว (เข้าร่วม): ${p.subject || 'เรียนพิเศษ'}`,
         subject: p.subject || null,
         event_date: dt.event_date,
@@ -3203,6 +3353,7 @@ app.get('/api/calendar/:userId', async (req, res) => {
         event_id: `join-tp-${p.tutor_post_id}-${idx}`,
         user_id: userId,
         post_id: p.tutor_post_id,
+        post_type: 'tutor_post',
         title: `เรียนกับติวเตอร์: ${p.subject || 'วิชาทั่วไป'}`,
         subject: p.subject || null,
         event_date: dt.event_date,
@@ -3229,6 +3380,7 @@ app.get('/api/calendar/:userId', async (req, res) => {
         event_id: `teaching-sp-${p.tutor_post_id}-${idx}`,
         user_id: userId,
         post_id: p.tutor_post_id,
+        post_type: 'tutor_post',
         title: `สอนพิเศษ (ของคุณ): ${p.subject || 'วิชาทั่วไป'}`,
         subject: p.subject || null,
         event_date: dt.event_date,
@@ -3252,8 +3404,8 @@ app.get('/api/calendar/:userId', async (req, res) => {
 
     // ลบข้อมูลซ้ำซ้อน (Deduplicate)
     const uniqueEvents = Array.from(new Map(allEvents.map(item => {
-      const typeStr = item.source?.includes('tutor') ? 'tutor' : 'student';
-      return [item.post_id ? `${item.post_id}-${typeStr}-${item.event_date}-${item.event_time}` : item.event_id, item];
+      const typeStr = normalizePostTypeValue(item.post_type || item.source) || (item.source?.includes('tutor') ? 'tutor_post' : 'student_post');
+      return [item.post_id ? `${item.post_id}-${typeStr}-${item.event_date}-${item.event_time || ''}` : item.event_id, { ...item, post_type: typeStr }];
     })).values());
 
     const items = uniqueEvents

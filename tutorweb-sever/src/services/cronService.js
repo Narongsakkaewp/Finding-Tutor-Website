@@ -255,7 +255,7 @@ async function processCalendarEvents(conn, targetDate, notiType, messagePrefix) 
     const sqlDate = `${yyyy}-${mm}-${dd}`;
 
     const [events] = await conn.query(`
-        SELECT user_id, post_id, title, subject 
+        SELECT user_id, post_id, post_type, title, subject 
         FROM calendar_events 
         WHERE DATE(event_date) = ?
     `, [sqlDate]);
@@ -265,7 +265,9 @@ async function processCalendarEvents(conn, targetDate, notiType, messagePrefix) 
     for (const event of events) {
         console.log(`     - Event: "${event.title}" for User ${event.user_id}`);
         const msg = `${messagePrefix}: ${event.subject || event.title}`;
-        await sendNotificationIfNotExists(conn, event.user_id, notiType, msg, event.post_id);
+        const normalizedPostType = String(event.post_type || '').toLowerCase().includes('tutor') ? 'tutor' : 'student';
+        const typeVar = notiType.replace('schedule', `schedule_${normalizedPostType}`);
+        await sendNotificationIfNotExists(conn, event.user_id, typeVar, msg, event.post_id);
     }
 }
 
