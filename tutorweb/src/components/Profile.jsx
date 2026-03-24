@@ -991,7 +991,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                           key={ev.event_id || index}
                           onClick={() => {
                             if (onOpenPost && ev.post_id) {
-                              const type = ev.source?.includes('tutor_post') || ev.source === 'tutor_self_teaching' ? 'tutor' : 'student';
+                              const type = ev.source?.includes('tutor_post') || ev.source === 'tutor_self_teaching' || ev.source === 'calendar_tutor' ? 'tutor' : 'student';
                               onOpenPost(ev.post_id, type);
                             }
                           }}

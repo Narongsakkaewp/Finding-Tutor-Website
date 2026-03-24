@@ -184,7 +184,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
     }
 
     // --- Handle Review Request ---
-    if (item.type === 'review_request') {
+    if (item.type === 'review_request' || item.type === 'tutor_review_request') {
       if (item.is_reviewed === 1) {
         alert("คุณได้ส่งรีวิวสำหรับวิชานี้ไปแล้ว");
         return;
@@ -198,7 +198,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
           notification_id: item.notification_id,
           post_id: item.related_id,
           actor_id: item.actor_id,
-          post_type: 'unknown',
+          post_type: item.type === 'tutor_review_request' ? 'tutor_post' : 'student_post',
           post_subject: item.post_subject || `โพสต์ #${item.related_id}`, // Pass subject from item
           tutorImage: item.actor_avatar, // Store avatar
           tutor
@@ -406,6 +406,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
         );
         break;
       case "review_request":
+      case "tutor_review_request":
         content = (
           <div className="flex flex-col gap-0.5">
             <span className="font-bold text-indigo-600 flex items-center gap-2">
@@ -605,6 +606,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
           postId={reviewModal.post_id}
           tutorId={reviewModal.actor_id}
           studentId={normalizedUserId}
+          postType={reviewModal.post_type}
           onClose={() => setReviewModal(null)}
           initialSubject={reviewModal.post_subject}
           initialTutorName={`${reviewModal.tutor.name || ''} ${reviewModal.tutor.lastname || ''}`.trim() || reviewModal.tutor.nickname}

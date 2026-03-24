@@ -392,7 +392,7 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                     [post.student_id, post.student_post_id]
                 );
                 if (exists.length === 0) {
-                    const sent = await sendNotificationIfNotExists(conn, post.student_id, 'review_request',
+                    const sent = await sendNotificationIfNotExists(conn, post.student_id, 'tutor_review_request',
                         `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject}`, post.student_post_id, post.tutor_id);
 
                     // [EMAIL] Send Reminder to Student ONLY if new notification
@@ -472,7 +472,7 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                     [post.student_id, post.tutor_post_id]
                 );
                 if (exists.length === 0) {
-                    const sent = await sendNotificationIfNotExists(conn, post.student_id, 'review_request',
+                    const sent = await sendNotificationIfNotExists(conn, post.student_id, 'tutor_review_request',
                         `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject}`, post.tutor_post_id, post.tutor_id);
 
                     // [EMAIL] Send Reminder ONLY if new notification

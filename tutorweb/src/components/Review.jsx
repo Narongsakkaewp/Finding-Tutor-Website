@@ -24,7 +24,7 @@ const StarRow = ({ label, value, onChange }) => (
   </div>
 );
 
-const Review = ({ postId, tutorId, studentId, onClose, initialSubject, initialTutorName, initialTutorImage }) => {
+const Review = ({ postId, tutorId, studentId, postType, onClose, initialSubject, initialTutorName, initialTutorImage }) => {
   const [rating, setRating] = useState(0);    // ภาพรวม
   const [punctuality, setPunctuality] = useState(0); // ตรงต่อเวลา
   const [worth, setWorth] = useState(0);      // คุ้มค่า
@@ -54,7 +54,8 @@ const Review = ({ postId, tutorId, studentId, onClose, initialSubject, initialTu
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tutor_post_id: postId,
+          post_id: postId,
+          post_type: postType || 'unknown',
           tutor_id: tutorId, // Explicitly pass tutorId
           student_id: studentId,
           rating,

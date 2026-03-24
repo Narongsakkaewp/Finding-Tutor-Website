@@ -1061,7 +1061,14 @@ function TutorProfile({ setCurrentPage, onEditProfile, user, onOpenPost, onViewP
                                     ) : (
                                         <div className="space-y-3">
                                             {dailyEvents.map((ev, index) => (
-                                                <div key={ev.event_id || index} className="group bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-100 transition-all cursor-pointer">
+                                                <div key={ev.event_id || index} className="group bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-100 transition-all cursor-pointer"
+                                                  onClick={() => {
+                                                    if (onOpenPost && ev.post_id) {
+                                                      const type = ev.source?.includes('tutor_post') || ev.source === 'tutor_self_teaching' || ev.source === 'calendar_tutor' ? 'tutor' : 'student';
+                                                      onOpenPost(ev.post_id, type);
+                                                    }
+                                                  }}
+                                                >
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-1 bg-indigo-500 rounded-full h-8" />
                                                         <div className="flex-grow">

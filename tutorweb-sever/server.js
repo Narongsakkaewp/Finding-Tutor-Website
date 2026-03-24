@@ -2635,16 +2635,21 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         
         -- ข้อมูลวิชา (Subject) จากโพสต์ที่เกี่ยวข้อง
         CASE
-            WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'review_request', 'system_alert', 'comment', 'mention') THEN COALESCE(sp.subject, tp.subject)
-            WHEN n.type IN ('tutor_join_request', 'tutor_join_approved', 'tutor_join_rejected') THEN tp.subject
+            WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'review_request', 'system_alert') THEN sp.subject
+            WHEN n.type IN ('tutor_join_request', 'tutor_join_approved', 'tutor_join_rejected', 'tutor_review_request') THEN tp.subject
+            WHEN n.type IN ('comment', 'mention') THEN COALESCE(sp.subject, tp.subject)
+            WHEN n.type LIKE 'schedule_student_%' THEN sp.subject
+            WHEN n.type LIKE 'schedule_tutor_%' THEN tp.subject
             WHEN n.type LIKE 'schedule_%' THEN COALESCE(sp.subject, tp.subject)
             ELSE NULL
         END AS post_subject,
         
         -- ประเภทของโพสต์เพื่อใช้ในการนำทาง (Navigation)
         CASE
-            WHEN sp.student_post_id IS NOT NULL THEN 'student'
-            WHEN tp.tutor_post_id IS NOT NULL THEN 'tutor'
+            WHEN n.type IN ('tutor_join_request', 'tutor_join_approved', 'tutor_join_rejected', 'tutor_review_request') THEN 'tutor'
+            WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'review_request') THEN 'student'
+            WHEN sp.student_post_id IS NOT NULL AND tp.tutor_post_id IS NULL THEN 'student'
+            WHEN tp.tutor_post_id IS NOT NULL AND sp.student_post_id IS NULL THEN 'tutor'
             ELSE NULL
         END AS inferred_post_type
 
