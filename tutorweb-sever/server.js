@@ -514,9 +514,9 @@ app.post('/api/reviews', async (req, res) => {
     const studentName = student ? `${student.name} ${student.lastname}`.trim() : 'นักเรียน';
 
     await pool.query(
-      `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
-       VALUES (?, ?, 'review_received', ?, ?)`,
-      [tutor_id, student_id, `นักเรียน ${studentName} ได้รีวิวการสอนของคุณแล้ว`, result.insertId]
+      `INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type)
+       VALUES (?, ?, 'review_received', ?, ?, ?)`,
+      [tutor_id, student_id, `นักเรียน ${studentName} ได้รีวิวการสอนของคุณแล้ว`, result.insertId, post_type || null]
     );
 
     res.json({ success: true, message: 'Review submitted successfully', reviewId: result.insertId });
@@ -1050,12 +1050,10 @@ app.get('/api/tutor-posts', async (req, res) => {
     };
 
     const now = new Date();
-    now.setHours(0, 0, 0, 0);
 
     res.json({
       items: rows.map(r => {
-        const tDate = parseDate(r.teaching_days);
-        const isExpired = tDate && tDate < now;
+        const isExpired = !hasUpcomingSession(r.teaching_days, r.teaching_time, now);
 
         return {
           _id: r.tutor_post_id,
@@ -1615,6 +1613,7 @@ const JOIN_CONFIG = {
   student: {
     postsTable: 'student_posts',
     postIdCol: 'student_post_id',
+    postType: 'student_post',
     ownerCol: 'student_id',
     joinsTable: 'student_post_joins',
     joinPostIdCol: 'student_post_id',
@@ -1623,11 +1622,13 @@ const JOIN_CONFIG = {
     notifyType: 'join_request',
     notifyMessage: id => `มีคำขอเข้าร่วมโพสต์ #${id}`,
     countApprovedOnly: true,
-    dateCol: 'preferred_days' // [NEW] for cancellation check
+    dateCol: 'preferred_days', // [NEW] for cancellation check
+    timeCol: 'preferred_time'
   },
   tutor: {
     postsTable: 'tutor_posts',
     postIdCol: 'tutor_post_id',
+    postType: 'tutor_post',
     ownerCol: 'tutor_id',
     joinsTable: 'tutor_post_joins',
     joinPostIdCol: 'tutor_post_id',
@@ -1636,11 +1637,83 @@ const JOIN_CONFIG = {
     notifyType: 'tutor_join_request',
     notifyMessage: id => `มีคำขอเข้าร่วมโพสต์ติวเตอร์ #${id}`,
     countApprovedOnly: true,
-    dateCol: 'teaching_days' // [NEW] for cancellation check
+    dateCol: 'teaching_days', // [NEW] for cancellation check
+    timeCol: 'teaching_time'
   },
 };
 
 // ---------- JOIN/UNJOIN helper ใช้ซ้ำ ----------
+function parseSessionDateParts(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) return null;
+
+  let match = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    return {
+      year: Number(match[1]),
+      month: Number(match[2]) - 1,
+      day: Number(match[3]),
+    };
+  }
+
+  match = value.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+  if (match) {
+    let year = Number(match[3]);
+    if (year > 2400) year -= 543;
+    return {
+      year,
+      month: Number(match[2]) - 1,
+      day: Number(match[1]),
+    };
+  }
+
+  return null;
+}
+
+function parseSessionTimeParts(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) return null;
+
+  const match = value.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+
+  return {
+    hours: Number(match[1]),
+    minutes: Number(match[2]),
+    seconds: Number(match[3] || 0),
+  };
+}
+
+function buildSessionDateTimes(daysStr, timesStr) {
+  if (!daysStr) return [];
+
+  const days = String(daysStr).split(',').map((item) => item.trim()).filter(Boolean);
+  const times = String(timesStr || '').split(',').map((item) => item.trim());
+
+  return days
+    .map((dayValue, index) => {
+      const dateParts = parseSessionDateParts(dayValue);
+      if (!dateParts) return null;
+
+      const timeParts = parseSessionTimeParts(times[index] || times[0] || '');
+      return new Date(
+        dateParts.year,
+        dateParts.month,
+        dateParts.day,
+        timeParts?.hours ?? 23,
+        timeParts?.minutes ?? 59,
+        timeParts?.seconds ?? 59
+      );
+    })
+    .filter((value) => value instanceof Date && !Number.isNaN(value.getTime()));
+}
+
+function hasUpcomingSession(daysStr, timesStr, now = new Date()) {
+  const sessions = buildSessionDateTimes(daysStr, timesStr);
+  if (sessions.length === 0) return true;
+  return sessions.some((session) => session.getTime() >= now.getTime());
+}
+
 async function doJoinUnified(type, postId, me) {
   const cfg = JOIN_CONFIG[type];
   if (!cfg) throw new Error('invalid post type');
@@ -1651,7 +1724,7 @@ async function doJoinUnified(type, postId, me) {
 
     // ✅ lock post row กัน race
     const [[post]] = await conn.query(
-      `SELECT ${cfg.ownerCol} AS owner_id${cfg.hasCapacity ? `, ${cfg.capacityCol} AS capacity` : ''} 
+      `SELECT ${cfg.ownerCol} AS owner_id${cfg.hasCapacity ? `, ${cfg.capacityCol} AS capacity` : ''}${cfg.dateCol ? `, ${cfg.dateCol} AS session_days` : ''}${cfg.timeCol ? `, ${cfg.timeCol} AS session_time` : ''} 
        FROM ${cfg.postsTable} 
        WHERE ${cfg.postIdCol} = ?
        FOR UPDATE`,
@@ -1665,6 +1738,11 @@ async function doJoinUnified(type, postId, me) {
     if (Number(post.owner_id) === Number(me)) {
       await conn.rollback();
       return { http: 400, body: { success: false, message: 'คุณเป็นเจ้าของโพสต์นี้' } };
+    }
+
+    if (cfg.dateCol && !hasUpcomingSession(post.session_days, post.session_time)) {
+      await conn.rollback();
+      return { http: 400, body: { success: false, message: 'โพสต์นี้หมดเวลาเข้าร่วมแล้ว' } };
     }
 
     // ✅ เช็คเต็ม (approved เท่านั้น)
@@ -1741,8 +1819,8 @@ async function doJoinUnified(type, postId, me) {
     }
 
     await conn.query(
-      'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-      [post.owner_id, me, cfg.notifyType, notifyMessage, postId]
+      'INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type) VALUES (?, ?, ?, ?, ?, ?)',
+      [post.owner_id, me, cfg.notifyType, notifyMessage, postId, cfg.postType]
     );
 
     await conn.commit();
@@ -1866,8 +1944,8 @@ async function doUnjoinUnified(type, postId, me) {
     const msg = `ผู้เรียน ${ActorName} ได้ยกเลิกการเข้าร่วม (โพสต์: ${subject})`;
 
     await pool.query(
-      'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-      [postData.ownerId, me, 'cancel_alert', msg, postId]
+      'INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type) VALUES (?, ?, ?, ?, ?, ?)',
+      [postData.ownerId, me, 'cancel_alert', msg, postId, cfg.postType]
     );
     console.log(`[doUnjoinUnified] Notification sent to Owner=${postData.ownerId}`);
   }
@@ -1944,8 +2022,8 @@ app.post('/api/posts/:type/:id/cancel-action', async (req, res) => {
 
       // Notify Member
       await conn.query(
-        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-        [user_id, owner_id, 'system', `คำขอยกเลิกการเข้าร่วมโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId]
+        'INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type) VALUES (?, ?, ?, ?, ?, ?)',
+        [user_id, owner_id, 'system', `คำขอยกเลิกการเข้าร่วมโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId, cfg.postType]
       );
 
       // Remove Calendar
@@ -1958,8 +2036,8 @@ app.post('/api/posts/:type/:id/cancel-action', async (req, res) => {
 
       // Notify Member
       await conn.query(
-        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-        [user_id, owner_id, 'system', `คำขอยกเลิกการเข้าร่วมโพสต์ #${postId} ถูกปฏิเสธ`, postId]
+        'INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type) VALUES (?, ?, ?, ?, ?, ?)',
+        [user_id, owner_id, 'system', `คำขอยกเลิกการเข้าร่วมโพสต์ #${postId} ถูกปฏิเสธ`, postId, cfg.postType]
       );
     }
 
@@ -2335,18 +2413,18 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
         if (!isTutorTable) {
           await createCalendarEventsForStudentApproval(postId, targetUserId);
           await pool.query(
-            `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
-             VALUES (?, ?, ?, ?, ?)`,
-            [targetUserId, sp.owner_id, 'join_approved', `คำขอของคุณสำหรับโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId]
+            `INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [targetUserId, sp.owner_id, 'join_approved', `คำขอของคุณสำหรับโพสต์ #${postId} ได้รับการอนุมัติแล้ว`, postId, 'student_post']
           );
         } else {
           await createCalendarEventsForStudentApproval(postId, targetUserId);
 
           const studentName = `${sp.owner_name} ${sp.owner_lastname}`.trim();
           await pool.query(
-            `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
-             VALUES (?, ?, ?, ?, ?)`,
-            [targetUserId, sp.owner_id, 'offer_accepted', `${studentName} ยอมรับเสนอสอนวิชา "${sp.subject}" ของคุณแล้ว`, postId]
+            `INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [targetUserId, sp.owner_id, 'offer_accepted', `${studentName} ยอมรับเสนอสอนวิชา "${sp.subject}" ของคุณแล้ว`, postId, 'student_post']
           );
 
           // Auto-Reject offers อื่น
@@ -2359,9 +2437,9 @@ app.put('/api/student_posts/:id/requests/:userId', async (req, res) => {
       } else {
         await deleteCalendarEventForUser(targetUserId, postId, isTutorTable ? 'tutor' : 'student');
         await pool.query(
-          `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
-           VALUES (?, ?, ?, ?, ?)`,
-          [targetUserId, sp.owner_id, isTutorTable ? 'offer_rejected' : 'join_rejected', `คำขอ/ข้อเสนอของคุณสำหรับโพสต์ #${postId} ถูกปฏิเสธ`, postId]
+          `INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [targetUserId, sp.owner_id, isTutorTable ? 'offer_rejected' : 'join_rejected', `คำขอ/ข้อเสนอของคุณสำหรับโพสต์ #${postId} ถูกปฏิเสธ`, postId, 'student_post']
         );
       }
 
@@ -2574,9 +2652,9 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
 
       try {
         await pool.query(
-          `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
-           VALUES (?,?,?,?,?)`,
-          [userId, tutorId, 'tutor_join_approved', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ได้รับการอนุมัติแล้ว`, postId]
+          `INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type)
+           VALUES (?,?,?,?,?,?)`,
+          [userId, tutorId, 'tutor_join_approved', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ได้รับการอนุมัติแล้ว`, postId, 'tutor_post']
         );
         console.log("✅ Notification inserted successfully");
       } catch (notifErr) {
@@ -2586,9 +2664,9 @@ app.put('/api/tutor_posts/:id/requests/:userId', async (req, res) => {
       await deleteCalendarEventForUser(userId, postId, 'tutor');
       try {
         await pool.query(
-          `INSERT INTO notifications (user_id, actor_id, type, message, related_id)
-           VALUES (?,?,?,?,?)`,
-          [userId, tutorId, 'tutor_join_rejected', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ถูกปฏิเสธ`, postId]
+          `INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type)
+           VALUES (?,?,?,?,?,?)`,
+          [userId, tutorId, 'tutor_join_rejected', `คำขอเรียนกับติวเตอร์ (โพสต์ #${postId}) ถูกปฏิเสธ`, postId, 'tutor_post']
         );
       } catch (notifErr) {
         console.error("❌ Notification Insert Error (Reject):", notifErr);
@@ -2660,6 +2738,7 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         n.type,
         n.message,
         n.related_id,
+        n.post_type AS notification_post_type,
         n.is_read,
         n.created_at,
         n.user_id,
@@ -2784,6 +2863,7 @@ app.get('/api/notifications/:user_id', async (req, res) => {
       const studentSubject = row.calendar_student_subject || row.student_subject_candidate || null;
       const tutorSubject = row.calendar_tutor_subject || row.tutor_subject_candidate || null;
       const preferredType =
+        row.notification_post_type ||
         row.review_post_type ||
         (explicitStudentTypes.has(row.type) ? 'student_post' : null) ||
         (explicitTutorTypes.has(row.type) ? 'tutor_post' : null) ||
@@ -2806,7 +2886,7 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         resolved_post_type: resolvedPostType,
         post_subject: resolvedSubject,
       };
-    }).map(({ student_subject_candidate, tutor_subject_candidate, calendar_student_subject, calendar_tutor_subject, ...rest }) => rest);
+    }).map(({ student_subject_candidate, tutor_subject_candidate, calendar_student_subject, calendar_tutor_subject, notification_post_type, ...rest }) => rest);
 
     res.json(normalized);
   } catch (err) {
@@ -2829,10 +2909,10 @@ app.put('/api/notifications/read/:id', async (req, res) => {
 // ✅ อนุญาตสร้างแจ้งเตือนเอง พร้อม actor_id
 app.post('/api/notifications', async (req, res) => {
   try {
-    const { user_id, actor_id = null, type, message, related_id = null } = req.body;
+    const { user_id, actor_id = null, type, message, related_id = null, post_type = null } = req.body;
     const [result] = await pool.execute(
-      'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-      [user_id, actor_id, type, message, related_id || null]
+      'INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type) VALUES (?, ?, ?, ?, ?, ?)',
+      [user_id, actor_id, type, message, related_id || null, post_type || null]
     );
     res.json({ notification_id: result.insertId });
   } catch (err) {
@@ -2947,9 +3027,29 @@ app.get('/api/tutor-profile/:userId', async (req, res) => {
     const sql = `
       SELECT
         r.name, r.lastname, r.email, r.username, r.type, r.name_change_at,
-        tp.*, r.created_at 
+        tp.*, r.created_at,
+        COALESCE(tc.students_taught_count, 0) AS students_taught_count
       FROM register r
       LEFT JOIN tutor_profiles tp ON r.user_id = tp.user_id
+      LEFT JOIN (
+        SELECT tutor_id, COUNT(DISTINCT learner_id) AS students_taught_count
+        FROM (
+          SELECT tp.tutor_id, j.user_id AS learner_id
+          FROM tutor_posts tp
+          JOIN tutor_post_joins j ON j.tutor_post_id = tp.tutor_post_id AND j.status = 'approved'
+          UNION ALL
+          SELECT o.tutor_id, sp.student_id AS learner_id
+          FROM student_post_offers o
+          JOIN student_posts sp ON sp.student_post_id = o.student_post_id
+          WHERE o.status = 'approved'
+          UNION ALL
+          SELECT o.tutor_id, j.user_id AS learner_id
+          FROM student_post_offers o
+          JOIN student_post_joins j ON j.student_post_id = o.student_post_id AND j.status = 'approved'
+          WHERE o.status = 'approved'
+        ) taught
+        GROUP BY tutor_id
+      ) tc ON tc.tutor_id = r.user_id
       WHERE r.user_id = ?
     `;
     const [rows] = await pool.execute(sql, [userId]);
@@ -4235,8 +4335,8 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
 
       // แจ้งเตือน: type = 'offer'
       await pool.query(
-        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-        [post.student_id, me, 'offer', `มีติวเตอร์ยื่นข้อเสนอสอน สำหรับโพสต์ "${post.subject || 'เรียนพิเศษ'}"`, postId]
+        'INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type) VALUES (?, ?, ?, ?, ?, ?)',
+        [post.student_id, me, 'offer', `มีติวเตอร์ยื่นข้อเสนอสอน สำหรับโพสต์ "${post.subject || 'เรียนพิเศษ'}"`, postId, 'student_post']
       );
 
     } else {
@@ -4254,8 +4354,8 @@ app.post('/api/student_posts/:id/join', async (req, res) => {
 
       // แจ้งเตือน: type = 'join_request'
       await pool.query(
-        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-        [post.student_id, me, 'join_request', `มีคำขอเข้าร่วมโพสต์ "${post.subject || 'เรียนพิเศษ'}"`, postId]
+        'INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type) VALUES (?, ?, ?, ?, ?, ?)',
+        [post.student_id, me, 'join_request', `มีคำขอเข้าร่วมโพสต์ "${post.subject || 'เรียนพิเศษ'}"`, postId, 'student_post']
       );
     }
 
@@ -4522,11 +4622,15 @@ app.post('/api/interactions', async (req, res) => {
   const { user_id, action_type, related_id, subject_keyword } = req.body;
   if (!user_id || !subject_keyword) return res.json({ success: false });
 
+  const normalizedActionType = String(action_type || '').trim() || 'open_post';
+  const normalizedKeyword = String(subject_keyword || '').trim();
+  if (!normalizedKeyword) return res.json({ success: false });
+
   try {
     await pool.query(
       `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword) 
        VALUES (?, ?, ?, ?)`,
-      [user_id, action_type, related_id, subject_keyword.trim()]
+      [user_id, normalizedActionType, related_id, normalizedKeyword]
     );
     res.json({ success: true });
   } catch (err) {
@@ -4732,9 +4836,9 @@ app.post('/api/reviews', async (req, res) => {
     const sName = student[0] ? `${student[0].name} ${student[0].lastname}` : 'นักเรียน';
 
     await pool.query(
-      `INSERT INTO notifications (user_id, actor_id, type, message, related_id, created_at)
-       VALUES (?, ?, 'review_received', ?, ?, NOW())`,
-      [tId, sId, `ได้รับรีวิวใหม่จาก ${sName}`, inputPostId]
+      `INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type, created_at)
+       VALUES (?, ?, 'review_received', ?, ?, ?, NOW())`,
+      [tId, sId, `ได้รับรีวิวใหม่จาก ${sName}`, inputPostId, finalPostType]
     );
 
     res.json({ success: true, message: 'Review submitted successfully' });
@@ -5050,8 +5154,8 @@ app.post('/api/comments', async (req, res) => {
     // 1. แจ้งเตือนเจ้าของโพสต์ (ถ้าคนคอมเมนต์ไม่ใช่เจ้าของ)
     if (Number(user_id) !== Number(post_owner_id)) {
       await pool.query(
-        'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-        [post_owner_id, user_id, 'comment', 'แสดงความคิดเห็นในโพสต์ของคุณ', post_id]
+        'INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type) VALUES (?, ?, ?, ?, ?, ?)',
+        [post_owner_id, user_id, 'comment', 'แสดงความคิดเห็นในโพสต์ของคุณ', post_id, post_type]
       );
     }
 
@@ -5071,8 +5175,8 @@ app.post('/api/comments', async (req, res) => {
         // ไม่แจ้งเตือนตัวเอง และไม่แจ้งเตือนซ้ำกับเจ้าของโพสต์ (เพราะแจ้งเหตุการณ์คอมเมนต์ไปแล้ว)
         if (Number(tUser.user_id) !== Number(user_id) && Number(tUser.user_id) !== Number(post_owner_id)) {
           await pool.query(
-            'INSERT INTO notifications (user_id, actor_id, type, message, related_id) VALUES (?, ?, ?, ?, ?)',
-            [tUser.user_id, user_id, 'mention', 'กล่าวถึงคุณในความคิดเห็น', post_id]
+            'INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type) VALUES (?, ?, ?, ?, ?, ?)',
+            [tUser.user_id, user_id, 'mention', 'กล่าวถึงคุณในความคิดเห็น', post_id, post_type]
           );
         }
       }

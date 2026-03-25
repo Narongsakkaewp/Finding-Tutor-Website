@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Search, Clock, X, BookOpen, ChevronRight, TrendingUp, Trash2 } from "lucide-react";
 import { API_BASE } from '../config';
+import { logUserInteraction } from '../utils/interactions';
 
 // Helper hook for debouncing
 function useDebounce(value, delay) {
@@ -97,6 +98,15 @@ export default function SmartSearch({ userId, onSearch, onSelectResult }) {
   };
 
   const handleSelectResult = (item, type) => {
+    const relatedId = item.id || item._id || item.tutor_post_id || item.student_post_id || item.tutor_id || null;
+    const subjectKeyword = item.subject || item.can_teach_subjects || item.nickname || item.name || query;
+    logUserInteraction({
+      userId,
+      actionType: type === 'tutor' ? 'search_open_tutor' : 'search_open_post',
+      relatedId,
+      subjectKeyword
+    });
+
     // 1. If parent provided a specific handler for clicks (e.g. Index page opening a modal)
     if (onSelectResult) {
       onSelectResult(item, type);

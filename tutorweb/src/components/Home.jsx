@@ -12,6 +12,7 @@ import SmartSearch from './SmartSearch';
 import RecommendedTutors from './RecommendedTutors';
 import { API_BASE } from '../config';
 import { useTabRestoration, useScrollRestoration } from '../hooks/useRestoration';
+import { logUserInteraction } from '../utils/interactions';
 
 /** ---------------- Config ---------------- */
 /** ---------------- Utils ----------------- */
@@ -652,6 +653,17 @@ function HomeStudent() {
   const user = JSON.parse(localStorage.getItem('user'));
   const userId = user?.user_id;
 
+  const openPreviewWithTracking = (item, type, actionType = "open_post") => {
+    logUserInteraction({
+      userId,
+      actionType,
+      relatedId: item?.id || item?._id || item?.tutor_post_id || item?.student_post_id,
+      subjectKeyword: item?.subject || item?.title || item?.name || "",
+    });
+    setPreview(item);
+    setPreviewType(type);
+  };
+
   const handleSearch = async (keyword, tab = "courses") => {
     if (typeof keyword !== 'string') return; // Safety check
     setQuery(keyword);
@@ -782,7 +794,7 @@ function HomeStudent() {
               <RecommendedTutors
                 userId={userId}
                 key={recKey}
-                onOpen={(item) => { setPreview(item); setPreviewType("tutor"); }}
+                onOpen={(item) => openPreviewWithTracking(item, "tutor", "open_recommendation")}
               />
             </section>
 
@@ -804,7 +816,7 @@ function HomeStudent() {
                     <TutorCard
                       key={t.id}
                       item={t}
-                      onOpen={(i) => { setPreview(i); setPreviewType("tutor_only"); }}
+                      onOpen={(i) => openPreviewWithTracking(i, "tutor_only", "open_tutor_profile")}
                       onToggleSave={handleToggleFavorite}
                     />
                   ))
@@ -907,12 +919,12 @@ function HomeStudent() {
               {searchTab === "tutors" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {loading ? [...Array(4)].map((_, i) => <div key={i} className="h-64 bg-gray-100 rounded-2xl animate-pulse"></div>) :
-                    tutors.length > 0 ? tutors.map(t => <TutorCard key={t.id} item={t} onOpen={(i) => { setPreview(i); setPreviewType("tutor_only"); }} />) :
+                    tutors.length > 0 ? tutors.map(t => <TutorCard key={t.id} item={t} onOpen={(i) => openPreviewWithTracking(i, "tutor_only", "open_tutor_profile")} />) :
                       <div className="col-span-full"><EmptyState label="ไม่พบติวเตอร์ที่ค้นหา" /></div>}
                 </div>
               )}
-              {searchTab === "courses" && <TutorPostFeed searchKey={query} onOpen={(i) => { setPreview(i); setPreviewType("tutor"); }} filters={filters} />}
-              {searchTab === "requests" && <StudentPostFeed searchKey={query} onOpen={(item) => { setPreview(item); setPreviewType("student_post"); }} filters={filters} />}
+              {searchTab === "courses" && <TutorPostFeed searchKey={query} onOpen={(i) => openPreviewWithTracking(i, "tutor", "open_post")} filters={filters} />}
+              {searchTab === "requests" && <StudentPostFeed searchKey={query} onOpen={(item) => openPreviewWithTracking(item, "student_post", "open_post")} filters={filters} />}
             </div>
           </section>
         )}

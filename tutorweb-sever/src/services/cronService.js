@@ -90,8 +90,8 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
             const msg = `${messagePrefix}: ${post.subject}`;
             const typeVar = notiType.replace('schedule', 'schedule_student');
 
-            const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.student_post_id);
-            const sentJoiner = await sendNotificationIfNotExists(conn, post.joiner_id, typeVar, msg, post.student_post_id);
+            const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.student_post_id, null, 'student_post');
+            const sentJoiner = await sendNotificationIfNotExists(conn, post.joiner_id, typeVar, msg, post.student_post_id, null, 'student_post');
 
             // [EMAIL] Reminder
             if (isReminder) {
@@ -148,8 +148,8 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
             const msg = `${messagePrefix}: ${post.subject}`;
             const typeVar = notiType.replace('schedule', 'schedule_tutor');
 
-            const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.tutor_post_id);
-            const sentJoiner = await sendNotificationIfNotExists(conn, post.joiner_id, typeVar, msg, post.tutor_post_id);
+            const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.tutor_post_id, null, 'tutor_post');
+            const sentJoiner = await sendNotificationIfNotExists(conn, post.joiner_id, typeVar, msg, post.tutor_post_id, null, 'tutor_post');
 
             // [EMAIL] Reminder
             if (isReminder) {
@@ -206,8 +206,8 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
             const msg = `${messagePrefix}: ${post.subject}`;
             const typeVar = notiType.replace('schedule', 'schedule_student');
 
-            const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.student_post_id);
-            const sentJoiner = await sendNotificationIfNotExists(conn, post.joiner_id, typeVar, msg, post.student_post_id);
+            const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.student_post_id, null, 'student_post');
+            const sentJoiner = await sendNotificationIfNotExists(conn, post.joiner_id, typeVar, msg, post.student_post_id, null, 'student_post');
 
             // [EMAIL] Reminder
             if (isReminder) {
@@ -267,7 +267,7 @@ async function processCalendarEvents(conn, targetDate, notiType, messagePrefix) 
         const msg = `${messagePrefix}: ${event.subject || event.title}`;
         const normalizedPostType = String(event.post_type || '').toLowerCase().includes('tutor') ? 'tutor' : 'student';
         const typeVar = notiType.replace('schedule', `schedule_${normalizedPostType}`);
-        await sendNotificationIfNotExists(conn, event.user_id, typeVar, msg, event.post_id);
+        await sendNotificationIfNotExists(conn, event.user_id, typeVar, msg, event.post_id, null, normalizedPostType === 'tutor' ? 'tutor_post' : 'student_post');
     }
 }
 
@@ -310,21 +310,22 @@ function isSameDate(d1, d2) {
         d1.getDate() === d2.getDate();
 }
 
-async function sendNotificationIfNotExists(conn, userId, type, message, relatedId, actorId = null) {
+async function sendNotificationIfNotExists(conn, userId, type, message, relatedId, actorId = null, postType = null) {
     if (!userId) return false;
     const [existing] = await conn.query(`
     SELECT notification_id FROM notifications 
-    WHERE user_id = ? AND type = ? AND related_id = ? 
+    WHERE user_id = ? AND type = ? AND related_id = ?
+    AND (post_type <=> ?)
     AND DATE(created_at) = CURDATE()
     LIMIT 1
-  `, [userId, type, relatedId]);
+  `, [userId, type, relatedId, postType]);
 
     if (existing.length === 0) {
         console.log(`        🔔 Sending Notification to User ID: ${userId} (${type})`);
         await conn.query(`
-      INSERT INTO notifications (user_id, actor_id, type, message, related_id, created_at)
-      VALUES (?, ?, ?, ?, ?, NOW())
-    `, [userId, actorId, type, message, relatedId]);
+      INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, NOW())
+    `, [userId, actorId, type, message, relatedId, postType]);
         return true;
     }
     return false;
@@ -395,7 +396,7 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                 );
                 if (exists.length === 0) {
                     const sent = await sendNotificationIfNotExists(conn, post.student_id, 'tutor_review_request',
-                        `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject}`, post.student_post_id, post.tutor_id);
+                        `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject}`, post.student_post_id, post.tutor_id, 'student_post');
 
                     // [EMAIL] Send Reminder to Student ONLY if new notification
                     if (sent) {
@@ -430,7 +431,7 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                     );
                     if (jExists.length === 0) {
                         const sent = await sendNotificationIfNotExists(conn, joiner.user_id, 'review_request',
-                            `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject} (ร่วมติว)`, post.student_post_id, post.tutor_id);
+                            `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject} (ร่วมติว)`, post.student_post_id, post.tutor_id, 'student_post');
 
                         // [EMAIL] Send Reminder to Study Buddy ONLY if new notification
                         if (sent) {
@@ -475,7 +476,7 @@ async function processReviewRequests(conn, dayNames, targetDate, isToday = false
                 );
                 if (exists.length === 0) {
                     const sent = await sendNotificationIfNotExists(conn, post.student_id, 'tutor_review_request',
-                        `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject}`, post.tutor_post_id, post.tutor_id);
+                        `อย่าลืมให้คะแนนการเรียนเมื่อวันที่ : ${dateStr} วิชา : ${post.subject}`, post.tutor_post_id, post.tutor_id, 'tutor_post');
 
                     // [EMAIL] Send Reminder ONLY if new notification
                     if (sent) {

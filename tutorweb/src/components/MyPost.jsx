@@ -123,6 +123,54 @@ const postGradeLevelOptions = [
 
 const today = new Date().toISOString().split("T")[0];
 
+const parseSessionDateTime = (dateValue, timeValue) => {
+  const rawDate = String(dateValue || "").trim();
+  if (!rawDate) return null;
+
+  let year;
+  let month;
+  let day;
+
+  let match = rawDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    year = Number(match[1]);
+    month = Number(match[2]) - 1;
+    day = Number(match[3]);
+  } else {
+    match = rawDate.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+    if (!match) return null;
+    year = Number(match[3]);
+    if (year > 2400) year -= 543;
+    month = Number(match[2]) - 1;
+    day = Number(match[1]);
+  }
+
+  const rawTime = String(timeValue || "").trim();
+  const timeMatch = rawTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+
+  return new Date(
+    year,
+    month,
+    day,
+    timeMatch ? Number(timeMatch[1]) : 23,
+    timeMatch ? Number(timeMatch[2]) : 59,
+    timeMatch ? Number(timeMatch[3] || 0) : 59
+  );
+};
+
+const hasUpcomingPostSession = (daysStr, timesStr) => {
+  const days = String(daysStr || "").split(",").map((item) => item.trim()).filter(Boolean);
+  if (days.length === 0) return true;
+
+  const times = String(timesStr || "").split(",").map((item) => item.trim());
+  const now = new Date();
+
+  return days.some((dayValue, index) => {
+    const sessionDate = parseSessionDateTime(dayValue, times[index] || times[0] || "");
+    return sessionDate && !Number.isNaN(sessionDate.getTime()) && sessionDate >= now;
+  });
+};
+
 // --- Helper: แสดงผลวันที่และเวลาแบบหลายรายการ ---
 const DateTimeDisplay = ({ daysStr, timesStr }) => {
   if (!daysStr) return <span>-</span>;
@@ -796,36 +844,9 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
               const isFull = cap > 0 && (post.post_type === 'student' ? (joinedCount + 1) : joinedCount) >= cap;
 
 
-              //เงื่อนไขที่ถ้าเลยวันที่โพสต์แล้ว จะไม่สามารถกด Join ได้
-              let isExpired = false;
-              try {
-                // ดึงวันที่และเวลาตามประเภทโพสต์
-                let dateStr = "";
-                let timeStr = "";
-
-                if (post.post_type === "student") {
-                  dateStr = post.preferred_days; // รูปแบบ YYYY-MM-DD
-                  timeStr = post.preferred_time; // รูปแบบ HH:mm
-                } else {
-                  dateStr = post.meta?.teaching_days;
-                  timeStr = post.meta?.teaching_time;
-                }
-
-                if (dateStr) {
-                  const targetDateTimeStr = timeStr
-                    ? `${dateStr}T${timeStr}`
-                    : `${dateStr}T23:59:59`;
-
-                  const targetDate = new Date(targetDateTimeStr);
-                  const now = new Date();
-
-                  if (now > targetDate) {
-                    isExpired = true;
-                  }
-                }
-              } catch (e) {
-                console.error("Date check error", e);
-              }
+              const isExpired = post.post_type === "student"
+                ? !hasUpcomingPostSession(post.preferred_days, post.preferred_time)
+                : !hasUpcomingPostSession(post.meta?.teaching_days, post.meta?.teaching_time);
 
               return (
                 <div key={post.id} className="bg-white border p-4 rounded-2xl shadow-sm">

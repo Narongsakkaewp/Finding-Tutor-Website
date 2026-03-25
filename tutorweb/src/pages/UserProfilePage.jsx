@@ -170,9 +170,15 @@ function UserProfilePage({ userId, onBack }) {
                         </div>
 
                         {isTutor && (
-                            <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-yellow-50 border border-yellow-100 text-yellow-700 font-bold text-sm">
-                                <Star size={16} className="fill-yellow-500 text-yellow-500" />
-                                {user.rating || "0.0"} ({reviews.length} รีวิว)
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-yellow-50 border border-yellow-100 text-yellow-700 font-bold text-sm">
+                                    <Star size={16} className="fill-yellow-500 text-yellow-500" />
+                                    {user.rating || "0.0"} ({reviews.length} รีวิว)
+                                </div>
+                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold text-sm">
+                                    <Users size={16} />
+                                    มีนักเรียนเคยเรียนแล้ว {Number(user.students_taught_count || 0)} คน
+                                </div>
                             </div>
                         )}
 

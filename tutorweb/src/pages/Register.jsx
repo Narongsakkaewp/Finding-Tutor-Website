@@ -55,8 +55,8 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
     e.preventDefault();
     setError('');
 
-    if (formData.username.length < 12) {
-      setError('Username ต้องมีอย่างน้อย 12 ตัวอักษร');
+    if (formData.username.length < 8) {
+      setError('Username ต้องมีอย่างน้อย 8 ตัวอักษร');
       return;
     }
     if (formData.password !== formData.confirmPassword) {

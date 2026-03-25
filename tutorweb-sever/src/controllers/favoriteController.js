@@ -1,5 +1,6 @@
 // tutorweb-sever/src/controllers/favoriteController.js
 const pool = require('../../db'); // ✅ Path นี้ถูกแล้ว ถ้าไฟล์อยู่ที่ src/controllers/
+const { getMixedFeedRecommendations } = require('../utils/discoveryEngine');
 console.log("FavoriteController loaded/updated at " + new Date().toISOString());
 
 // 1. กดถูกใจ / ยกเลิกถูกใจ (Toggle Like)
@@ -115,60 +116,8 @@ exports.getMyFavorites = async (req, res) => {
 exports.getRecommendedFeed = async (req, res) => {
     const { studentId } = req.params;
     try {
-        // 1. หาความสนใจ (จากประวัติการกดไลก์)
-        const [favSubjects] = await pool.query(`
-            SELECT DISTINCT COALESCE(tp.subject, sp.subject) as subject
-            FROM posts_favorites pf
-            LEFT JOIN tutor_posts tp ON pf.post_id = tp.tutor_post_id AND pf.post_type = 'tutor'
-            LEFT JOIN student_posts sp ON pf.post_id = sp.student_post_id AND pf.post_type = 'student'
-            WHERE pf.user_id = ?
-        `, [studentId]);
-
-        const interests = favSubjects.map(row => row.subject).filter(s => s);
-
-        // 2. Query Tutor Posts (ดึง price)
-        let tutorSql = `
-            SELECT tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description, 
-                   tp.location, tp.price, tp.created_at, tp.fav_count,
-                   'tutor' as post_type,
-                   r.name, r.lastname, tpro.profile_picture_url 
-            FROM tutor_posts tp 
-            JOIN register r ON tp.tutor_id = r.user_id
-            LEFT JOIN tutor_profiles tpro ON tp.tutor_id = tpro.user_id
-        `;
-
-        // 3. Query Student Posts (ดึง budget ตามชื่อจริงใน DB)
-        let studentSql = `
-            SELECT sp.student_post_id, sp.student_id, sp.subject, sp.description, 
-                   sp.location, sp.budget, sp.created_at, sp.fav_count,
-                   'student' as post_type,
-                   r.name, r.lastname, spro.profile_picture_url
-            FROM student_posts sp
-            JOIN register r ON sp.student_id = r.user_id
-            LEFT JOIN student_profiles spro ON sp.student_id = spro.user_id
-        `;
-
-        const [tutorPosts] = await pool.query(tutorSql);
-        const [studentPosts] = await pool.query(studentSql);
-
-        // 4. รวมและจัดลำดับ
-        let allPosts = [...tutorPosts, ...studentPosts];
-
-        if (interests.length > 0) {
-            allPosts = allPosts.map(post => {
-                const score = interests.includes(post.subject) ? 2 : 0;
-                return { ...post, score };
-            }).sort((a, b) => {
-                if (b.score !== a.score) return b.score - a.score;
-                return new Date(b.created_at) - new Date(a.created_at);
-            });
-        } else {
-            allPosts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        }
-
-        const topPosts = allPosts.slice(0, 20);
-
-        res.json({ success: true, recommended_subjects: interests, posts: topPosts });
+        const result = await getMixedFeedRecommendations(pool, Number(studentId), { limit: 20 });
+        res.json({ success: true, ...result });
 
     } catch (err) {
         console.error('Recommendation Error:', err);

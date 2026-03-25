@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { API_BASE } from '../config';
 import { useTabRestoration, useScrollRestoration } from '../hooks/useRestoration';
+import { logUserInteraction } from '../utils/interactions';
 import {
   Heart, Users, BookOpen, Search, Filter, Trash2,
   Sparkles, MapPin, DollarSign, User, X, Calendar, Phone, GraduationCap
@@ -137,24 +138,30 @@ function useRecommendations(userId) {
   useEffect(() => {
     if (!userId) return;
 
+    let ignore = false;
     const fetchRecs = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/favorites/feed-recommend/${userId}`);
+        const res = await fetch(`${API_BASE}/api/favorites/feed-recommend/${userId}?_t=${Date.now()}`);
         const json = await res.json();
 
-        if (json.success) {
+        if (!ignore && json.success) {
           setRecs(json.posts || []);
           setSubjects(json.recommended_subjects || []);
         }
       } catch (err) {
         console.error("Recs Error:", err);
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     };
 
     fetchRecs();
+    const interval = setInterval(fetchRecs, 45000);
+    return () => {
+      ignore = true;
+      clearInterval(interval);
+    };
   }, [userId]);
 
   return { recs, subjects, loading };
@@ -250,12 +257,12 @@ function PostCardSimple({ item, onUnfav, onClick }) {
   );
 }
 
-function RecommendCard({ post, reasonSubjects }) {
+function RecommendCard({ post, reasonSubjects, onClick }) {
   const isMatch = reasonSubjects.includes(post.subject);
   const isTutor = post.post_type === 'tutor';
 
   return (
-    <div className={`flex flex-col min-w-[280px] md:min-w-[300px] rounded-2xl border bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-300 ${isMatch ? 'border-yellow-400 ring-1 ring-yellow-100' : 'border-gray-100'}`}>
+    <div onClick={() => onClick?.(post)} className={`flex flex-col min-w-[280px] md:min-w-[300px] rounded-2xl border bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer ${isMatch ? 'border-yellow-400 ring-1 ring-yellow-100' : 'border-gray-100'}`}>
 
       <div className="flex justify-between items-start mb-3">
         {isMatch ? (
@@ -439,9 +446,9 @@ export default function Favorite({ onViewProfile }) {
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-gray-800">แนะนำสำหรับคุณ</h2>
-                <p className="text-sm text-gray-500">
+                {/* <p className="text-sm text-gray-500">
                   รวมโพสต์ติวเตอร์และนักเรียนที่น่าสนใจ: <span className="font-semibold text-blue-600">{subjects.join(", ")}</span>
-                </p>
+                </p> */}
               </div>
             </div>
 
@@ -451,6 +458,26 @@ export default function Favorite({ onViewProfile }) {
                   key={`${post.post_type}-${post.tutor_post_id || post.student_post_id}`}
                   post={post}
                   reasonSubjects={subjects}
+                  onClick={(item) => {
+                    logUserInteraction({
+                      userId: me?.user_id,
+                      actionType: 'open_favorite_recommendation',
+                      relatedId: item.id || item._id || item.tutor_post_id || item.student_post_id,
+                      subjectKeyword: item.subject,
+                    });
+                    setPreviewPost({
+                      ...item,
+                      likedAt: item.createdAt || item.created_at,
+                      title: item.subject,
+                      body: item.description || item.content,
+                      authorName: item.user ? `${item.user.first_name || ''} ${item.user.last_name || ''}`.trim() : `${item.name || ''} ${item.lastname || ''}`.trim(),
+                      profile_picture_url: item.user?.profile_image || item.profile_picture_url,
+                      priceDisplay: item.post_type === 'tutor' ? (item.meta?.price || item.price) : (item.budget || item.meta?.budget),
+                      grade: item.grade_level || item.meta?.target_student_level,
+                      preferred_days: item.preferred_days || item.meta?.teaching_days,
+                      preferred_time: item.preferred_time || item.meta?.teaching_time,
+                    });
+                  }}
                 />
               ))}
             </div>
