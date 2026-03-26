@@ -148,6 +148,10 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [postId, postType]);
+
   // โหลดโพสต์ (พยายามใช้ cache ก่อน)
   useEffect(() => {
     const found = postsCache.find((p) => {
