@@ -455,9 +455,10 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
     if (feedType !== "student") return;
     if (!meId) return alert("กรุณาเข้าสู่ระบบ");
 
-    if (isTutor) {
-      if (!window.confirm("ยืนยันที่จะเสนอสอนให้นักเรียนคนนี้?")) return;
-    }
+    const confirmMessage = isTutor
+      ? "ยืนยันที่จะเสนอสอนให้กับโพสต์นี้ใช่หรือไม่?"
+      : "ยืนยันที่จะเข้าร่วมโพสต์นี้ใช่หรือไม่?";
+    if (!window.confirm(confirmMessage)) return;
 
     setJoinLoading(s => ({ ...s, [post.id]: true }));
     try {
@@ -472,7 +473,10 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
   };
 
   const handleUnjoin = async (post) => {
-    if (!window.confirm("ยืนยันที่จะยกเลิก?")) return;
+    const cancelMessage = post.pending_me
+      ? "ยืนยันที่จะยกเลิกคำขอนี้ใช่หรือไม่?"
+      : "ยืนยันที่จะยกเลิกการเข้าร่วมใช่หรือไม่?";
+    if (!window.confirm(cancelMessage)) return;
     console.log("handleUnjoin clicked", post.id, "Type:", feedType);
     if (feedType !== "student") {
       console.warn("handleUnjoin aborted: feedType mismatch", feedType);
@@ -515,6 +519,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
     if (feedType !== "tutor") return;
     if (isTutor) return alert("บัญชีติวเตอร์ไม่สามารถ Join ได้");
     if (!meId) return alert("กรุณาเข้าสู่ระบบ");
+    if (!window.confirm("ยืนยันที่จะเข้าร่วมคลาสนี้ใช่หรือไม่?")) return;
     setJoinLoading((s) => ({ ...s, [post.id]: true }));
     try {
       const res = await fetch(`${API_BASE}/api/posts/tutor/${post.id}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: meId }) });
@@ -526,6 +531,10 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
 
   const handleUnjoinTutor = async (post) => {
     if (feedType !== "tutor") return;
+    const cancelMessage = post.pending_me
+      ? "ยืนยันที่จะยกเลิกคำขอนี้ใช่หรือไม่?"
+      : "ยืนยันที่จะยกเลิกการเข้าร่วมใช่หรือไม่?";
+    if (!window.confirm(cancelMessage)) return;
     setJoinLoading((s) => ({ ...s, [post.id]: true }));
     try {
       const res = await fetch(`${API_BASE}/api/posts/tutor/${post.id}/join?user_id=${meId}`, { method: "DELETE" });
@@ -954,9 +963,9 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                         </div>
 
                         {post.tutor && (
-                          <div className="flex items-start gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
-                            <span className="font-bold text-blue-800 shrink-0">👨‍🏫 ติวเตอร์ที่สอน: </span>
-                            <span className="text-blue-900 font-semibold">{post.tutor.name} {post.tutor.lastname}</span>
+                          <div className="flex items-start gap-2 p-2.5 bg-purple-50 border border-purple-200 rounded-lg">
+                            <span className="font-bold text-purple-800 shrink-0">👨‍🏫 ติวเตอร์ที่สอน: </span>
+                            <span className="text-purple-900 font-semibold">{post.tutor.name} {post.tutor.lastname}</span>
                           </div>
                         )}
                       </div>

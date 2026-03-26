@@ -62,6 +62,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
   const handleJoin = async (e, tutor) => {
     e.stopPropagation();
     if (!userId) return alert("กรุณาเข้าสู่ระบบก่อนทำรายการ");
+    if (!window.confirm("ยืนยันที่จะเข้าร่วมคลาสนี้ใช่หรือไม่?")) return;
 
     const postId = tutor.id || tutor.tutor_post_id;
     setJoinLoading((prev) => ({ ...prev, [postId]: true }));
@@ -99,7 +100,10 @@ export default function RecommendedTutors({ userId, onOpen }) {
   const handleUnjoin = async (e, tutor) => {
     e.stopPropagation();
     if (!userId) return;
-    if (!window.confirm("ต้องการยกเลิกคำขอเข้าร่วมหรือไม่?")) return;
+    const cancelMessage = tutor.pending_me
+      ? "ยืนยันที่จะยกเลิกคำขอนี้ใช่หรือไม่?"
+      : "ยืนยันที่จะยกเลิกการเข้าร่วมใช่หรือไม่?";
+    if (!window.confirm(cancelMessage)) return;
 
     const postId = tutor.id || tutor.tutor_post_id;
     setJoinLoading((prev) => ({ ...prev, [postId]: true }));

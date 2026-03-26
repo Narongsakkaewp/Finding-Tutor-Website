@@ -399,10 +399,10 @@ export default function Favorite({ onViewProfile }) {
             ติวเตอร์ที่ติดตาม ({data.followedTutors?.length || 0})
           </TabButton>
           <TabButton active={tab === "tutor"} onClick={() => setTab("tutor")} icon={Users}>
-            ประกาศหาคนเรียน ({data.tutor.length})
+            โพสต์ติวเตอร์ ({data.tutor.length})
           </TabButton>
           <TabButton active={tab === "student"} onClick={() => setTab("student")} icon={BookOpen}>
-            ประกาศหาคนสอน ({data.student.length})
+            โพสต์นักเรียน ({data.student.length})
           </TabButton>
         </div>
 

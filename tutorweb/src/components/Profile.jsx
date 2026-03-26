@@ -1021,11 +1021,11 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
 
             {/* 2. Recommended Tutors */}
             <Card title="ติวเตอร์แนะนำ" icon={Sparkles}>
-              {recsBasedOn && (
+              {/* {recsBasedOn && (
                 <div className="mb-4 px-3 py-1.5 bg-yellow-50 text-yellow-800 text-[10px] items-center gap-1.5 rounded-lg border border-yellow-100 inline-flex font-bold">
                   💡 จาก: {recsBasedOn}
                 </div>
-              )}
+              )} */}
 
               <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-2 space-y-3">
                 {!recommendedTutors.length ? <Empty line="ยังไม่มีติวเตอร์ที่เหมาะสม" /> : (

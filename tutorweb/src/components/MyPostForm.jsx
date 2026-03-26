@@ -13,6 +13,29 @@ const postGradeLevelOptions = [
 ];
 
 const today = new Date().toISOString().split("T")[0];
+const platformOptions = ["Zoom", "Google Meet", "Microsoft Teams", "Discord", "Line Call", "Other"];
+
+function createInitialStudentFormData(initialData = {}) {
+    const normalizedLevels = Array.isArray(initialData?.target_student_level)
+        ? initialData.target_student_level
+        : String(initialData?.target_student_level || "")
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+
+    return {
+        subject: "",
+        description: "",
+        grade_level: "",
+        location: "",
+        group_size: "",
+        budget: "",
+        price: "",
+        contact_info: "",
+        ...initialData,
+        target_student_level: normalizedLevels,
+    };
+}
 
 export default function MyPostForm({
     feedType,
@@ -27,7 +50,7 @@ export default function MyPostForm({
     onSuccess
 }) {
     const [loading, setLoading] = useState(false);
-    const [formData, setFormData] = useState(initialData);
+    const [formData, setFormData] = useState(() => createInitialStudentFormData(initialData));
 
     // ✅ State สำหรับจัดการ วัน/เวลา (แบบหลายรายการ)
     const [dateList, setDateList] = useState([]);
@@ -41,7 +64,9 @@ export default function MyPostForm({
     const [teachingMode, setTeachingMode] = useState("onsite");
     const [platform, setPlatform] = useState("");
     const [customPlatform, setCustomPlatform] = useState("");
-    const platformOptions = ["Zoom", "Google Meet", "Microsoft Teams", "Discord", "Line Call", "Other"];
+    useEffect(() => {
+        setFormData(createInitialStudentFormData(initialData));
+    }, [initialData, editMode, feedType]);
 
     useEffect(() => {
         // จัดการ Location
@@ -63,7 +88,9 @@ export default function MyPostForm({
                 setTeachingMode("onsite");
             }
         }
+    }, [formData.location]);
 
+    useEffect(() => {
         // จัดการ Contact
         if (formData.contact_info) {
             const ci = formData.contact_info;
@@ -85,27 +112,27 @@ export default function MyPostForm({
                 setContactValue(ci.trim());
             }
         }
+    }, [formData.contact_info]);
 
-        // 🌟 แปลงวันที่เดิมเป็น Array ตอนเข้าโหมด Edit
-        if (editMode && initialData) {
-            const daysStr = feedType === "student" ? initialData.preferred_days : initialData.teaching_days;
-            const timesStr = feedType === "student" ? initialData.preferred_time : initialData.teaching_time;
+    useEffect(() => {
+        const source = initialData || {};
+        const daysStr = feedType === "student" ? source.preferred_days : source.teaching_days;
+        const timesStr = feedType === "student" ? source.preferred_time : source.teaching_time;
 
-            if (daysStr) {
-                const dArr = daysStr.split(',').map(d => d.trim());
-                const tArr = (timesStr || "").split(',').map(t => t.trim());
-                const loadedList = dArr.map((d, i) => ({
-                    date: d,
-                    time: tArr[i] || "" // ถ้าไม่มีเวลาให้ว่างไว้
-                })).filter(x => x.date);
-                setDateList(loadedList);
-            } else {
-                setDateList([]);
-            }
+        if (daysStr) {
+            const dArr = daysStr.split(',').map(d => d.trim());
+            const tArr = (timesStr || "").split(',').map(t => t.trim());
+            const loadedList = dArr.map((d, i) => ({
+                date: d,
+                time: tArr[i] || ""
+            })).filter(x => x.date);
+            setDateList(loadedList);
         } else {
-            setDateList([]); // Reset ตอนเปิดฟอร์มใหม่
+            setDateList([]);
         }
-    }, [formData.location, formData.contact_info, editMode, initialData, feedType]);
+        setTempDate("");
+        setTempTime("");
+    }, [initialData, editMode, feedType]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;

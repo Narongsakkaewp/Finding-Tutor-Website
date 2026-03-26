@@ -4,7 +4,7 @@ import Review from "./Review";
 import { API_BASE } from '../config';
 import { useScrollRestoration } from '../hooks/useRestoration';
 import {
-  Bell, Check, Clock, ChevronRight, User, BookOpen, Calendar, CheckCircle, Shield, MessageCircle, Star
+  Bell, Check, Clock, ChevronRight, User, BookOpen, Calendar, CheckCircle, Shield, MessageCircle, Star, XCircle
 } from "lucide-react";
 
 function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile }) {
@@ -280,6 +280,8 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
     if (type === 'system_alert') { badgeColor = "bg-blue-600"; BadgeIcon = Shield; } // ✅ System Alert
     if (type === 'comment' || type === 'mention') { badgeColor = "bg-blue-400"; BadgeIcon = MessageCircle; }
     if (type.includes('review')) { badgeColor = "bg-yellow-500"; BadgeIcon = Star; }
+    if (type === 'cancel_request_alert') { badgeColor = "bg-amber-500"; BadgeIcon = XCircle; }
+    if (type === 'cancel_join_alert' || type === 'cancel_alert') { badgeColor = "bg-rose-500"; BadgeIcon = XCircle; }
 
     return (
       <div className="relative shrink-0">
@@ -366,6 +368,31 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
           </span>
         );
         break;
+      case "cancel_request_alert":
+        content = (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-amber-600 flex items-center gap-2">
+              <XCircle size={16} /> ยกเลิกส่งคำขอเข้าร่วม
+            </span>
+            <span className="text-gray-700">
+              <span className="font-bold text-gray-900">{actorName}</span> ยกเลิกส่งคำขอเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span>
+            </span>
+          </div>
+        );
+        break;
+      case "cancel_join_alert":
+      case "cancel_alert":
+        content = (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-rose-600 flex items-center gap-2">
+              <XCircle size={16} /> ยกเลิกการเข้าร่วมการติว
+            </span>
+            <span className="text-gray-700">
+              <span className="font-bold text-gray-900">{actorName}</span> ยกเลิกการเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span>
+            </span>
+          </div>
+        );
+        break;
       case "schedule_tomorrow":
       case "schedule_student_tomorrow":
       case "schedule_tutor_tomorrow":
@@ -441,7 +468,11 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
       <div
         onClick={() => handleOpen(item)}
         className={`group flex items-center gap-5 p-5 mb-3 rounded-2xl cursor-pointer transition-all duration-200 border
-          ${isUnread
+          ${(item.type === 'cancel_request_alert')
+            ? "bg-amber-50 border-amber-200 shadow-lg shadow-amber-100/40 hover:border-amber-300 transform hover:-translate-y-0.5"
+            : (item.type === 'cancel_join_alert' || item.type === 'cancel_alert')
+              ? "bg-rose-50 border-rose-200 shadow-lg shadow-rose-100/40 hover:border-rose-300 transform hover:-translate-y-0.5"
+              : isUnread
             ? "bg-white border-indigo-100 shadow-lg shadow-indigo-100/40 hover:border-indigo-300 transform hover:-translate-y-0.5"
             : item.is_schedule_alert
               ? "bg-orange-50 border-orange-200 shadow-lg shadow-orange-100/40 hover:border-orange-300 transform hover:-translate-y-0.5"

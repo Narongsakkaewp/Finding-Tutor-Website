@@ -10,17 +10,31 @@ const postGradeLevelOptions = [
     { value: "ปริญญาตรี", label: "ปริญญาตรี" },
     { value: "บุคคลทั่วไป", label: "บุคคลทั่วไป" },
 ];
+const platformOptions = ["Zoom", "Google Meet", "Microsoft Teams", "Discord", "Line Call", "Other"];
+
+function createInitialTutorFormData(initialData = {}) {
+    const normalizedLevels = Array.isArray(initialData?.target_student_level)
+        ? initialData.target_student_level
+        : String(initialData?.target_student_level || "")
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+
+    return {
+        subject: "",
+        description: "",
+        group_size: "",
+        price: "",
+        contact_info: "",
+        location: "",
+        ...initialData,
+        target_student_level: normalizedLevels,
+    };
+}
 
 function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
     const [loading, setLoading] = useState(false);
-    const [formData, setFormData] = useState(initialData || {
-        subject: "",
-        description: "", // content in backend
-        target_student_level: [],
-        group_size: "",
-        price: "",
-        contact_info: ""
-    });
+    const [formData, setFormData] = useState(() => createInitialTutorFormData(initialData));
 
     // Date/Time list state
     const [dateList, setDateList] = useState([]);
@@ -37,14 +51,15 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
     const [contactType, setContactType] = useState('Line ID');
     const [contactValue, setContactValue] = useState('');
 
-    const platformOptions = ["Zoom", "Google Meet", "Microsoft Teams", "Discord", "Line Call", "Other"];
-
-    // ✅ Initialize Online/Onsite state when editing
     useEffect(() => {
-        if (initialData && initialData.location) {
-            if (initialData.location.startsWith("Online:") || initialData.location === "Online" || initialData.location === "ออนไลน์") {
+        setFormData(createInitialTutorFormData(initialData));
+    }, [initialData]);
+
+    useEffect(() => {
+        if (formData.location) {
+            if (formData.location.startsWith("Online:") || formData.location === "Online" || formData.location === "ออนไลน์") {
                 setTeachingMode("online");
-                const parts = initialData.location.split("Online:");
+                const parts = formData.location.split("Online:");
                 const p = parts[1]?.trim() || "";
                 if (platformOptions.includes(p)) {
                     setPlatform(p);
@@ -59,7 +74,9 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
                 setTeachingMode("onsite");
             }
         }
+    }, [formData.location]);
 
+    useEffect(() => {
         if (initialData) {
             const daysStr = initialData.teaching_days;
             const timesStr = initialData.teaching_time;
@@ -77,10 +94,13 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
         } else {
             setDateList([]);
         }
+        setTempDate("");
+        setTempTime("");
+    }, [initialData]);
 
-        // Initialize contact parsing if editing
-        if (initialData && initialData.contact_info) {
-            const ci = initialData.contact_info;
+    useEffect(() => {
+        if (formData.contact_info) {
+            const ci = formData.contact_info;
             if (ci.startsWith("Line ID:")) {
                 setContactType("Line ID");
                 setContactValue(ci.replace("Line ID:", "").trim());
@@ -99,7 +119,7 @@ function TutorPostForm({ tutorId, onClose, onSuccess, initialData = null }) {
                 setContactValue(ci.trim());
             }
         }
-    }, [initialData]);
+    }, [formData.contact_info]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;

@@ -1714,6 +1714,12 @@ function hasUpcomingSession(daysStr, timesStr, now = new Date()) {
   return sessions.some((session) => session.getTime() >= now.getTime());
 }
 
+function getFirstSessionDateTime(daysStr, timesStr) {
+  const sessions = buildSessionDateTimes(daysStr, timesStr)
+    .sort((a, b) => a.getTime() - b.getTime());
+  return sessions[0] || null;
+}
+
 async function doJoinUnified(type, postId, me) {
   const cfg = JOIN_CONFIG[type];
   if (!cfg) throw new Error('invalid post type');
@@ -1871,7 +1877,7 @@ async function doUnjoinUnified(type, postId, me) {
   if (cfg.dateCol) {
     // Select date AND owner in one go
     const [[pd]] = await pool.query(
-      `SELECT ${cfg.dateCol} AS dateStr, ${cfg.ownerCol} AS ownerId FROM ${cfg.postsTable} WHERE ${cfg.postIdCol} = ?`,
+      `SELECT ${cfg.dateCol} AS dateStr, ${cfg.timeCol} AS timeStr, ${cfg.ownerCol} AS ownerId FROM ${cfg.postsTable} WHERE ${cfg.postIdCol} = ?`,
       [postId]
     );
     postData = pd;
@@ -1896,22 +1902,20 @@ async function doUnjoinUnified(type, postId, me) {
   // If they are not joined/pending at all, returning success or error is fine, but let's just proceed to DELETE which will do 0 rows
   const currentStatus = joinData ? joinData.status : null;
 
-  if (cfg.dateCol && postData.dateStr) {
-    const sessionDate = parseDateForCancel(postData.dateStr);
-    if (sessionDate) {
-      sessionDate.setHours(0, 0, 0, 0);
+  if (cfg.dateCol && postData.dateStr && currentStatus === 'approved') {
+    const firstSessionDate = getFirstSessionDateTime(postData.dateStr, postData.timeStr);
+    if (firstSessionDate) {
       const now = new Date();
-      const diffMs = sessionDate - now;
+      const diffMs = firstSessionDate - now;
       const diffHours = diffMs / (1000 * 60 * 60);
 
       console.log(`[doUnjoinUnified] TimeCheck: Diff=${diffHours}h, IsOwner=${isOwner}, Status=${currentStatus}`);
 
-      // [CHANGED] Rule: Must be > 48 hours (2 days) to cancel if ALREADY APPROVED.
-      if (!isOwner && diffHours < 48 && currentStatus === 'approved') {
-        console.warn(`[doUnjoinUnified] Blocked by 48h rule (Diff=${diffHours}h)`);
+      if (!isOwner && diffHours < 72) {
+        console.warn(`[doUnjoinUnified] Blocked by 72h rule (Diff=${diffHours}h)`);
         return {
           http: 400,
-          body: { success: false, message: 'ไม่สามารถยกเลิกได้ เนื่องจากต้องยกเลิกล่วงหน้าอย่างน้อย 2 วัน (48 ชม.) ก่อนวันเรียน' }
+          body: { success: false, message: 'ไม่สามารถยกเลิกได้ เนื่องจากเหลือน้อยกว่า 72 ชั่วโมงก่อนวันติววันแรก กรุณาติดต่อเจ้าของโพสต์หรือติวเตอร์โดยตรง' }
         };
       }
     }
@@ -1935,17 +1939,21 @@ async function doUnjoinUnified(type, postId, me) {
   // Notify Owner if Member left (and Member acting effectively)
   if (!isOwner && postData.ownerId && delRes.affectedRows > 0) {
     const [[actor]] = await pool.query('SELECT name, lastname FROM register WHERE user_id = ?', [me]);
-    const ActorName = actor ? `${actor.name} ${actor.lastname}` : 'ผู้ใช้งาน';
+    const actorName = actor ? `${actor.name} ${actor.lastname}`.trim() : 'ผู้ใช้';
 
     // Fetch Subject
     const [[pSub]] = await pool.query(`SELECT subject FROM ${cfg.postsTable} WHERE ${cfg.postIdCol} = ?`, [postId]);
     const subject = pSub?.subject || `#${postId}`;
 
-    const msg = `ผู้เรียน ${ActorName} ได้ยกเลิกการเข้าร่วม (โพสต์: ${subject})`;
+    const isCancelRequest = currentStatus === 'pending';
+    const notificationType = isCancelRequest ? 'cancel_request_alert' : 'cancel_join_alert';
+    const msg = isCancelRequest
+      ? `${actorName} ได้ยกเลิกส่งคำขอเข้าร่วมวิชา ${subject}`
+      : `${actorName} ได้ยกเลิกการเข้าร่วมการติววิชา ${subject} กับคุณ`;
 
     await pool.query(
       'INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type) VALUES (?, ?, ?, ?, ?, ?)',
-      [postData.ownerId, me, 'cancel_alert', msg, postId, cfg.postType]
+      [postData.ownerId, me, notificationType, msg, postId, cfg.postType]
     );
     console.log(`[doUnjoinUnified] Notification sent to Owner=${postData.ownerId}`);
   }
