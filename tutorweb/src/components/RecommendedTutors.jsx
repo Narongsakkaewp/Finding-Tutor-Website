@@ -139,7 +139,23 @@ export default function RecommendedTutors({ userId, onOpen }) {
   if (loading) {
     return <div className="text-center py-4 text-gray-500">กำลังประมวลผลติวเตอร์ที่เหมาะกับคุณ...</div>;
   }
-  if (!recs.items || recs.items.length === 0) return null;
+
+  const hasPrimaryItems = Array.isArray(recs.items) && recs.items.length > 0;
+  const hasExploreItems = Array.isArray(recs.explore_items) && recs.explore_items.length > 0;
+
+  if (!hasPrimaryItems && !hasExploreItems) {
+    return (
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 mb-8 border border-blue-100 shadow-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <Star className="text-yellow-500 fill-yellow-500" size={24} />
+          <h2 className="text-xl font-bold text-gray-800">แนะนำสำหรับคุณ</h2>
+        </div>
+        <div className="bg-white rounded-2xl border border-dashed border-indigo-200 p-6 text-center text-sm text-gray-500">
+          ยังไม่มีโพสต์ติวเตอร์ที่ตรงเงื่อนไขในตอนนี้ ระบบจะอัปเดตให้อัตโนมัติเมื่อมีโพสต์ใหม่หรือเมื่อความสนใจของคุณเปลี่ยน
+        </div>
+      </div>
+    );
+  }
 
   const renderCard = (tutor, variant = "primary") => {
     const isExpired = !!tutor.is_expired;
@@ -261,23 +277,31 @@ export default function RecommendedTutors({ userId, onOpen }) {
         </p>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {recs.items.map((tutor) => renderCard(tutor, "primary"))}
-      </div>
+      {hasPrimaryItems ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {recs.items.map((tutor) => renderCard(tutor, "primary"))}
+        </div>
+      ) : (
+        <div className="bg-white/90 rounded-2xl border border-indigo-100 p-4 text-sm text-gray-600">
+          ยังไม่มีโพสต์ที่ตรงมากพอในตอนนี้ ลองดูรายการสำรวจเพิ่มเติมด้านล่างได้เลย
+        </div>
+      )}
 
-      {Array.isArray(recs.explore_items) && recs.explore_items.length > 0 && (
+      {hasExploreItems && (
         <div className="mt-6">
-          <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={() => setShowExplore((prev) => !prev)}
-              className="px-5 py-2.5 rounded-full border border-indigo-200 bg-white text-indigo-700 font-semibold hover:bg-indigo-50 transition-colors shadow-sm"
-            >
-              {showExplore ? "ซ่อนรายการสำรวจเพิ่มเติม" : "ดูโพสต์เพิ่มเติมที่หลากหลายขึ้น"}
-            </button>
-          </div>
+          {hasPrimaryItems && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowExplore((prev) => !prev)}
+                className="px-5 py-2.5 rounded-full border border-indigo-200 bg-white text-indigo-700 font-semibold hover:bg-indigo-50 transition-colors shadow-sm"
+              >
+                {showExplore ? "ซ่อนรายการสำรวจเพิ่มเติม" : "ดูโพสต์เพิ่มเติมที่หลากหลายขึ้น"}
+              </button>
+            </div>
+          )}
 
-          {showExplore && (
+          {(!hasPrimaryItems || showExplore) && (
             <div className="mt-5">
               <div className="mb-3 text-sm text-gray-600 bg-white/80 inline-block px-3 py-1.5 rounded-full border">
                 สำรวจโพสต์ที่ใกล้เคียงน้อยลง หรือโพสต์เก่าที่อาจยังน่าสนใจ
