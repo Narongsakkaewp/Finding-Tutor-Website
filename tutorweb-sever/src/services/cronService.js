@@ -2,6 +2,139 @@ const cron = require('node-cron');
 const pool = require('../../db');
 const { sendReviewReminderEmail, sendClassReminderEmail } = require('../utils/emailService');
 
+const THAI_MONTHS = [
+    'มกราคม',
+    'กุมภาพันธ์',
+    'มีนาคม',
+    'เมษายน',
+    'พฤษภาคม',
+    'มิถุนายน',
+    'กรกฎาคม',
+    'สิงหาคม',
+    'กันยายน',
+    'ตุลาคม',
+    'พฤศจิกายน',
+    'ธันวาคม',
+];
+
+function buildFullName(name, lastname) {
+    return `${name || ''} ${lastname || ''}`.trim();
+}
+
+function parseSingleDateToken(value) {
+    if (!value) return null;
+    const str = String(value).trim();
+
+    const dmy = str.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+    if (dmy) {
+        const d = parseInt(dmy[1], 10);
+        const m = parseInt(dmy[2], 10) - 1;
+        let y = parseInt(dmy[3], 10);
+        if (y > 2400) y -= 543;
+        return new Date(y, m, d);
+    }
+
+    const ymd = str.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+    if (ymd) {
+        const y = parseInt(ymd[1], 10);
+        const m = parseInt(ymd[2], 10) - 1;
+        const d = parseInt(ymd[3], 10);
+        return new Date(y, m, d);
+    }
+
+    return null;
+}
+
+function extractSpecificDates(daysString) {
+    if (!daysString) return [];
+
+    return String(daysString)
+        .split(',')
+        .map((part) => parseSingleDateToken(part))
+        .filter((date) => date instanceof Date && !Number.isNaN(date.getTime()));
+}
+
+function formatThaiDateRange(daysString, fallbackDate) {
+    const dates = extractSpecificDates(daysString).sort((a, b) => a - b);
+
+    if (!dates.length) {
+        return fallbackDate || 'ตามตารางเรียน';
+    }
+
+    const first = dates[0];
+    const last = dates[dates.length - 1];
+    const firstDay = first.getDate();
+    const lastDay = last.getDate();
+    const firstMonth = THAI_MONTHS[first.getMonth()];
+    const lastMonth = THAI_MONTHS[last.getMonth()];
+    const firstYear = first.getFullYear() + 543;
+    const lastYear = last.getFullYear() + 543;
+
+    if (dates.length === 1) {
+        return `${firstDay} ${firstMonth} ${firstYear}`;
+    }
+
+    if (first.getMonth() === last.getMonth() && firstYear === lastYear) {
+        return `${firstDay}-${lastDay} ${firstMonth} ${firstYear}`;
+    }
+
+    if (firstYear === lastYear) {
+        return `${firstDay} ${firstMonth} - ${lastDay} ${lastMonth} ${firstYear}`;
+    }
+
+    return `${firstDay} ${firstMonth} ${firstYear} - ${lastDay} ${lastMonth} ${lastYear}`;
+}
+
+function formatTimeSummary(timeString) {
+    const values = String(timeString || '')
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+    const uniqueValues = [...new Set(values)];
+    if (!uniqueValues.length) return 'ตามตกลง';
+    return uniqueValues.join(', ');
+}
+
+async function getStudentNamesForStudentPost(conn, postId, ownerName) {
+    const names = new Set();
+    if (ownerName) names.add(ownerName);
+
+    const [joiners] = await conn.query(`
+        SELECT r.name, r.lastname
+        FROM student_post_joins j
+        JOIN register r ON r.user_id = j.user_id
+        WHERE j.student_post_id = ? AND j.status = 'approved'
+          AND LOWER(COALESCE(r.role, r.type)) = 'student'
+    `, [postId]);
+
+    for (const joiner of joiners) {
+        const fullName = buildFullName(joiner.name, joiner.lastname);
+        if (fullName) names.add(fullName);
+    }
+
+    return [...names];
+}
+
+async function getStudentNamesForTutorPost(conn, postId) {
+    const names = new Set();
+
+    const [students] = await conn.query(`
+        SELECT r.name, r.lastname
+        FROM tutor_post_joins j
+        JOIN register r ON r.user_id = j.user_id
+        WHERE j.tutor_post_id = ? AND j.status = 'approved'
+          AND LOWER(COALESCE(r.role, r.type)) = 'student'
+    `, [postId]);
+
+    for (const student of students) {
+        const fullName = buildFullName(student.name, student.lastname);
+        if (fullName) names.add(fullName);
+    }
+
+    return [...names];
+}
+
 // Helper: Get Day Names for matching
 function getDayNames(date) {
     const daysEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -69,6 +202,8 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
     const roleMap = { owner: 'student', joiner: 'tutor' }; // Default assumption (Student Post)
 
     const dateStr = targetDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+    const studentPostNameCache = new Map();
+    const tutorPostNameCache = new Map();
 
     // --- A. Student Posts (Student requests Tutor, Join Approved) ---
     // Owner = Student, Joiner = Tutor (usually, unless study buddy)
@@ -95,23 +230,30 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
 
             // [EMAIL] Reminder
             if (isReminder) {
+                const ownerDisplayName = buildFullName(post.owner_name, post.owner_lastname);
+                const participantNames = studentPostNameCache.has(post.student_post_id)
+                    ? studentPostNameCache.get(post.student_post_id)
+                    : await getStudentNamesForStudentPost(conn, post.student_post_id, ownerDisplayName);
+
+                studentPostNameCache.set(post.student_post_id, participantNames);
+
                 const commonDetails = {
                     courseName: post.subject,
-                    time: post.preferred_time,
-                    date: dateStr,
+                    time: formatTimeSummary(post.preferred_time),
+                    date: formatThaiDateRange(post.preferred_days, dateStr),
                     location: post.location || 'ไม่ได้ระบุ'
                 };
 
                 // For Student Posts, usually Owner=Student, Joiner=Tutor.
                 const tutorName = `${post.joiner_name} ${post.joiner_lastname}`;
-                const studentName = `${post.owner_name} ${post.owner_lastname}`;
+                const studentNamesText = participantNames.length ? participantNames.join(', ') : ownerDisplayName || 'ไม่ระบุ';
 
                 // Send to Owner (Student)
                 if (sentOwner) {
                     sendClassReminderEmail(post.owner_email, {
                         ...commonDetails,
                         tutorName: tutorName,
-                        studentNames: 'เรียนตัวต่อตัว',
+                        studentNames: studentNamesText,
                         role: 'student'
                     });
                 }
@@ -120,7 +262,7 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                     sendClassReminderEmail(post.joiner_email, {
                         ...commonDetails,
                         tutorName: tutorName,
-                        studentNames: `${studentName} (เรียนตัวต่อตัว)`,
+                        studentNames: studentNamesText,
                         role: 'tutor'
                     });
                 }
@@ -153,22 +295,30 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
 
             // [EMAIL] Reminder
             if (isReminder) {
+                const participantNames = tutorPostNameCache.has(post.tutor_post_id)
+                    ? tutorPostNameCache.get(post.tutor_post_id)
+                    : await getStudentNamesForTutorPost(conn, post.tutor_post_id);
+
+                tutorPostNameCache.set(post.tutor_post_id, participantNames);
+
                 const commonDetails = {
                     courseName: post.subject,
-                    time: post.teaching_time,
-                    date: dateStr,
+                    time: formatTimeSummary(post.teaching_time),
+                    date: formatThaiDateRange(post.teaching_days, dateStr),
                     location: post.location || 'ไม่ได้ระบุ'
                 };
 
                 const tutorName = `${post.owner_name} ${post.owner_lastname}`;
-                const studentName = `${post.joiner_name} ${post.joiner_lastname}`;
+                const studentNamesText = participantNames.length
+                    ? participantNames.join(', ')
+                    : buildFullName(post.joiner_name, post.joiner_lastname) || 'ไม่ระบุ';
 
                 // Send to Owner (Tutor)
                 if (sentOwner) {
                     sendClassReminderEmail(post.owner_email, {
                         ...commonDetails,
                         tutorName: tutorName,
-                        studentNames: `${studentName} (เรียนตัวต่อตัว)`, // simplified 1-on-1 text
+                        studentNames: studentNamesText,
                         role: 'tutor'
                     });
                 }
@@ -177,7 +327,7 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                     sendClassReminderEmail(post.joiner_email, {
                         ...commonDetails,
                         tutorName: tutorName,
-                        studentNames: 'เรียนตัวต่อตัว',
+                        studentNames: studentNamesText,
                         role: 'student'
                     });
                 }
@@ -211,22 +361,29 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
 
             // [EMAIL] Reminder
             if (isReminder) {
+                const ownerDisplayName = buildFullName(post.owner_name, post.owner_lastname);
+                const participantNames = studentPostNameCache.has(post.student_post_id)
+                    ? studentPostNameCache.get(post.student_post_id)
+                    : await getStudentNamesForStudentPost(conn, post.student_post_id, ownerDisplayName);
+
+                studentPostNameCache.set(post.student_post_id, participantNames);
+
                 const commonDetails = {
                     courseName: post.subject,
-                    time: post.preferred_time,
-                    date: dateStr,
+                    time: formatTimeSummary(post.preferred_time),
+                    date: formatThaiDateRange(post.preferred_days, dateStr),
                     location: post.location || 'ไม่ได้ระบุ'
                 };
 
                 const tutorName = `${post.joiner_name} ${post.joiner_lastname}`;
-                const studentName = `${post.owner_name} ${post.owner_lastname}`;
+                const studentNamesText = participantNames.length ? participantNames.join(', ') : ownerDisplayName || 'ไม่ระบุ';
 
                 // Send to Owner (Student)
                 if (sentOwner) {
                     sendClassReminderEmail(post.owner_email, {
                         ...commonDetails,
                         tutorName: tutorName,
-                        studentNames: 'เรียนตัวต่อตัว',
+                        studentNames: studentNamesText,
                         role: 'student'
                     });
                 }
@@ -235,7 +392,7 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                     sendClassReminderEmail(post.joiner_email, {
                         ...commonDetails,
                         tutorName: tutorName,
-                        studentNames: `${studentName} (เรียนตัวต่อตัว)`,
+                        studentNames: studentNamesText,
                         role: 'tutor'
                     });
                 }
@@ -281,25 +438,9 @@ function isDayMatch(daysString, targetDayNames, targetDate) {
     const isRecurring = targetDayNames.some(d => lowerStr.includes(d.toLowerCase()));
     if (isRecurring) return true;
 
-    // 2. Check for Specific Date (DD/MM/YYYY or YYYY-MM-DD)
+    // 2. Check for Specific Dates (supports comma-separated dates)
     try {
-        const dmy = str.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
-        if (dmy) {
-            const d = parseInt(dmy[1], 10);
-            const m = parseInt(dmy[2], 10) - 1;
-            let y = parseInt(dmy[3], 10);
-            if (y > 2400) y -= 543;
-            const matchDate = new Date(y, m, d);
-            return isSameDate(matchDate, targetDate);
-        }
-        const ymd = str.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
-        if (ymd) {
-            const y = parseInt(ymd[1], 10);
-            const m = parseInt(ymd[2], 10) - 1;
-            const d = parseInt(ymd[3], 10);
-            const matchDate = new Date(y, m, d);
-            return isSameDate(matchDate, targetDate);
-        }
+        return extractSpecificDates(str).some((date) => isSameDate(date, targetDate));
     } catch (e) { }
     return false;
 }
