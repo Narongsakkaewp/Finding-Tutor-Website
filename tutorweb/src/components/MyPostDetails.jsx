@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { API_BASE } from '../config';
 import CommentSection from './CommentSection';
 import { GraduationCap, DollarSign, MapPin, Calendar, Mail, Clock } from "lucide-react";
+import { logUserInteraction } from '../utils/interactions';
 
 
 const ProfileImage = ({ src, alt, className }) => {
@@ -151,6 +152,16 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [postId, postType]);
+
+  useEffect(() => {
+    if (!me || !post?.id) return;
+    logUserInteraction({
+      userId: me,
+      actionType: 'open_post',
+      relatedId: post.id,
+      subjectKeyword: post.subject || '',
+    });
+  }, [me, post?.id, post?.subject]);
 
   // โหลดโพสต์ (พยายามใช้ cache ก่อน)
   useEffect(() => {

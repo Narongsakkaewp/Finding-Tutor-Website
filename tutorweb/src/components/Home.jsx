@@ -12,7 +12,7 @@ import SmartSearch from './SmartSearch';
 import RecommendedTutors from './RecommendedTutors';
 import { API_BASE } from '../config';
 import { useTabRestoration, useScrollRestoration } from '../hooks/useRestoration';
-import { logUserInteraction } from '../utils/interactions';
+import { logUserInteraction, notifyRecommendationRefresh } from '../utils/interactions';
 
 /** ---------------- Config ---------------- */
 /** ---------------- Utils ----------------- */
@@ -675,6 +675,7 @@ function HomeStudent() {
       try {
         await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(keyword)}&user_id=${userId || 0}`);
         setRecKey(p => p + 1);
+        notifyRecommendationRefresh();
       } catch (err) { console.error("Failed to log search:", err); }
     }
   };
@@ -1247,6 +1248,7 @@ function HomeTutor({ setCurrentPage, user }) {
       try {
         await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(keyword)}&user_id=${user_id || 0}`);
         setRecKey(p => p + 1);
+        notifyRecommendationRefresh();
       } catch (err) { console.error("Failed to log search:", err); }
     }
     // Auto scroll to results if search is triggered

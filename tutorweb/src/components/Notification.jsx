@@ -579,10 +579,6 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
                 <span>{tutor.about_me || "-"}</span>
               </div>
               <div className="flex gap-2">
-                <span className="font-bold shrink-0 w-20">เรทราคา:</span>
-                <span>{tutor.hourly_rate ? `${tutor.hourly_rate} บ./ชม.` : "-"}</span>
-              </div>
-              <div className="flex gap-2">
                 <span className="font-bold shrink-0 w-20">ติดต่อ:</span>
                 <span>{tutor.phone || tutor.email || "-"}</span>
               </div>

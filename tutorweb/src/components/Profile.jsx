@@ -660,7 +660,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
 
               <div className="max-w-2xl">
                 <p className="text-gray-600 leading-relaxed text-lg">
-                  "{profile.bio || "สวัสดีครับ ผมกำลังมองหาติวเตอร์ที่ช่วยเสริมทักษะในวิชาต่างๆ สนใจติวทักมาคุยกันได้เลยครับ!"}"
+                  "{profile.bio}"
                 </p>
               </div>
 

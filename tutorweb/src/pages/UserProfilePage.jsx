@@ -1,4 +1,4 @@
-// tutorweb/src/pages/UserProfilePage.jsx
+﻿// tutorweb/src/pages/UserProfilePage.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Mail, Phone, MapPin, Clock, ArrowLeft, Star, Users, DollarSign, User, GraduationCap, BookOpen, Briefcase, Lightbulb, Calendar, MoreVertical, X, Eye, EyeOff, Flag } from 'lucide-react';
 import ReportModal from '../components/ReportModal';
@@ -29,7 +29,7 @@ function UserProfilePage({ userId, onBack }) {
 
             // 1. Fetch Basic Info
             let res = await fetch(`${API_URL}/api/profile/${userId}`);
-            if (!res.ok) throw new Error("ไม่พบข้อมูลผู้ใช้นี้");
+            if (!res.ok) throw new Error("à¹„à¸¡à¹ˆà¸žà¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸™à¸µà¹‰");
 
             let userData = await res.json();
 
@@ -69,7 +69,7 @@ function UserProfilePage({ userId, onBack }) {
 
         } catch (err) {
             console.error(err);
-            setError("ไม่พบข้อมูลผู้ใช้งาน");
+            setError("à¹„à¸¡à¹ˆà¸žà¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸‡à¸²à¸™");
         } finally {
             setLoading(false);
         }
@@ -107,7 +107,17 @@ function UserProfilePage({ userId, onBack }) {
         return sortedEdu[0].degree || "-";
     }, [user]);
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">กำลังโหลดข้อมูล...</div>;
+    const profileBio = useMemo(() => {
+        const rawBio = String(user?.about_me || user?.about || '').trim();
+        if (!rawBio) return '';
+
+        const normalizedBio = rawBio.replace(/\s+/g, ' ').trim();
+        if (normalizedBio === '""' || normalizedBio === "''" || normalizedBio === '"') return '';
+
+        return rawBio;
+    }, [user]);
+
+    if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”à¸‚à¹‰à¸­à¸¡à¸¹à¸¥...</div>;
     if (error) return <div className="min-h-screen flex items-center justify-center text-rose-500">{error}</div>;
     if (!user) return null;
 
@@ -132,7 +142,7 @@ function UserProfilePage({ userId, onBack }) {
                     <div
                         className="flex-shrink-0 relative group cursor-pointer"
                         onClick={() => setIsImageOpen(true)}
-                        title="คลิกเพื่อดูรูปใหญ่"
+                        title="à¸„à¸¥à¸´à¸à¹€à¸žà¸·à¹ˆà¸­à¸”à¸¹à¸£à¸¹à¸›à¹ƒà¸«à¸à¹ˆ"
                     >
                         <img
                             src={user.profile_picture_url || "/../blank_avatar.jpg"}
@@ -163,7 +173,7 @@ function UserProfilePage({ userId, onBack }) {
                             <button
                                 onClick={() => setIsReportOpen(true)}
                                 className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                                title="รายงานผู้ใช้"
+                                title="à¸£à¸²à¸¢à¸‡à¸²à¸™à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰"
                             >
                                 <Flag size={20} />
                             </button>
@@ -173,21 +183,23 @@ function UserProfilePage({ userId, onBack }) {
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-yellow-50 border border-yellow-100 text-yellow-700 font-bold text-sm">
                                     <Star size={16} className="fill-yellow-500 text-yellow-500" />
-                                    {user.rating || "0.0"} ({reviews.length} รีวิว)
+                                    {user.rating || "0.0"} ({reviews.length} à¸£à¸µà¸§à¸´à¸§)
                                 </div>
                                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold text-sm">
                                     <Users size={16} />
-                                    มีนักเรียนเคยเรียนแล้ว {Number(user.students_taught_count || 0)} คน
+                                    à¸¡à¸µà¸™à¸±à¸à¹€à¸£à¸µà¸¢à¸™à¹€à¸„à¸¢à¹€à¸£à¸µà¸¢à¸™à¹à¸¥à¹‰à¸§ {Number(user.students_taught_count || 0)} à¸„à¸™
                                 </div>
                             </div>
                         )}
 
-                        <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm md:text-base">
-                            {user.about_me || user.about || "ยังไม่ได้ระบุข้อมูลแนะนำตัว"}
-                        </p>
+                        {profileBio ? (
+                            <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm md:text-base">
+                                {profileBio}
+                            </p>
+                        ) : null}
 
                         <div className="flex flex-wrap items-center gap-4 text-xs md:text-sm text-gray-500">
-                            <span className="flex items-center gap-1"><Clock size={16} /> สมาชิกเมื่อ {memberSince}</span>
+                            <span className="flex items-center gap-1"><Clock size={16} /> à¸ªà¸¡à¸²à¸Šà¸´à¸à¹€à¸¡à¸·à¹ˆà¸­ {memberSince}</span>
                         </div>
                     </div>
                 </div>
@@ -207,8 +219,8 @@ function UserProfilePage({ userId, onBack }) {
                             <MapPin size={18} />
                         </div>
                         <div className="min-w-0">
-                            <p className="text-xs text-gray-400 font-medium mb-0.5">ที่อยู่</p>
-                            <p className="text-sm font-semibold text-gray-800 truncate">{user.address || "ยังไม่ระบุ"}</p>
+                            <p className="text-xs text-gray-400 font-medium mb-0.5">à¸—à¸µà¹ˆà¸­à¸¢à¸¹à¹ˆ</p>
+                            <p className="text-sm font-semibold text-gray-800 truncate">{user.address || "à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸"}</p>
                         </div>
                     </a>
 
@@ -218,7 +230,7 @@ function UserProfilePage({ userId, onBack }) {
                             <Phone size={18} />
                         </div>
                         <div className="min-w-0 flex-1">
-                            <p className="text-xs text-gray-400 font-medium mb-0.5">เบอร์โทรศัพท์</p>
+                            <p className="text-xs text-gray-400 font-medium mb-0.5">à¹€à¸šà¸­à¸£à¹Œà¹‚à¸—à¸£à¸¨à¸±à¸žà¸—à¹Œ</p>
                             <div className="flex items-center justify-between">
                                 {user.phone ? (
                                     showPhone ? (
@@ -231,14 +243,14 @@ function UserProfilePage({ userId, onBack }) {
                                         </span>
                                     )
                                 ) : (
-                                    <p className="text-sm font-semibold text-gray-800">ยังไม่ระบุ</p>
+                                    <p className="text-sm font-semibold text-gray-800">à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸</p>
                                 )}
 
                                 {user.phone && (
                                     <button
                                         onClick={() => setShowPhone(!showPhone)}
                                         className="p-1 text-gray-400 hover:text-green-600 transition-colors"
-                                        title={showPhone ? "ซ่อนเบอร์โทร" : "ดูเบอร์โทร"}
+                                        title={showPhone ? "à¸‹à¹ˆà¸­à¸™à¹€à¸šà¸­à¸£à¹Œà¹‚à¸—à¸£" : "à¸”à¸¹à¹€à¸šà¸­à¸£à¹Œà¹‚à¸—à¸£"}
                                     >
                                         {showPhone ? <EyeOff size={16} /> : <Eye size={16} />}
                                     </button>
@@ -253,7 +265,7 @@ function UserProfilePage({ userId, onBack }) {
                             <Mail size={18} />
                         </div>
                         <div className="min-w-0 flex-1">
-                            <p className="text-xs text-gray-400 font-medium mb-0.5">อีเมล</p>
+                            <p className="text-xs text-gray-400 font-medium mb-0.5">à¸­à¸µà¹€à¸¡à¸¥</p>
                             <div className="flex items-start justify-between gap-2">
                                 {user.email ? (
                                     showEmail ? (
@@ -266,14 +278,14 @@ function UserProfilePage({ userId, onBack }) {
                                         </span>
                                     )
                                 ) : (
-                                    <p className="text-sm font-semibold text-gray-800">ยังไม่ระบุ</p>
+                                    <p className="text-sm font-semibold text-gray-800">à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸</p>
                                 )}
 
                                 {user.email && (
                                     <button
                                         onClick={() => setShowEmail(!showEmail)}
                                         className="p-1 text-gray-400 hover:text-blue-600 transition-colors shrink-0"
-                                        title={showEmail ? "ซ่อนอีเมล" : "ดูอีเมล"}
+                                        title={showEmail ? "à¸‹à¹ˆà¸­à¸™à¸­à¸µà¹€à¸¡à¸¥" : "à¸”à¸¹à¸­à¸µà¹€à¸¡à¸¥"}
                                     >
                                         {showEmail ? <EyeOff size={16} /> : <Eye size={16} />}
                                     </button>
@@ -289,7 +301,7 @@ function UserProfilePage({ userId, onBack }) {
                         </div>
                         <div className="min-w-0">
                             <p className="text-xs text-gray-400 font-medium mb-0.5">
-                                {isTutor ? "วุฒิการศึกษาสูงสุด" : "ระดับชั้น"}
+                                {isTutor ? "à¸§à¸¸à¸’à¸´à¸à¸²à¸£à¸¨à¸¶à¸à¸©à¸²à¸ªà¸¹à¸‡à¸ªà¸¸à¸”" : "à¸£à¸°à¸”à¸±à¸šà¸Šà¸±à¹‰à¸™"}
                             </p>
                             <p className="text-sm font-semibold text-gray-800 truncate">
                                 {isTutor ? latestEducation : (user.grade_level || "-")}
@@ -309,9 +321,9 @@ function UserProfilePage({ userId, onBack }) {
                                 className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${activeTab === tab ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                                     }`}
                             >
-                                {tab === 'posts' && `โพสต์ประกาศ (${userPosts.length})`}
-                                {tab === 'reviews' && `รีวิว (${reviews.length})`}
-                                {tab === 'about' && 'ข้อมูลเพิ่มเติม'}
+                                {tab === 'posts' && `à¹‚à¸žà¸ªà¸•à¹Œà¸›à¸£à¸°à¸à¸²à¸¨ (${userPosts.length})`}
+                                {tab === 'reviews' && `à¸£à¸µà¸§à¸´à¸§ (${reviews.length})`}
+                                {tab === 'about' && 'à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹€à¸žà¸´à¹ˆà¸¡à¹€à¸•à¸´à¸¡'}
                             </button>
                         ))}
                     </div>
@@ -322,7 +334,7 @@ function UserProfilePage({ userId, onBack }) {
                         {activeTab === 'posts' && (
                             <div className="space-y-4">
                                 {userPosts.length === 0 ? (
-                                    <div className="text-center py-20 text-gray-400">ยังไม่มีโพสต์ประกาศ</div>
+                                    <div className="text-center py-20 text-gray-400">à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¡à¸µà¹‚à¸žà¸ªà¸•à¹Œà¸›à¸£à¸°à¸à¸²à¸¨</div>
                                 ) : (
                                     userPosts.map(p => {
                                         const subject = p.subject;
@@ -345,14 +357,14 @@ function UserProfilePage({ userId, onBack }) {
                                                             <div className="font-bold text-gray-900 text-sm flex items-center gap-2">
                                                                 {user.displayName}
                                                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${p.post_type === 'student' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-100 text-indigo-600'}`}>
-                                                                    {p.post_type === 'student' ? 'หาครู' : 'รับสอน'}
+                                                                    {p.post_type === 'student' ? 'à¸«à¸²à¸„à¸£à¸¹' : 'à¸£à¸±à¸šà¸ªà¸­à¸™'}
                                                                 </span>
                                                             </div>
                                                             <div className="flex items-center gap-1.5 mt-0.5 text-xs">
                                                                 {user.username && (
                                                                     <>
                                                                         <span className="font-medium text-indigo-500">@{user.username}</span>
-                                                                        <span className="text-gray-300">•</span>
+                                                                        <span className="text-gray-300">â€¢</span>
                                                                     </>
                                                                 )}
                                                                 <span className="text-gray-400">{new Date(p.createdAt).toLocaleString("th-TH")}</span>
@@ -372,36 +384,36 @@ function UserProfilePage({ userId, onBack }) {
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-y-2 gap-x-4 text-sm text-gray-600 border-t border-gray-50 pt-3">
                                                     <div className="flex items-center gap-2">
                                                         <span className="w-1 h-4 bg-blue-400 rounded-full"></span>
-                                                        <span className="font-medium text-gray-500 text-xs">วิชา :</span>
+                                                        <span className="font-medium text-gray-500 text-xs">à¸§à¸´à¸Šà¸² :</span>
                                                         <span className="text-gray-800 truncate">{subject}</span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <Calendar size={16} className="text-indigo-400" />
-                                                        <span className="font-medium text-gray-500 text-xs">วันที่ :</span>
+                                                        <span className="font-medium text-gray-500 text-xs">à¸§à¸±à¸™à¸—à¸µà¹ˆ :</span>
                                                         <span className="text-gray-800">{date}</span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <Clock size={16} className="text-rose-400" />
-                                                        <span className="font-medium text-gray-500 text-xs">เวลา :</span>
+                                                        <span className="font-medium text-gray-500 text-xs">à¹€à¸§à¸¥à¸² :</span>
                                                         <span className="text-gray-800">{time}</span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <MapPin size={16} className="text-rose-500" />
-                                                        <span className="font-medium text-gray-500 text-xs">สถานที่ :</span>
+                                                        <span className="font-medium text-gray-500 text-xs">à¸ªà¸–à¸²à¸™à¸—à¸µà¹ˆ :</span>
                                                         <span className="text-gray-800 truncate">{location}</span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-emerald-500">฿</span>
-                                                        <span className="font-medium text-gray-500 text-xs">ราคา :</span>
+                                                        <span className="text-emerald-500">à¸¿</span>
+                                                        <span className="font-medium text-gray-500 text-xs">à¸£à¸²à¸„à¸² :</span>
                                                         <span className="text-gray-800">
-                                                            {price ? `${Number(price).toLocaleString()} บาท/ชม.` : "-"}
+                                                            {price ? `${Number(price).toLocaleString()} à¸šà¸²à¸—/à¸Šà¸¡.` : "-"}
                                                         </span>
                                                     </div>
                                                     {groupSize && (
                                                         <div className="flex items-center gap-2">
                                                             <Users size={16} className="text-blue-500" />
-                                                            <span className="font-medium text-gray-500 text-xs">จำนวนผู้เรียน :</span>
-                                                            <span className="text-gray-800">{groupSize} คน</span>
+                                                            <span className="font-medium text-gray-500 text-xs">à¸ˆà¸³à¸™à¸§à¸™à¸œà¸¹à¹‰à¹€à¸£à¸µà¸¢à¸™ :</span>
+                                                            <span className="text-gray-800">{groupSize} à¸„à¸™</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -418,7 +430,7 @@ function UserProfilePage({ userId, onBack }) {
                                 {reviews.length === 0 ? (
                                     <div className="col-span-full flex flex-col items-center justify-center py-16 text-gray-400 bg-white/50 rounded-3xl border-2 border-dashed border-gray-200">
                                         <div className="bg-gray-100 p-4 rounded-full mb-3"><Star size={32} className="text-gray-300" /></div>
-                                        <p>ยังไม่มีรีวิวในขณะนี้</p>
+                                        <p>à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¡à¸µà¸£à¸µà¸§à¸´à¸§à¹ƒà¸™à¸‚à¸“à¸°à¸™à¸µà¹‰</p>
                                     </div>
                                 ) : (
                                     reviews.map((r, i) => (
@@ -434,7 +446,7 @@ function UserProfilePage({ userId, onBack }) {
                                                         </div>
                                                         <div>
                                                             <div className="font-bold text-gray-900 text-sm">
-                                                                {r.reviewer?.name || "ผู้ใช้งาน"}
+                                                                {r.reviewer?.name || "à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸‡à¸²à¸™"}
                                                                 {r.reviewer?.username && <span className="text-gray-500 font-normal ml-1">(@{r.reviewer?.username})</span>}
                                                             </div>
                                                             <div className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</div>
@@ -469,7 +481,7 @@ function UserProfilePage({ userId, onBack }) {
                                 {isTutor ? (
                                     <div className="space-y-6">
                                         <div>
-                                            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><GraduationCap className="text-indigo-500" /> การศึกษา</h3>
+                                            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><GraduationCap className="text-indigo-500" /> à¸à¸²à¸£à¸¨à¸¶à¸à¸©à¸²</h3>
                                             {Array.isArray(user.education) && user.education.length > 0 ? (
                                                 user.education.map((e, idx) => (
                                                     <div key={idx} className="border-b last:border-0 pb-3 last:pb-0 border-gray-100">
@@ -479,10 +491,10 @@ function UserProfilePage({ userId, onBack }) {
                                                         <div className="text-sm text-gray-500">{e.institution} {e.year ? `(${e.year})` : ''}</div>
                                                     </div>
                                                 ))
-                                            ) : <p className="text-gray-400 text-sm">ไม่ระบุ</p>}
+                                            ) : <p className="text-gray-400 text-sm">à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸</p>}
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Briefcase className="text-green-500" /> ประสบการณ์สอน</h3>
+                                            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Briefcase className="text-green-500" /> à¸›à¸£à¸°à¸ªà¸šà¸à¸²à¸£à¸“à¹Œà¸ªà¸­à¸™</h3>
                                             {Array.isArray(user.teaching_experience) && user.teaching_experience.length > 0 ? (
                                                 user.teaching_experience.map((exp, idx) => (
                                                     <div key={idx} className="mb-3">
@@ -491,10 +503,10 @@ function UserProfilePage({ userId, onBack }) {
                                                         <div className="text-sm text-gray-600 mt-1">{exp.description}</div>
                                                     </div>
                                                 ))
-                                            ) : <p className="text-gray-400 text-sm">ไม่ระบุ</p>}
+                                            ) : <p className="text-gray-400 text-sm">à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸</p>}
                                         </div>
                                         <div className="mt-6 pt-4 border-t">
-                                            <div className="text-xs text-gray-400 font-bold uppercase mb-2">วิชาที่สอน</div>
+                                            <div className="text-xs text-gray-400 font-bold uppercase mb-2">à¸§à¸´à¸Šà¸²à¸—à¸µà¹ˆà¸ªà¸­à¸™</div>
                                             <div className="flex flex-wrap gap-2">
                                                 {(user.subjects || user.can_teach_subjects || "").split(',').filter(Boolean).map((s, i) => (
                                                     <span key={i} className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm">{s.trim()}</span>
@@ -504,28 +516,28 @@ function UserProfilePage({ userId, onBack }) {
                                     </div>
                                 ) : (
                                     <div className="space-y-6">
-                                        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><GraduationCap className="text-indigo-500" /> ข้อมูลการศึกษา</h3>
+                                        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><GraduationCap className="text-indigo-500" /> à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸à¸²à¸£à¸¨à¸¶à¸à¸©à¸²</h3>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
-                                                <div className="text-xs text-gray-400 font-bold uppercase">ระดับชั้น</div>
+                                                <div className="text-xs text-gray-400 font-bold uppercase">à¸£à¸°à¸”à¸±à¸šà¸Šà¸±à¹‰à¸™</div>
                                                 <div className="text-gray-800">{user.grade_level || "-"}</div>
                                             </div>
                                             <div>
-                                                <div className="text-xs text-gray-400 font-bold uppercase">โรงเรียน/สถาบัน</div>
+                                                <div className="text-xs text-gray-400 font-bold uppercase">à¹‚à¸£à¸‡à¹€à¸£à¸µà¸¢à¸™/à¸ªà¸–à¸²à¸šà¸±à¸™</div>
                                                 <div className="text-gray-800">{user.institution || "-"}</div>
                                             </div>
                                             <div>
-                                                <div className="text-xs text-gray-400 font-bold uppercase">คณะ</div>
+                                                <div className="text-xs text-gray-400 font-bold uppercase">à¸„à¸“à¸°</div>
                                                 <div className="text-gray-800">{user.faculty || "-"}</div>
                                             </div>
                                             <div>
-                                                <div className="text-xs text-gray-400 font-bold uppercase">สาขาวิชา</div>
+                                                <div className="text-xs text-gray-400 font-bold uppercase">à¸ªà¸²à¸‚à¸²à¸§à¸´à¸Šà¸²</div>
                                                 <div className="text-gray-800">{user.major || "-"}</div>
                                             </div>
                                         </div>
 
                                         <div className="mt-6 pt-4 border-t">
-                                            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Lightbulb className="text-amber-500" /> วิชาที่สนใจ</h3>
+                                            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Lightbulb className="text-amber-500" /> à¸§à¸´à¸Šà¸²à¸—à¸µà¹ˆà¸ªà¸™à¹ƒà¸ˆ</h3>
                                             {derivedInterests.length > 0 ? (
                                                 <div className="flex flex-wrap gap-2">
                                                     {derivedInterests.map((s, i) => (
@@ -535,7 +547,7 @@ function UserProfilePage({ userId, onBack }) {
                                                     ))}
                                                 </div>
                                             ) : (
-                                                <p className="text-gray-400 text-sm">ยังไม่มีข้อมูลเพียงพอให้วิเคราะห์ความสนใจ</p>
+                                                <p className="text-gray-400 text-sm">à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹€à¸žà¸µà¸¢à¸‡à¸žà¸­à¹ƒà¸«à¹‰à¸§à¸´à¹€à¸„à¸£à¸²à¸°à¸«à¹Œà¸„à¸§à¸²à¸¡à¸ªà¸™à¹ƒà¸ˆ</p>
                                             )}
                                         </div>
                                     </div>

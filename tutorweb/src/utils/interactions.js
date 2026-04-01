@@ -1,5 +1,11 @@
 import { API_BASE } from '../config';
 
+export function notifyRecommendationRefresh() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('recommendation:refresh'));
+  }
+}
+
 export async function logUserInteraction({
   userId,
   actionType,
@@ -21,6 +27,7 @@ export async function logUserInteraction({
         subject_keyword: normalizedSubjectKeyword,
       }),
     });
+    notifyRecommendationRefresh();
   } catch (err) {
     console.error('Interaction log failed', err);
   }

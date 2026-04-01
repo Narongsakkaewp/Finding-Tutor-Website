@@ -103,6 +103,16 @@ function addSignal(map, rawText, weight) {
   });
 }
 
+function getRecencyMultiplier(dateValue, windows = {}) {
+  const ageDays = daysSince(dateValue);
+  if (ageDays <= (windows.oneDay ?? 1)) return windows.oneDayWeight ?? 2.8;
+  if (ageDays <= (windows.threeDays ?? 3)) return windows.threeDayWeight ?? 2.2;
+  if (ageDays <= (windows.sevenDays ?? 7)) return windows.sevenDayWeight ?? 1.7;
+  if (ageDays <= (windows.fourteenDays ?? 14)) return windows.fourteenDayWeight ?? 1.25;
+  if (ageDays <= (windows.twentyDays ?? 20)) return windows.twentyDayWeight ?? 0.85;
+  return windows.defaultWeight ?? 0.45;
+}
+
 function serializeReasonTerms(signalMap, limit = 5) {
   return Array.from(signalMap.entries())
     .sort((a, b) => b[1] - a[1])
@@ -253,6 +263,69 @@ function buildExploreTutorRows(primaryRows, fallbackRows, limit) {
   return selected.slice(0, limit);
 }
 
+function buildColdStartTutorRows(rows, limit) {
+  const activeRows = dedupeRows(rows, (row) => row.tutor_post_id).filter((row) => !calculateIsExpired(row));
+  const newestRows = [...activeRows]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, Math.max(limit * 2, 12));
+  const popularRows = [...activeRows]
+    .sort((a, b) => (
+      popularityScore({
+        favCount: b.fav_count,
+        reviewCount: b.review_count,
+        joinCount: b.join_count,
+        studentCount: b.students_taught_count,
+        rating: b.avg_rating,
+      }) - popularityScore({
+        favCount: a.fav_count,
+        reviewCount: a.review_count,
+        joinCount: a.join_count,
+        studentCount: a.students_taught_count,
+        rating: a.avg_rating,
+      })
+    ))
+    .slice(0, Math.max(limit * 2, 12));
+
+  const selected = [];
+  const seenPostIds = new Set();
+  const tutorCounts = new Map();
+  const subjectCounts = new Map();
+
+  const pushRow = (row) => {
+    if (!row || selected.length >= limit) return;
+    if (seenPostIds.has(row.tutor_post_id)) return;
+
+    const tutorKey = row.tutor_id;
+    const subjectKey = getCanonicalSubject(row.subject);
+    const tutorCount = tutorCounts.get(tutorKey) || 0;
+    const subjectCount = subjectCounts.get(subjectKey) || 0;
+
+    if (tutorCount >= 1 || subjectCount >= 1) return;
+
+    selected.push(row);
+    seenPostIds.add(row.tutor_post_id);
+    tutorCounts.set(tutorKey, tutorCount + 1);
+    subjectCounts.set(subjectKey, subjectCount + 1);
+  };
+
+  const rounds = Math.max(newestRows.length, popularRows.length);
+  for (let index = 0; index < rounds && selected.length < limit; index += 1) {
+    pushRow(newestRows[index]);
+    pushRow(popularRows[index]);
+  }
+
+  if (selected.length < limit) {
+    for (const row of diversifyTutorRows(activeRows, limit * 3)) {
+      if (selected.length >= limit) break;
+      if (seenPostIds.has(row.tutor_post_id)) continue;
+      selected.push(row);
+      seenPostIds.add(row.tutor_post_id);
+    }
+  }
+
+  return selected.slice(0, limit);
+}
+
 async function getUserRole(pool, userId) {
   const [[row]] = await pool.query('SELECT type FROM register WHERE user_id = ? LIMIT 1', [userId]);
   return String(row?.type || '').toLowerCase();
@@ -300,31 +373,61 @@ async function getStudentSignals(pool, userId) {
   });
 
   const [searches] = await pool.query(
-    `SELECT keyword, COUNT(*) AS freq, MAX(created_at) AS latest_at
+    `SELECT keyword, created_at
      FROM search_history
      WHERE user_id = ?
-     AND created_at >= DATE_SUB(NOW(), INTERVAL 45 DAY)
-     GROUP BY keyword
-     ORDER BY latest_at DESC`,
+     AND created_at >= DATE_SUB(NOW(), INTERVAL 20 DAY)
+     ORDER BY created_at DESC
+     LIMIT 80`,
     [userId]
   );
-  searches.forEach((row) => {
-    addSignal(signals, row.keyword, Math.min(Number(row.freq || 1), 8) * 14);
+  searches.forEach((row, index) => {
+    const positionWeight = Math.max(1, 8 - Math.floor(index / 4));
+    const recencyWeight = getRecencyMultiplier(row.created_at, {
+      oneDayWeight: 3.2,
+      threeDayWeight: 2.7,
+      sevenDayWeight: 2.1,
+      fourteenDayWeight: 1.4,
+      twentyDayWeight: 0.9,
+      defaultWeight: 0.4,
+    });
+    addSignal(signals, row.keyword, 8 * positionWeight * recencyWeight);
   });
 
   const [interactions] = await pool.query(
-    `SELECT action_type, subject_keyword, COUNT(*) AS freq, MAX(created_at) AS latest_at
+    `SELECT action_type, subject_keyword, created_at
      FROM user_interactions
      WHERE user_id = ?
      AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-     GROUP BY action_type, subject_keyword
-     ORDER BY latest_at DESC`,
+     ORDER BY created_at DESC
+     LIMIT 120`,
     [userId]
   ).catch(() => [[]]);
 
-  interactions.forEach((row) => {
-    const actionWeight = row.action_type === 'favorite' ? 16 : row.action_type === 'open_post' ? 10 : 8;
-    addSignal(signals, row.subject_keyword, Math.min(Number(row.freq || 1), 10) * actionWeight);
+  interactions.forEach((row, index) => {
+    const baseWeight = row.action_type === 'favorite'
+      ? 18
+      : row.action_type === 'open_post'
+        ? 14
+        : row.action_type === 'open_recommendation'
+          ? 12
+          : row.action_type === 'open_explore_recommendation'
+            ? 9
+            : row.action_type === 'search_open_post'
+              ? 16
+              : row.action_type === 'search_open_tutor'
+                ? 12
+                : 8;
+    const positionWeight = Math.max(1, 10 - Math.floor(index / 6));
+    const recencyWeight = getRecencyMultiplier(row.created_at, {
+      oneDayWeight: 3.4,
+      threeDayWeight: 2.6,
+      sevenDayWeight: 1.9,
+      fourteenDayWeight: 1.2,
+      twentyDayWeight: 0.8,
+      defaultWeight: 0.35,
+    });
+    addSignal(signals, row.subject_keyword, baseWeight * positionWeight * recencyWeight);
   });
 
   const [favoriteSubjects] = await pool.query(
@@ -381,24 +484,49 @@ async function getTutorSignals(pool, userId) {
   });
 
   const [searches] = await pool.query(
-    `SELECT keyword, COUNT(*) AS freq
+    `SELECT keyword, created_at
      FROM search_history
      WHERE user_id = ?
-     AND created_at >= DATE_SUB(NOW(), INTERVAL 45 DAY)
-     GROUP BY keyword`,
+     AND created_at >= DATE_SUB(NOW(), INTERVAL 20 DAY)
+     ORDER BY created_at DESC
+     LIMIT 80`,
     [userId]
   );
-  searches.forEach((row) => addSignal(signals, row.keyword, Math.min(Number(row.freq || 1), 8) * 10));
+  searches.forEach((row, index) => {
+    const positionWeight = Math.max(1, 8 - Math.floor(index / 4));
+    const recencyWeight = getRecencyMultiplier(row.created_at, {
+      oneDayWeight: 3.0,
+      threeDayWeight: 2.5,
+      sevenDayWeight: 1.9,
+      fourteenDayWeight: 1.3,
+      twentyDayWeight: 0.85,
+      defaultWeight: 0.4,
+    });
+    addSignal(signals, row.keyword, 7 * positionWeight * recencyWeight);
+  });
 
   const [interactions] = await pool.query(
-    `SELECT action_type, subject_keyword, COUNT(*) AS freq
+    `SELECT action_type, subject_keyword, created_at
      FROM user_interactions
      WHERE user_id = ?
      AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-     GROUP BY action_type, subject_keyword`,
+     ORDER BY created_at DESC
+     LIMIT 120`,
     [userId]
   ).catch(() => [[]]);
-  interactions.forEach((row) => addSignal(signals, row.subject_keyword, Math.min(Number(row.freq || 1), 10) * 8));
+  interactions.forEach((row, index) => {
+    const baseWeight = row.action_type === 'favorite' ? 14 : row.action_type === 'open_post' ? 12 : 8;
+    const positionWeight = Math.max(1, 10 - Math.floor(index / 6));
+    const recencyWeight = getRecencyMultiplier(row.created_at, {
+      oneDayWeight: 3.2,
+      threeDayWeight: 2.4,
+      sevenDayWeight: 1.8,
+      fourteenDayWeight: 1.2,
+      twentyDayWeight: 0.8,
+      defaultWeight: 0.35,
+    });
+    addSignal(signals, row.subject_keyword, baseWeight * positionWeight * recencyWeight);
+  });
 
   return {
     role: 'tutor',
@@ -547,12 +675,14 @@ async function getStudentRecommendationCandidates(pool, limit = 300) {
 }
 
 function scoreTutorCandidate(row, signals) {
-  let score = 0;
-  score += scoreTextAgainstSignals(row.subject, signals, 3.2);
-  score += scoreTextAgainstSignals(row.can_teach_subjects, signals, 2.4);
-  score += scoreTextAgainstSignals(row.description, signals, 1.2);
-  score += scoreTextAgainstSignals(row.about_me, signals, 0.8);
-  score += scoreTextAgainstSignals(row.target_student_level, signals, 1.1);
+  const relevanceScore =
+    scoreTextAgainstSignals(row.subject, signals, 3.2) +
+    scoreTextAgainstSignals(row.can_teach_subjects, signals, 2.4) +
+    scoreTextAgainstSignals(row.description, signals, 1.2) +
+    scoreTextAgainstSignals(row.about_me, signals, 0.8) +
+    scoreTextAgainstSignals(row.target_student_level, signals, 1.1);
+
+  let score = relevanceScore;
   score += recencyScore(row.created_at);
   score += popularityScore({
     favCount: row.fav_count,
@@ -565,23 +695,29 @@ function scoreTutorCandidate(row, signals) {
   const targetLevel = normalizeText(row.target_student_level);
   const gradeSignals = serializeReasonTerms(signals, 12).filter((term) => targetLevel.includes(term));
   if (gradeSignals.length > 0) score += 20;
+  if (signals.size > 0 && relevanceScore === 0) score -= 36;
+  else if (signals.size > 0 && relevanceScore < 18) score -= 12;
 
   return score;
 }
 
 function scoreStudentCandidate(row, signals) {
-  let score = 0;
-  score += scoreTextAgainstSignals(row.subject, signals, 3.1);
-  score += scoreTextAgainstSignals(row.description, signals, 1.2);
-  score += scoreTextAgainstSignals(row.grade_level, signals, 1.2);
-  score += scoreTextAgainstSignals(row.institution, signals, 0.8);
-  score += scoreTextAgainstSignals(row.faculty, signals, 1.0);
-  score += scoreTextAgainstSignals(row.major, signals, 1.0);
+  const relevanceScore =
+    scoreTextAgainstSignals(row.subject, signals, 3.1) +
+    scoreTextAgainstSignals(row.description, signals, 1.2) +
+    scoreTextAgainstSignals(row.grade_level, signals, 1.2) +
+    scoreTextAgainstSignals(row.institution, signals, 0.8) +
+    scoreTextAgainstSignals(row.faculty, signals, 1.0) +
+    scoreTextAgainstSignals(row.major, signals, 1.0);
+
+  let score = relevanceScore;
   score += recencyScore(row.created_at);
   score += popularityScore({
     favCount: row.fav_count,
     joinCount: row.join_count,
   });
+  if (signals.size > 0 && relevanceScore === 0) score -= 28;
+  else if (signals.size > 0 && relevanceScore < 16) score -= 10;
   return score;
 }
 
@@ -664,20 +800,13 @@ async function getTutorRecommendations(pool, userId, options = {}) {
   const limit = Number(options.limit || 12);
   if (!userId) {
     const latest = await getTutorRecommendationCandidates(pool, 0, 120);
-    const fallback = dedupeRows(latest, (row) => row.tutor_post_id)
-      .filter((row) => !calculateIsExpired(row))
-      .sort((a, b) => (popularityScore({
-        favCount: b.fav_count, reviewCount: b.review_count, joinCount: b.join_count, studentCount: b.students_taught_count, rating: b.avg_rating,
-      }) + recencyScore(b.created_at)) - (popularityScore({
-        favCount: a.fav_count, reviewCount: a.review_count, joinCount: a.join_count, studentCount: a.students_taught_count, rating: a.avg_rating,
-      }) + recencyScore(a.created_at)))
-      .slice(0, limit * 3);
-    const fallbackRows = diversifyTutorRows(fallback, limit);
+    const allRows = dedupeRows(latest, (row) => row.tutor_post_id);
+    const fallbackRows = buildColdStartTutorRows(allRows, limit);
     const fallbackItems = fallbackRows.map(mapTutorRow);
     const fallbackIds = new Set(fallbackRows.map((row) => row.tutor_post_id));
     const exploreItems = buildExploreTutorRows(
-      rows.filter((row) => !calculateIsExpired(row) && !fallbackIds.has(row.tutor_post_id)),
-      rows.filter((row) => calculateIsExpired(row)),
+      allRows.filter((row) => !calculateIsExpired(row) && !fallbackIds.has(row.tutor_post_id)),
+      allRows.filter((row) => calculateIsExpired(row)),
       Math.min(limit, 12)
     ).map((row) => ({
       ...mapTutorRow(row),
@@ -696,14 +825,11 @@ async function getTutorRecommendations(pool, userId, options = {}) {
   }));
 
   if (signals.isColdStart) {
-    ranked = ranked.sort((a, b) => (
-      (popularityScore({
-        favCount: b.fav_count, reviewCount: b.review_count, joinCount: b.join_count, studentCount: b.students_taught_count, rating: b.avg_rating,
-      }) + recencyScore(b.created_at)) -
-      (popularityScore({
-        favCount: a.fav_count, reviewCount: a.review_count, joinCount: a.join_count, studentCount: a.students_taught_count, rating: a.avg_rating,
-      }) + recencyScore(a.created_at))
-    ));
+    ranked = buildColdStartTutorRows(ranked, Math.max(limit * 3, 24)).map((row, index) => ({
+      ...row,
+      recommendation_score: Math.max(1, 100 - index),
+      is_expired: calculateIsExpired(row),
+    }));
   } else {
     ranked = ranked.sort((a, b) => b.recommendation_score - a.recommendation_score);
   }

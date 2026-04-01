@@ -4,7 +4,7 @@ import { API_BASE } from "../config";
 import { logUserInteraction } from "../utils/interactions";
 
 export default function RecommendedTutors({ userId, onOpen }) {
-  const [recs, setRecs] = useState({ items: [], explore_items: [], based_on: "" });
+  const [recs, setRecs] = useState({ items: [], explore_items: [], based_on: "", reason_terms: [] });
   const [loading, setLoading] = useState(true);
   const [joinLoading, setJoinLoading] = useState({});
   const [showExplore, setShowExplore] = useState(false);
@@ -17,21 +17,23 @@ export default function RecommendedTutors({ userId, onOpen }) {
       if (ignore) return;
 
       const payload = Array.isArray(data)
-        ? { items: data, explore_items: [], based_on: "" }
+        ? { items: data, explore_items: [], based_on: "", reason_terms: [] }
         : data;
 
-      const seen = new Set();
-      const dedupe = (rows = []) => rows.filter((item) => {
-        const key = item.id || item.tutor_post_id;
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      const dedupeRows = (rows = []) => {
+        const seen = new Set();
+        return rows.filter((item) => {
+          const key = item.id || item.tutor_post_id;
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      };
 
       setRecs({
         ...payload,
-        items: dedupe(payload.items || []),
-        explore_items: dedupe(payload.explore_items || []),
+        items: dedupeRows(payload.items || []),
+        explore_items: dedupeRows(payload.explore_items || []),
       });
     };
 
@@ -50,12 +52,18 @@ export default function RecommendedTutors({ userId, onOpen }) {
     const onVisible = () => {
       if (document.visibilityState === "visible") fetchRecommendations();
     };
+    const onRecommendationRefresh = () => {
+      fetchRecommendations();
+    };
+
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("recommendation:refresh", onRecommendationRefresh);
 
     return () => {
       ignore = true;
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("recommendation:refresh", onRecommendationRefresh);
     };
   }, [userId]);
 
@@ -66,6 +74,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
 
     const postId = tutor.id || tutor.tutor_post_id;
     setJoinLoading((prev) => ({ ...prev, [postId]: true }));
+
     try {
       const res = await fetch(`${API_BASE}/api/posts/tutor/${postId}/join`, {
         method: "POST",
@@ -73,6 +82,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
         body: JSON.stringify({ user_id: userId }),
       });
       const data = await res.json();
+
       if (!res.ok) {
         alert(data?.message || "Error joining tutor post");
         return;
@@ -84,6 +94,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
             ? { ...row, joined: true, pending_me: true, join_count: data.join_count }
             : row
         ));
+
         return {
           ...prev,
           items: updateRows(prev.items),
@@ -100,6 +111,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
   const handleUnjoin = async (e, tutor) => {
     e.stopPropagation();
     if (!userId) return;
+
     const cancelMessage = tutor.pending_me
       ? "ยืนยันที่จะยกเลิกคำขอนี้ใช่หรือไม่?"
       : "ยืนยันที่จะยกเลิกการเข้าร่วมใช่หรือไม่?";
@@ -107,11 +119,13 @@ export default function RecommendedTutors({ userId, onOpen }) {
 
     const postId = tutor.id || tutor.tutor_post_id;
     setJoinLoading((prev) => ({ ...prev, [postId]: true }));
+
     try {
       const res = await fetch(`${API_BASE}/api/posts/tutor/${postId}/join?user_id=${userId}`, {
         method: "DELETE",
       });
       const data = await res.json();
+
       if (!res.ok) {
         alert(data?.message || "Error unjoining tutor post");
         return;
@@ -123,6 +137,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
             ? { ...row, joined: false, pending_me: false, join_count: data.join_count }
             : row
         ));
+
         return {
           ...prev,
           items: updateRows(prev.items),
@@ -142,6 +157,9 @@ export default function RecommendedTutors({ userId, onOpen }) {
 
   const hasPrimaryItems = Array.isArray(recs.items) && recs.items.length > 0;
   const hasExploreItems = Array.isArray(recs.explore_items) && recs.explore_items.length > 0;
+  const hasReasonTerms = Array.isArray(recs.reason_terms) && recs.reason_terms.length > 0;
+  const basedOnLabel = hasReasonTerms
+    ? `อ้างอิงจากความสนใจล่าสุด: `: "แนะนำจากโพสต์ใหม่และโพสต์ยอดนิยมในระบบ";
 
   if (!hasPrimaryItems && !hasExploreItems) {
     return (
@@ -271,11 +289,9 @@ export default function RecommendedTutors({ userId, onOpen }) {
         <h2 className="text-xl font-bold text-gray-800">แนะนำสำหรับคุณ</h2>
       </div>
 
-      {recs.based_on && (
-        <p className="text-sm text-gray-600 mb-4 bg-white inline-block px-3 py-1 rounded-full border">
-          อ้างอิงจากความสนใจวิชาที่คุณสนใจ
-        </p>
-      )}
+      <p className="text-sm text-gray-600 mb-4 bg-white inline-block px-3 py-1 rounded-full border">
+        {basedOnLabel}
+      </p>
 
       {hasPrimaryItems ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -37,6 +37,20 @@ const wrapHtml = (title, bodyContent) => `
 `;
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://finding-tutor.up.railway.app";
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com";
+
+function getBrevoSender() {
+    return { name: "Finding Tutor Notification", email: BREVO_FROM_EMAIL };
+}
+
+function canSendBrevoEmail(emailType) {
+    if (!BREVO_API_KEY) {
+        console.warn(`⚠️ [Email Skipped] ${emailType}: missing BREVO_API_KEY in .env`);
+        return false;
+    }
+    return true;
+}
 
 /**
  * Send Booking Confirmation Email
@@ -44,6 +58,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "https://finding-tutor.up.railw
  */
 async function sendBookingConfirmationEmail(toEmail, details) {
     if (!toEmail) return;
+    if (!canSendBrevoEmail('Send Confirmation')) return;
 
     try {
         const { courseName, date, time, location, partnerName, role } = details;
@@ -69,7 +84,7 @@ async function sendBookingConfirmationEmail(toEmail, details) {
         `;
 
         const brevoPayload = {
-            sender: { name: "Finding Tutor Notification", email: process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" },
+            sender: getBrevoSender(),
             to: [{ email: toEmail }],
             subject: subject,
             htmlContent: wrapHtml('ยืนยันนัดหมายการเรียน', body)
@@ -80,7 +95,7 @@ async function sendBookingConfirmationEmail(toEmail, details) {
                 method: "POST",
                 headers: {
                     "accept": "application/json",
-                    "api-key": process.env.BREVO_API_KEY,
+                    "api-key": BREVO_API_KEY,
                     "content-type": "application/json"
                 },
                 body: JSON.stringify(brevoPayload)
@@ -103,6 +118,7 @@ async function sendBookingConfirmationEmail(toEmail, details) {
  */
 async function sendReviewReminderEmail(toEmail, details) {
     if (!toEmail) return;
+    if (!canSendBrevoEmail('Send Review Reminder')) return;
 
     try {
         const { courseName, date, partnerName, postId, type } = details; // type = 'tutor' or 'student'
@@ -123,7 +139,7 @@ async function sendReviewReminderEmail(toEmail, details) {
         `;
 
         const brevoPayload = {
-            sender: { name: "Finding Tutor Notification", email: process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" },
+            sender: getBrevoSender(),
             to: [{ email: toEmail }],
             subject: subject,
             htmlContent: wrapHtml('📝 เชิญร่วมรีวิวการเรียนการสอน', body)
@@ -134,7 +150,7 @@ async function sendReviewReminderEmail(toEmail, details) {
                 method: "POST",
                 headers: {
                     "accept": "application/json",
-                    "api-key": process.env.BREVO_API_KEY,
+                    "api-key": BREVO_API_KEY,
                     "content-type": "application/json"
                 },
                 body: JSON.stringify(brevoPayload)
@@ -157,6 +173,7 @@ async function sendReviewReminderEmail(toEmail, details) {
  */
 async function sendClassReminderEmail(toEmail, details) {
     if (!toEmail) return;
+    if (!canSendBrevoEmail('Send Class Reminder')) return;
 
     try {
         const {
@@ -196,7 +213,7 @@ async function sendClassReminderEmail(toEmail, details) {
         `;
 
         const brevoPayload = {
-            sender: { name: "Finding Tutor Notification", email: process.env.BREVO_FROM_EMAIL || "findingtoturwebteam@gmail.com" },
+            sender: getBrevoSender(),
             to: [{ email: toEmail }],
             subject: subject,
             htmlContent: wrapHtml(`แจ้งเตือนตารางเรียนวันที่ ${date}`, body)
@@ -207,7 +224,7 @@ async function sendClassReminderEmail(toEmail, details) {
                 method: "POST",
                 headers: {
                     "accept": "application/json",
-                    "api-key": process.env.BREVO_API_KEY,
+                    "api-key": BREVO_API_KEY,
                     "content-type": "application/json"
                 },
                 body: JSON.stringify(brevoPayload)
