@@ -58,10 +58,10 @@ export default function PopularSubjects({ onSelect }) {
                 <div className="p-2 bg-rose-100 text-rose-600 rounded-lg">
                     <TrendingUp size={24} />
                 </div>
-                <div>
+                {/* <div>
                     <h2 className="text-2xl font-bold text-gray-800">วิชายอดฮิต</h2>
                     <p className="text-gray-500">วิชาที่กำลังเป็นที่นิยมในขณะนี้</p>
-                </div>
+                </div> */}
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">

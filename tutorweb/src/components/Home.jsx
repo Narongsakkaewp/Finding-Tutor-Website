@@ -798,10 +798,10 @@ function HomeStudent() {
               />
             </section>
 
-            <section className="mb-12">
+            {/* <section className="mb-12">
               <SectionHeader title="วิชายอดฮิต" subtitle="อัปเดตตามความนิยมจริงแบบเรียลไทม์" icon={Sparkles} />
               <TrendingSubjectsList onOpen={(item) => handleSearch(item.name || item.id)} />
-            </section>
+            </section> */}
 
 
             <section className="mt-12">

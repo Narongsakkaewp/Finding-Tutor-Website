@@ -96,6 +96,18 @@ function formatTimeSummary(timeString) {
     return uniqueValues.join(', ');
 }
 
+function joinDisplayNames(names = []) {
+    return names.filter(Boolean).join(', ');
+}
+
+function excludeParticipant(names = [], excludedName) {
+    const normalizedExcluded = String(excludedName || '').trim().toLowerCase();
+    if (!normalizedExcluded) return names.filter(Boolean);
+
+    const filtered = names.filter((name) => String(name || '').trim().toLowerCase() !== normalizedExcluded);
+    return filtered.length ? filtered : names.filter(Boolean);
+}
+
 async function getStudentNamesForStudentPost(conn, postId, ownerName) {
     const names = new Set();
     if (ownerName) names.add(ownerName);
@@ -199,24 +211,27 @@ async function checkAndSendNotifications() {
 async function processNotifications(conn, dayNames, targetDate, notiType, messagePrefix) {
     // Determine if we should send emails (only for schedule reminders)
     const isReminder = notiType.startsWith('schedule_');
-    const roleMap = { owner: 'student', joiner: 'tutor' }; // Default assumption (Student Post)
-
     const dateStr = targetDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
     const studentPostNameCache = new Map();
     const tutorPostNameCache = new Map();
 
-    // --- A. Student Posts (Student requests Tutor, Join Approved) ---
-    // Owner = Student, Joiner = Tutor (usually, unless study buddy)
+    // --- A. Student Posts (Student joins Student Post, may or may not have tutor offer) ---
     const [studentPosts] = await conn.query(`
     SELECT sp.student_post_id, sp.subject, sp.preferred_days, sp.preferred_time, sp.location,
            sp.student_id AS owner_id, j.user_id AS joiner_id,
            ro.email AS owner_email, rj.email AS joiner_email,
            ro.name AS owner_name, ro.lastname AS owner_lastname,
-           rj.name AS joiner_name, rj.lastname AS joiner_lastname
+           rj.name AS joiner_name, rj.lastname AS joiner_lastname,
+           offer.tutor_id AS offer_tutor_id,
+           rt.name AS offer_tutor_name, rt.lastname AS offer_tutor_lastname
     FROM student_posts sp
     JOIN student_post_joins j ON sp.student_post_id = j.student_post_id
     JOIN register ro ON ro.user_id = sp.student_id
     JOIN register rj ON rj.user_id = j.user_id
+    LEFT JOIN student_post_offers offer
+      ON sp.student_post_id = offer.student_post_id
+     AND offer.status = 'approved'
+    LEFT JOIN register rt ON rt.user_id = offer.tutor_id
     WHERE j.status = 'approved'
   `);
 
@@ -228,9 +243,10 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
             const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.student_post_id, null, 'student_post');
             const sentJoiner = await sendNotificationIfNotExists(conn, post.joiner_id, typeVar, msg, post.student_post_id, null, 'student_post');
 
-            // [EMAIL] Reminder
             if (isReminder) {
                 const ownerDisplayName = buildFullName(post.owner_name, post.owner_lastname);
+                const joinerDisplayName = buildFullName(post.joiner_name, post.joiner_lastname);
+                const approvedTutorName = buildFullName(post.offer_tutor_name, post.offer_tutor_lastname);
                 const participantNames = studentPostNameCache.has(post.student_post_id)
                     ? studentPostNameCache.get(post.student_post_id)
                     : await getStudentNamesForStudentPost(conn, post.student_post_id, ownerDisplayName);
@@ -241,29 +257,33 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                     courseName: post.subject,
                     time: formatTimeSummary(post.preferred_time),
                     date: formatThaiDateRange(post.preferred_days, dateStr),
-                    location: post.location || 'ไม่ได้ระบุ'
+                    location: post.location || 'ไม่ระบุ'
                 };
 
-                // For Student Posts, usually Owner=Student, Joiner=Tutor.
-                const tutorName = `${post.joiner_name} ${post.joiner_lastname}`;
-                const studentNamesText = participantNames.length ? participantNames.join(', ') : ownerDisplayName || 'ไม่ระบุ';
+                const ownerPeerNames = joinDisplayNames(excludeParticipant(participantNames, ownerDisplayName)) || joinerDisplayName || 'ไม่ระบุ';
+                const joinerPeerNames = joinDisplayNames(excludeParticipant(participantNames, joinerDisplayName)) || ownerDisplayName || 'ไม่ระบุ';
 
-                // Send to Owner (Student)
                 if (sentOwner) {
                     sendClassReminderEmail(post.owner_email, {
                         ...commonDetails,
-                        tutorName: tutorName,
-                        studentNames: studentNamesText,
-                        role: 'student'
+                        role: 'student',
+                        roleLabel: '\u0e19\u0e31\u0e01\u0e40\u0e23\u0e35\u0e22\u0e19',
+                        primaryLabel: approvedTutorName ? '\u0e0a\u0e37\u0e48\u0e2d\u0e1c\u0e39\u0e49\u0e2a\u0e2d\u0e19' : '\u0e40\u0e08\u0e49\u0e32\u0e02\u0e2d\u0e07\u0e42\u0e1e\u0e2a\u0e15\u0e4c',
+                        primaryName: approvedTutorName || ownerDisplayName || '\u0e44\u0e21\u0e48\u0e23\u0e30\u0e1a\u0e38',
+                        participantLabel: approvedTutorName ? '\u0e40\u0e23\u0e35\u0e22\u0e19\u0e01\u0e31\u0e1a' : '\u0e1c\u0e39\u0e49\u0e40\u0e02\u0e49\u0e32\u0e23\u0e48\u0e27\u0e21',
+                        participantNames: approvedTutorName ? joinDisplayNames(participantNames) : ownerPeerNames
                     });
                 }
-                // Send to Joiner
+
                 if (sentJoiner) {
                     sendClassReminderEmail(post.joiner_email, {
                         ...commonDetails,
-                        tutorName: tutorName,
-                        studentNames: studentNamesText,
-                        role: 'tutor'
+                        role: 'student',
+                        roleLabel: '\u0e19\u0e31\u0e01\u0e40\u0e23\u0e35\u0e22\u0e19',
+                        primaryLabel: approvedTutorName ? '\u0e0a\u0e37\u0e48\u0e2d\u0e1c\u0e39\u0e49\u0e2a\u0e2d\u0e19' : '\u0e40\u0e08\u0e49\u0e32\u0e02\u0e2d\u0e07\u0e42\u0e1e\u0e2a\u0e15\u0e4c',
+                        primaryName: approvedTutorName || ownerDisplayName || '\u0e44\u0e21\u0e48\u0e23\u0e30\u0e1a\u0e38',
+                        participantLabel: approvedTutorName ? '\u0e40\u0e23\u0e35\u0e22\u0e19\u0e01\u0e31\u0e1a' : '\u0e1c\u0e39\u0e49\u0e40\u0e02\u0e49\u0e32\u0e23\u0e48\u0e27\u0e21',
+                        participantNames: approvedTutorName ? joinDisplayNames(participantNames) : joinerPeerNames
                     });
                 }
             }
@@ -293,7 +313,6 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
             const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.tutor_post_id, null, 'tutor_post');
             const sentJoiner = await sendNotificationIfNotExists(conn, post.joiner_id, typeVar, msg, post.tutor_post_id, null, 'tutor_post');
 
-            // [EMAIL] Reminder
             if (isReminder) {
                 const participantNames = tutorPostNameCache.has(post.tutor_post_id)
                     ? tutorPostNameCache.get(post.tutor_post_id)
@@ -305,30 +324,32 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                     courseName: post.subject,
                     time: formatTimeSummary(post.teaching_time),
                     date: formatThaiDateRange(post.teaching_days, dateStr),
-                    location: post.location || 'ไม่ได้ระบุ'
+                    location: post.location || 'ไม่ระบุ'
                 };
 
                 const tutorName = `${post.owner_name} ${post.owner_lastname}`;
-                const studentNamesText = participantNames.length
-                    ? participantNames.join(', ')
-                    : buildFullName(post.joiner_name, post.joiner_lastname) || 'ไม่ระบุ';
+                const studentNamesText = participantNames.length ? participantNames.join(', ') : buildFullName(post.joiner_name, post.joiner_lastname) || 'ไม่ระบุ';
 
-                // Send to Owner (Tutor)
                 if (sentOwner) {
                     sendClassReminderEmail(post.owner_email, {
                         ...commonDetails,
-                        tutorName: tutorName,
-                        studentNames: studentNamesText,
-                        role: 'tutor'
+                        role: 'tutor',
+                        roleLabel: '\u0e15\u0e34\u0e27\u0e40\u0e15\u0e2d\u0e23\u0e4c',
+                        primaryLabel: '\u0e0a\u0e37\u0e48\u0e2d\u0e1c\u0e39\u0e49\u0e2a\u0e2d\u0e19',
+                        primaryName: tutorName,
+                        participantLabel: '\u0e40\u0e23\u0e35\u0e22\u0e19\u0e01\u0e31\u0e1a',
+                        participantNames: studentNamesText
                     });
                 }
-                // Send to Joiner (Student)
                 if (sentJoiner) {
                     sendClassReminderEmail(post.joiner_email, {
                         ...commonDetails,
-                        tutorName: tutorName,
-                        studentNames: studentNamesText,
-                        role: 'student'
+                        role: 'student',
+                        roleLabel: '\u0e19\u0e31\u0e01\u0e40\u0e23\u0e35\u0e22\u0e19',
+                        primaryLabel: '\u0e0a\u0e37\u0e48\u0e2d\u0e1c\u0e39\u0e49\u0e2a\u0e2d\u0e19',
+                        primaryName: tutorName,
+                        participantLabel: '\u0e40\u0e23\u0e35\u0e22\u0e19\u0e01\u0e31\u0e1a',
+                        participantNames: studentNamesText
                     });
                 }
             }
@@ -359,7 +380,6 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
             const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.student_post_id, null, 'student_post');
             const sentJoiner = await sendNotificationIfNotExists(conn, post.joiner_id, typeVar, msg, post.student_post_id, null, 'student_post');
 
-            // [EMAIL] Reminder
             if (isReminder) {
                 const ownerDisplayName = buildFullName(post.owner_name, post.owner_lastname);
                 const participantNames = studentPostNameCache.has(post.student_post_id)
@@ -372,28 +392,32 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
                     courseName: post.subject,
                     time: formatTimeSummary(post.preferred_time),
                     date: formatThaiDateRange(post.preferred_days, dateStr),
-                    location: post.location || 'ไม่ได้ระบุ'
+                    location: post.location || 'ไม่ระบุ'
                 };
 
                 const tutorName = `${post.joiner_name} ${post.joiner_lastname}`;
                 const studentNamesText = participantNames.length ? participantNames.join(', ') : ownerDisplayName || 'ไม่ระบุ';
 
-                // Send to Owner (Student)
                 if (sentOwner) {
                     sendClassReminderEmail(post.owner_email, {
                         ...commonDetails,
-                        tutorName: tutorName,
-                        studentNames: studentNamesText,
-                        role: 'student'
+                        role: 'student',
+                        roleLabel: '\u0e19\u0e31\u0e01\u0e40\u0e23\u0e35\u0e22\u0e19',
+                        primaryLabel: '\u0e0a\u0e37\u0e48\u0e2d\u0e1c\u0e39\u0e49\u0e2a\u0e2d\u0e19',
+                        primaryName: tutorName,
+                        participantLabel: '\u0e40\u0e23\u0e35\u0e22\u0e19\u0e01\u0e31\u0e1a',
+                        participantNames: studentNamesText
                     });
                 }
-                // Send to Joiner (Tutor)
                 if (sentJoiner) {
                     sendClassReminderEmail(post.joiner_email, {
                         ...commonDetails,
-                        tutorName: tutorName,
-                        studentNames: studentNamesText,
-                        role: 'tutor'
+                        role: 'tutor',
+                        roleLabel: '\u0e15\u0e34\u0e27\u0e40\u0e15\u0e2d\u0e23\u0e4c',
+                        primaryLabel: '\u0e0a\u0e37\u0e48\u0e2d\u0e1c\u0e39\u0e49\u0e2a\u0e2d\u0e19',
+                        primaryName: tutorName,
+                        participantLabel: '\u0e40\u0e23\u0e35\u0e22\u0e19\u0e01\u0e31\u0e1a',
+                        participantNames: studentNamesText
                     });
                 }
             }

@@ -193,24 +193,24 @@ function PostActionMenu({ open, onClose, onEdit, onHide, onDelete, onReport, isO
     return (
         <>
             <div className="fixed inset-0 z-10" onClick={onClose}></div>
-            <div className="absolute right-2 top-8 z-20 w-40 overflow-hidden rounded-xl border bg-white shadow-xl animate-in fade-in zoom-in duration-100">
+            <div className="absolute right-2 top-8 z-20 w-40 overflow-hidden rounded-xl border bg-white shadow-xl animate-in fade-in zoom-in duration-100" onClick={(e) => e.stopPropagation()}>
                 {isOwner ? (
                     <>
                         <button
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
-                            onClick={() => { onEdit(); onClose(); }}
+                            onClick={(e) => { e.stopPropagation(); onEdit(); onClose(); }}
                         >
                             <Edit size={16} className="text-gray-500" /> แก้ไขโพสต์
                         </button>
                         <button
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
-                            onClick={() => { onHide(); onClose(); }}
+                            onClick={(e) => { e.stopPropagation(); onHide(); onClose(); }}
                         >
                             <EyeOff size={16} className="text-gray-500" /> ซ่อนโพสต์
                         </button>
                         <button
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"
-                            onClick={() => { onDelete(); onClose(); }}
+                            onClick={(e) => { e.stopPropagation(); onDelete(); onClose(); }}
                         >
                             <Trash2 size={16} /> ลบโพสต์
                         </button>
@@ -218,7 +218,7 @@ function PostActionMenu({ open, onClose, onEdit, onHide, onDelete, onReport, isO
                 ) : (
                     <button
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"
-                        onClick={() => { onReport(); onClose(); }}
+                        onClick={(e) => { e.stopPropagation(); onReport(); onClose(); }}
                     >
                         <Flag size={16} /> รายงานโพสต์
                     </button>

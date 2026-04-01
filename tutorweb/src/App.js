@@ -132,6 +132,47 @@ function App() {
       .catch(console.error);
   }, [user]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !user?.user_id) return;
+
+    let cancelled = false;
+
+    const verifyAccountStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/user/${user.user_id}`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (cancelled) return;
+
+        const status = String(data?.status || 'active').toLowerCase();
+        const suspendedUntil = data?.suspended_until ? new Date(data.suspended_until) : null;
+        const isStillSuspended =
+          status === 'suspended' &&
+          suspendedUntil &&
+          !Number.isNaN(suspendedUntil.getTime()) &&
+          suspendedUntil > new Date();
+
+        if (status === 'banned' || isStillSuspended) {
+          handleLogout();
+          alert(
+            status === 'banned'
+              ? 'บัญชีนี้ถูกระงับการใช้งานโดยผู้ดูแลระบบ'
+              : `บัญชีนี้ถูกพักการใช้งานถึง ${suspendedUntil.toLocaleString('th-TH')}`
+          );
+        }
+      } catch (err) {
+        console.error('verifyAccountStatus failed:', err);
+      }
+    };
+
+    verifyAccountStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, user?.user_id]);
+
   const handleLoginSuccess = (payload = {}) => {
     const role = (payload.userType || payload.role || payload.user?.role || '').toLowerCase();
     setIsAuthenticated(true);

@@ -534,11 +534,15 @@ app.get('/api/user/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const [rows] = await pool.execute(
-      'SELECT type FROM register WHERE user_id = ?',
+      'SELECT type, status, suspended_until FROM register WHERE user_id = ?',
       [userId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    res.json({ userType: rows[0].type });
+    res.json({
+      userType: rows[0].type,
+      status: rows[0].status || 'active',
+      suspended_until: rows[0].suspended_until || null
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
@@ -579,6 +583,30 @@ app.post('/api/login', async (req, res) => {
         return res.status(401).json({ success: false, message: 'บัญชีนี้ถูกลบทิ้งถาวรแล้ว ไม่สามารถกู้คืนได้ (เกิน 30 วัน)' });
       }
     }
+    const status = String(user.status || 'active').trim().toLowerCase();
+    const suspendedUntil = user.suspended_until ? new Date(user.suspended_until) : null;
+    const now = new Date();
+
+    if (status === 'banned') {
+      return res.status(403).json({ success: false, message: 'บัญชีนี้ถูกระงับการใช้งานโดยผู้ดูแลระบบ' });
+    }
+
+    if (status === 'suspended') {
+      if (suspendedUntil && !Number.isNaN(suspendedUntil.getTime()) && suspendedUntil > now) {
+        return res.status(403).json({
+          success: false,
+          message: `บัญชีนี้ถูกพักการใช้งานถึง ${suspendedUntil.toLocaleString('th-TH')}`
+        });
+      }
+
+      await pool.query(
+        'UPDATE register SET status = ?, suspended_until = NULL WHERE user_id = ?',
+        ['active', user.user_id]
+      );
+      user.status = 'active';
+      user.suspended_until = null;
+    }
+
     const raw = String(user.type || '').trim().toLowerCase();
     const mapped = raw === 'teacher' ? 'tutor' : raw;
 

@@ -159,17 +159,30 @@ async function sendClassReminderEmail(toEmail, details) {
     if (!toEmail) return;
 
     try {
-        const { courseName, time, tutorName, studentNames, location, role, date } = details;
+        const {
+            courseName,
+            time,
+            tutorName,
+            studentNames,
+            location,
+            role,
+            roleLabel,
+            primaryLabel,
+            primaryName,
+            participantLabel,
+            participantNames,
+            date
+        } = details;
         const subject = `📅 แจ้งเตือนตารางเรียน/สอน วันที่ ${date}`;
 
         const body = `
-            <p>สวัสดีคุณ <strong>${role === 'student' ? 'นักเรียน' : 'ติวเตอร์'}</strong>,</p>
+            <p>สวัสดีคุณ <strong>${roleLabel || (role === 'student' ? 'นักเรียน' : 'ติวเตอร์')}</strong>,</p>
             <p>อย่าลืมนะคะ! คุณมีนัดหมายการติว/สอน รายละเอียดดังนี้:</p>
             
             <div class="info-box">
                 <p><strong>วิชา:</strong> ${courseName}</p>
-                <p><strong>ชื่อผู้สอน:</strong> ${tutorName || 'ไม่ระบุ'}</p>
-                <p><strong>เรียนกับ:</strong> ${studentNames || 'ไม่ระบุ'}</p>
+                <p><strong>${primaryLabel || 'ชื่อผู้สอน'}:</strong> ${primaryName || tutorName || 'ไม่ระบุ'}</p>
+                <p><strong>${participantLabel || 'เรียนกับ'}:</strong> ${participantNames || studentNames || 'ไม่ระบุ'}</p>
                 <p><strong>📅 วันที่:</strong> ${date}</p>
                 <p><strong>⏰ เวลา:</strong> ${time || 'ตามตกลง'}</p>
                 <p><strong>📍 สถานที่:</strong> ${location || 'ไม่ระบุ'}</p>
