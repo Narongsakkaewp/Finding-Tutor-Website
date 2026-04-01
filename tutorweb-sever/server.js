@@ -1605,6 +1605,21 @@ app.post('/api/tutor-posts', upload.none(), async (req, res) => {
     );
 
     const r = rows[0];
+
+    await pool.query(
+      `INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type)
+       SELECT tf.user_id, ?, 'followed_tutor_new_post', ?, ?, 'tutor_post'
+       FROM tutor_favorites tf
+       WHERE tf.tutor_id = ? AND tf.user_id <> ?`,
+      [
+        payload.tutor_id,
+        `ติวเตอร์ที่คุณติดตามได้เปิดคอร์สใหม่: ${r.subject}`,
+        r.tutor_post_id,
+        payload.tutor_id,
+        payload.tutor_id
+      ]
+    );
+
     return res.status(201).json({
       success: true,
       item: {
@@ -2533,8 +2548,13 @@ app.get('/api/tutor_posts/:id/requests', async (req, res) => {
         j.status,
         j.requested_at,
         j.name,
-        j.lastname
+        j.lastname,
+        r.username,
+        COALESCE(spro.profile_picture_url, tpro.profile_picture_url) AS profile_picture_url
       FROM tutor_post_joins j
+      LEFT JOIN register r ON r.user_id = j.user_id
+      LEFT JOIN student_profiles spro ON r.user_id = spro.user_id
+      LEFT JOIN tutor_profiles tpro ON r.user_id = tpro.user_id
       WHERE j.tutor_post_id = ?
       ${whereStatus}
       ORDER BY j.requested_at DESC
@@ -2805,6 +2825,7 @@ app.get('/api/notifications/:user_id', async (req, res) => {
             WHEN n.type = 'tutor_review_request'
                  AND tp_review_join.tutor_post_id IS NOT NULL
                  AND tpj_review.tutor_post_id IS NOT NULL THEN tp_review_join.subject
+            WHEN n.type = 'followed_tutor_new_post' THEN tp.subject
             WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'system_alert') THEN sp.subject
             WHEN n.type IN ('tutor_join_request', 'tutor_join_approved', 'tutor_join_rejected') THEN tp.subject
             WHEN n.type IN ('comment', 'mention') THEN COALESCE(sp.subject, tp.subject)
@@ -2816,6 +2837,7 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         
         -- ประเภทของโพสต์เพื่อใช้ในการนำทาง (Navigation)
         CASE
+            WHEN n.type = 'followed_tutor_new_post' THEN 'tutor'
             WHEN n.type IN ('tutor_join_request', 'tutor_join_approved', 'tutor_join_rejected', 'tutor_review_request') THEN 'tutor'
             WHEN n.type IN ('join_request', 'join_approved', 'join_rejected', 'offer', 'offer_accepted', 'review_request') THEN 'student'
             WHEN sp.student_post_id IS NOT NULL AND tp.tutor_post_id IS NULL THEN 'student'
@@ -3791,17 +3813,33 @@ app.get('/api/review-info/:tutorPostId', async (req, res) => {
 
 app.get('/api/tutor-posts/:id', async (req, res) => {
   try {
-    const postId = req.params.id;
-    const [rows] = await pool.execute(
+    const postId = Number(req.params.id);
+    if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid id' });
+    const [rows] = await pool.query(
       `SELECT 
-        tp.tutor_post_id, 
-        tp.subject, 
+        tp.tutor_post_id,
+        tp.subject,
         tp.tutor_id,
-        r.name, 
-        r.lastname 
+        tp.description,
+        tp.target_student_level,
+        tp.teaching_days,
+        tp.teaching_time,
+        tp.location,
+        tp.group_size,
+        tp.price,
+        tp.contact_info,
+        COALESCE(tp.created_at, NOW()) AS created_at,
+        r.name,
+        r.lastname,
+        r.username,
+        tpro.profile_picture_url,
+        (SELECT COUNT(*) FROM tutor_post_joins WHERE tutor_post_id = tp.tutor_post_id AND status = 'approved') AS join_count,
+        (SELECT COUNT(*) FROM comments WHERE post_id = tp.tutor_post_id AND post_type = 'tutor') AS comment_count
        FROM tutor_posts tp
-       LEFT JOIN register r ON tp.tutor_id = r.user_id 
-       WHERE tp.tutor_post_id = ?`,
+       LEFT JOIN register r ON tp.tutor_id = r.user_id
+       LEFT JOIN tutor_profiles tpro ON tpro.user_id = tp.tutor_id
+       WHERE tp.tutor_post_id = ?
+       LIMIT 1`,
       [postId]
     );
 
@@ -3815,10 +3853,25 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
       tutor_post_id: post.tutor_post_id,
       subject: post.subject || "ไม่ระบุวิชา", // กันค่า null
       owner_id: post.tutor_id,
+      description: post.description || "",
+      group_size: Number(post.group_size || 0),
+      createdAt: post.created_at,
+      join_count: Number(post.join_count || 0),
+      comment_count: Number(post.comment_count || 0),
+      meta: {
+        target_student_level: post.target_student_level || "ไม่ระบุ",
+        teaching_days: post.teaching_days || "",
+        teaching_time: post.teaching_time || "",
+        location: post.location || "",
+        price: Number(post.price || 0),
+        contact_info: post.contact_info || ""
+      },
       user: {
         // ถ้าหาชื่อไม่เจอ ให้แสดงค่า default
         first_name: post.name || "ไม่ทราบชื่อ",
-        last_name: post.lastname || ""
+        last_name: post.lastname || "",
+        username: post.username || "",
+        profile_image: post.profile_picture_url || ""
       }
     });
 

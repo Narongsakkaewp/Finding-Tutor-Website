@@ -123,13 +123,29 @@ function App() {
 
   useEffect(() => {
     if (!user?.user_id) return;
-    fetch(`${API_BASE}/api/notifications/${user.user_id}`)
-      .then(res => res.json())
-      .then(data => {
-        const newOnes = Array.isArray(data) ? data.filter(n => !n.is_read) : [];
-        setNewNotificationCount(newOnes.length);
+    let ignore = false;
+
+    const fetchNotificationCount = () => {
+      fetch(`${API_BASE}/api/notifications/${user.user_id}?_ts=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
       })
-      .catch(console.error);
+        .then(res => res.json())
+        .then(data => {
+          if (ignore) return;
+          const newOnes = Array.isArray(data) ? data.filter(n => !n.is_read) : [];
+          setNewNotificationCount(newOnes.length);
+        })
+        .catch(console.error);
+    };
+
+    fetchNotificationCount();
+    const interval = setInterval(fetchNotificationCount, 20000);
+
+    return () => {
+      ignore = true;
+      clearInterval(interval);
+    };
   }, [user]);
 
   useEffect(() => {

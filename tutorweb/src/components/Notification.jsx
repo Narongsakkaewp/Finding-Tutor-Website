@@ -276,6 +276,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
     if (type.includes('approved') || type === 'offer_accepted') { badgeColor = "bg-green-500"; BadgeIcon = Check; }
     if (type.includes('rejected')) { badgeColor = "bg-rose-500"; BadgeIcon = Check; }
     if (type === 'offer') { badgeColor = "bg-purple-500"; BadgeIcon = BookOpen; }
+    if (type === 'followed_tutor_new_post') { badgeColor = "bg-violet-500"; BadgeIcon = BookOpen; }
     if (type.includes('schedule')) { badgeColor = "bg-orange-500"; BadgeIcon = Calendar; }
     if (type === 'system_alert') { badgeColor = "bg-blue-600"; BadgeIcon = Shield; } // ✅ System Alert
     if (type === 'comment' || type === 'mention') { badgeColor = "bg-blue-400"; BadgeIcon = MessageCircle; }
@@ -359,6 +360,18 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
           <span>
             คำขอเข้าร่วม <span className="font-semibold text-indigo-600">"{subjectText}"</span> ของคุณ <span className="text-rose-500 font-bold">ถูกปฏิเสธ</span>
           </span>
+        );
+        break;
+      case "followed_tutor_new_post":
+        content = (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-violet-600 flex items-center gap-2">
+              <BookOpen size={16} /> คอร์สใหม่จากติวเตอร์ที่คุณติดตาม
+            </span>
+            <span className="text-gray-700">
+              <span className="font-bold text-gray-900">{actorName}</span> เปิดคอร์สใหม่ <span className="font-semibold text-indigo-600">"{subjectText}"</span>
+            </span>
+          </div>
         );
         break;
       case "offer_accepted":

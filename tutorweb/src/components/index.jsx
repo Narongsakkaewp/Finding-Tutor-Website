@@ -825,7 +825,7 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
           <div className="flex flex-col md:flex-row items-end justify-between mb-16 px-4">
             <div className="max-w-2xl text-left">
               <span className="text-indigo-400 font-black uppercase tracking-[0.3em] text-[10px] mb-3 block">Highlight</span>
-              <h2 className="text-4xl md:text-5xl font-black text-white mb-4">โพสต์ประกาศสอน (ใหม่) 🔥</h2>
+              <h2 className="text-4xl md:text-5xl font-black text-white mb-4">โพสต์ของติวเตอร์ (ใหม่) 🔥</h2>
               <p className="text-indigo-100/60 text-lg font-medium leading-relaxed">คอร์สเรียนใหม่ๆ จากติวเตอร์ที่พร้อมให้ความรู้คุณ สมัครเลย!</p>
             </div>
             <button
