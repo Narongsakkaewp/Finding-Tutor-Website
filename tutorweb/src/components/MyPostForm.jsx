@@ -40,6 +40,7 @@ function createInitialStudentFormData(initialData = {}) {
 export default function MyPostForm({
     feedType,
     isTutor,
+    isAdmin = false,
     meId,
     tutorId,
     user,
@@ -172,6 +173,7 @@ export default function MyPostForm({
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!user?.user_id) return alert("กรุณาเข้าสู่ระบบก่อนโพสต์");
+        if (isAdmin) return alert("บัญชีแอดมินไม่สามารถสร้างหรือแก้ไขโพสต์ได้");
 
         // 🌟 ตรวจสอบว่าได้ใส่วันเวลาอย่างน้อย 1 วันหรือไม่
         if (dateList.length === 0) {

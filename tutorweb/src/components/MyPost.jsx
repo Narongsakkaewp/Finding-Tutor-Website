@@ -278,16 +278,18 @@ function Modal({ open, onClose, children, title }) {
   );
 }
 
-function PostActionMenu({ isOpen, onClose, isOwner, onEdit, onDelete, onReport }) {
+function PostActionMenu({ isOpen, onClose, isOwner, isAdmin, onEdit, onDelete, onReport }) {
   if (!isOpen) return null;
+  const canEdit = isOwner && !isAdmin;
+  const canDelete = isOwner || isAdmin;
 
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div className="absolute right-0 top-10 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
-        {isOwner ? (
+        {(canEdit || canDelete) ? (
           <>
-            <button
+            {canEdit ? <button
               onClick={() => {
                 onEdit();
                 onClose();
@@ -296,7 +298,7 @@ function PostActionMenu({ isOpen, onClose, isOwner, onEdit, onDelete, onReport }
             >
               <Edit size={18} />
               <span>แก้ไขโพสต์</span>
-            </button>
+            </button> : null}
             <button
               onClick={() => {
                 onDelete();
@@ -330,6 +332,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
   const user = pickUser();
   const userType = pickUserType();
   const isTutor = userType === "tutor";
+  const isAdmin = userType === "admin" || user?.role === "admin";
   const meId = user.user_id || 0;
   const tutorId = useMemo(() => pickTutorId(), []);
 
@@ -683,6 +686,35 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
   };
 
   const handleDeleteClick = async (postId, type) => {
+    if (isAdmin) {
+      if (!window.confirm("ยืนยันว่าผู้ดูแลระบบต้องการลบโพสต์นี้ใช่หรือไม่?")) return;
+
+      try {
+        setLoading(true);
+        const res = await fetch(`${API_BASE}/api/admin/posts`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            post_id: postId,
+            post_type: type,
+            admin_id: meId,
+            reason: "ขัดต่อแนวทางการใช้งานของระบบ"
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "ลบโพสต์ไม่สำเร็จ");
+
+        alert("ผู้ดูแลระบบลบโพสต์เรียบร้อยแล้ว");
+        await fetchPosts();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        setLoading(false);
+        setMenuOpenId(null);
+      }
+      return;
+    }
     if (!window.confirm("คุณต้องการลบโพสต์นี้ใช่หรือไม่?")) return;
 
     try {
@@ -780,7 +812,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
         {(
           (feedType === "student" && !isTutor) ||
           (feedType === "tutor" && isTutor)
-        ) && (
+        ) && !isAdmin && (
             <div className="bg-white rounded-xl shadow p-4 mb-6">
               <div className="flex items-center gap-3">
                 <img
@@ -813,6 +845,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                 <MyPostForm
                   feedType={feedType}
                   isTutor={isTutor}
+                  isAdmin={isAdmin}
                   meId={meId}
                   tutorId={tutorId}
                   user={user}
@@ -910,6 +943,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                         isOpen={menuOpenId === post.id}
                         onClose={() => setMenuOpenId(null)}
                         isOwner={isOwner}
+                        isAdmin={isAdmin}
                         onEdit={() => handleEditClick(post, post.post_type)}
                         onDelete={() => handleDeleteClick(post.id, post.post_type)}
                         onReport={() => handleReportClick(post, post.post_type)}

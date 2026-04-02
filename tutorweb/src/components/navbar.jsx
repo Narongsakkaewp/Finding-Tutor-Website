@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import logo from "../assets/logo/FindingTutor_Logo.png";
-import { Menu, ChevronDown, Edit, LogOut, Settings, MessageSquareWarning } from "lucide-react"; // ใช้ไอคอนจาก lucide-react เพื่อความสวยงาม
+import { Menu, ChevronDown, Edit, LogOut, Settings, MessageSquareWarning } from "lucide-react";
 import { API_BASE } from '../config';
 
 const Navbar = ({
@@ -22,7 +22,6 @@ const Navbar = ({
     let userId = null;
     let localUser = null;
 
-    // --- 1. ดึงข้อมูลพื้นฐานจาก localStorage ---
     try {
       const rawUser = localStorage.getItem("user");
       if (rawUser) {
@@ -40,7 +39,6 @@ const Navbar = ({
       }
     } catch { }
 
-    // --- 2. ยิง API ไปถามรูปโปรไฟล์ล่าสุด ---
     if (userId && userType) {
       let profileApiUrl = '';
       if (userType === 'student') {
@@ -65,7 +63,6 @@ const Navbar = ({
       }
     }
 
-    // --- 3. Logic ปิด dropdown ---
     const onClick = (e) => {
       if (ddRef.current && !ddRef.current.contains(e.target)) {
         setDropdownOpen(false);
@@ -73,15 +70,33 @@ const Navbar = ({
     };
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
-
   }, [userType]);
+
+  const roleBadgeClass =
+    userType === "student"
+      ? "bg-blue-50 text-blue-700 border-blue-100"
+      : userType === "admin"
+        ? "bg-amber-50 text-amber-700 border-amber-100"
+        : "bg-purple-50 text-purple-700 border-purple-100";
+
+  const roleLabel =
+    userType === "student"
+      ? "🎓 นักเรียน"
+      : userType === "admin"
+        ? "🛡️ แอดมิน"
+        : "👨‍🏫 ติวเตอร์";
+
+  const mobileRoleLabel =
+    userType === "student"
+      ? "นักเรียน"
+      : userType === "admin"
+        ? "แอดมิน"
+        : "ติวเตอร์";
 
   return (
     <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm transition-all duration-300">
       <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-
-          {/* Left Side: Hamburger & Logo */}
           <div className="flex items-center gap-4">
             <button
               className="md:hidden p-2 text-gray-500 hover:bg-gray-100 transition-colors focus:outline-none"
@@ -95,20 +110,13 @@ const Navbar = ({
             </div>
           </div>
 
-          {/* Right Side: User Profile & Dropdown */}
           <div className="flex items-center gap-3 sm:gap-6">
-
-            {/* User Role Badge (Hidden on mobile for space) */}
             {userType && (
-              <span className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${userType === 'student'
-                ? 'bg-blue-50 text-blue-700 border-blue-100'
-                : 'bg-purple-50 text-purple-700 border-purple-100'
-                }`}>
-                {userType === "student" ? "🎓 นักเรียน" : "👨‍🏫 ติวเตอร์"}
+              <span className={`hidden sm:inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${roleBadgeClass}`}>
+                {roleLabel}
               </span>
             )}
 
-            {/* Profile Dropdown */}
             <div className="relative" ref={ddRef}>
               <button
                 className="flex items-center gap-3 focus:outline-none group p-1 pr-3 rounded-full hover:bg-gray-50 transition-all border border-transparent hover:border-gray-200"
@@ -116,7 +124,6 @@ const Navbar = ({
                 aria-haspopup="menu"
                 aria-expanded={dropdownOpen}
               >
-                {/* Avatar */}
                 <div className="relative">
                   <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 ring-2 ring-white shadow-sm flex items-center justify-center">
                     {avatar ? (
@@ -127,11 +134,9 @@ const Navbar = ({
                       </span>
                     )}
                   </div>
-                  {/* Online status indicator (Optional) */}
                   <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full"></div>
                 </div>
 
-                {/* Name & Arrow */}
                 <div className="hidden md:flex items-center gap-2">
                   <div className="flex flex-col items-start">
                     <span className="text-md font-semibold text-gray-700 max-w-[120px] truncate leading-tight">
@@ -145,17 +150,14 @@ const Navbar = ({
                 </div>
               </button>
 
-              {/* Dropdown Menu */}
               {dropdownOpen && (
                 <div
                   className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50 transform origin-top-right animate-in fade-in zoom-in-95 duration-100"
                   role="menu"
                 >
-                  {/* Mobile Role Badge (Shown inside dropdown on mobile) */}
                   <div className="px-4 py-2 border-b border-gray-50 md:hidden">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium justify-end ${userType === 'student' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
-                      }`}>
-                      {userType === "student" ? "นักเรียน" : "ติวเตอร์"}
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium justify-end ${roleBadgeClass}`}>
+                      {mobileRoleLabel}
                     </span>
                   </div>
 
@@ -180,11 +182,9 @@ const Navbar = ({
                     >
                       <Settings size={16} /> ตั้งค่า
                     </button>
-
-                    {/* ✅ 2. แก้ปุ่มรายงานปัญหา ให้เรียก onReport */}
                     <button
                       onClick={() => {
-                        if (onReport) onReport(); // เรียกฟังก์ชัน onReport
+                        if (onReport) onReport();
                         setDropdownOpen(false);
                       }}
                       className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-orange-600 flex items-center gap-3 transition-colors"

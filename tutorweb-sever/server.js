@@ -5045,11 +5045,42 @@ app.post('/api/reports', async (req, res) => {
       // Allow reporting just a user (profilereport) if implemented later
     }
 
-    await pool.query(
+    const [reportResult] = await pool.query(
       `INSERT INTO user_reports (reporter_id, reported_user_id, post_id, post_type, reason, created_at)
        VALUES (?, ?, ?, ?, ?, NOW())`,
       [reporter_id, targetUserId || null, post_id || null, post_type || 'other', reason]
     );
+
+    const [admins] = await pool.query(
+      `SELECT user_id
+       FROM register
+       WHERE role = 'admin' OR type = 'admin'`
+    );
+
+    if (admins.length > 0) {
+      const targetLabel = post_type === 'profile'
+        ? 'ผู้ใช้งาน'
+        : post_id
+          ? `โพสต์หมายเลข ${post_id}`
+          : 'รายการที่ถูกรายงาน';
+
+      await Promise.all(
+        admins.map((admin) =>
+          pool.query(
+            `INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type, is_read, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, 0, NOW())`,
+            [
+              admin.user_id,
+              reporter_id || null,
+              'admin_report_alert',
+              `มีรายงานใหม่เกี่ยวกับ${targetLabel}: ${reason}`,
+              reportResult.insertId,
+              'report'
+            ]
+          )
+        )
+      );
+    }
 
     res.json({ success: true, message: 'Report submitted successfully' });
 
@@ -5154,16 +5185,45 @@ app.get('/api/admin/users', async (req, res) => {
 // 5. Admin: Delete Post (and Resolve Reports)
 app.delete('/api/admin/posts', async (req, res) => {
   try {
-    const { post_id, post_type } = req.body;
+    const { post_id, post_type, admin_id, reason } = req.body;
+    let ownerId = null;
+    let subject = null;
 
     if (post_type === 'student_post' || post_type === 'student') {
+      const [rows] = await pool.query(
+        'SELECT student_id AS owner_id, subject FROM student_posts WHERE student_post_id = ?',
+        [post_id]
+      );
+      ownerId = rows[0]?.owner_id || null;
+      subject = rows[0]?.subject || null;
       await pool.query('DELETE FROM student_posts WHERE student_post_id = ?', [post_id]);
     } else if (post_type === 'tutor_post' || post_type === 'tutor') {
+      const [rows] = await pool.query(
+        'SELECT tutor_id AS owner_id, subject FROM tutor_posts WHERE tutor_post_id = ?',
+        [post_id]
+      );
+      ownerId = rows[0]?.owner_id || null;
+      subject = rows[0]?.subject || null;
       await pool.query('DELETE FROM tutor_posts WHERE tutor_post_id = ?', [post_id]);
     }
 
     // Auto-resolve reports for this post
     await pool.query('UPDATE user_reports SET status = "resolved" WHERE post_id = ?', [post_id]);
+
+    if (ownerId) {
+      await pool.query(
+        `INSERT INTO notifications (user_id, actor_id, type, message, related_id, post_type, is_read, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, NOW())`,
+        [
+          ownerId,
+          admin_id || null,
+          'system_alert',
+          `ผู้ดูแลระบบได้ทำการลบโพสต์ของคุณ${subject ? ` วิชา "${subject}"` : ''} เนื่องจาก${reason || 'ขัดต่อแนวทางการใช้งานของระบบ'}`,
+          post_id,
+          post_type
+        ]
+      );
+    }
 
     res.json({ success: true });
   } catch (err) {

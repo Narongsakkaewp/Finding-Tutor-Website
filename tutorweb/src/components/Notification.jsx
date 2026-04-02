@@ -4,7 +4,7 @@ import Review from "./Review";
 import { API_BASE } from '../config';
 import { useScrollRestoration } from '../hooks/useRestoration';
 import {
-  Bell, Check, Clock, ChevronRight, User, BookOpen, Calendar, CheckCircle, Shield, MessageCircle, Star, XCircle
+  Bell, Check, Clock, ChevronRight, User, BookOpen, Calendar, CheckCircle, Shield, MessageCircle, Star, XCircle, Flag
 } from "lucide-react";
 
 function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile }) {
@@ -218,6 +218,10 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
       return;
     }
 
+    if (item.type === 'admin_report_alert' || item.type === 'system_alert') {
+      return;
+    }
+
     const postType = getItemPostType(item);
     if (typeof onOpenPost === "function" && postType) {
       onOpenPost(item.related_id, postType);
@@ -279,6 +283,7 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
     if (type === 'followed_tutor_new_post') { badgeColor = "bg-violet-500"; BadgeIcon = BookOpen; }
     if (type.includes('schedule')) { badgeColor = "bg-orange-500"; BadgeIcon = Calendar; }
     if (type === 'system_alert') { badgeColor = "bg-blue-600"; BadgeIcon = Shield; } // ✅ System Alert
+    if (type === 'admin_report_alert') { badgeColor = "bg-red-500"; BadgeIcon = Flag; }
     if (type === 'comment' || type === 'mention') { badgeColor = "bg-blue-400"; BadgeIcon = MessageCircle; }
     if (type.includes('review')) { badgeColor = "bg-yellow-500"; BadgeIcon = Star; }
     if (type === 'cancel_request_alert') { badgeColor = "bg-amber-500"; BadgeIcon = XCircle; }
@@ -327,6 +332,18 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
             </span>
             <span className="text-gray-700">
               {item.message}
+            </span>
+          </div>
+        );
+        break;
+      case "admin_report_alert":
+        content = (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-red-600 flex items-center gap-2">
+              <Flag size={16} /> มีรายงานใหม่ส่งถึงผู้ดูแลระบบ
+            </span>
+            <span className="text-gray-700">
+              {item.message || "มีการรายงานโพสต์หรือผู้ใช้งานใหม่ กรุณาตรวจสอบในหน้าแอดมิน"}
             </span>
           </div>
         );
