@@ -5,7 +5,7 @@ import {
     BookOpen, Plus, Trash2, Camera, Save, X, ChevronLeft, Check, Mail
 } from 'lucide-react';
 import UniversityPicker from '../components/UniversityPicker';
-import SearchableSelect from '../components/SearchableSelect'; // ✅ Import
+import SearchableSelect from '../components/SearchableSelect';
 import ImageCropper from '../components/ImageCropper';
 import { API_BASE } from '../config';
 

@@ -36,6 +36,8 @@ const GRADE_GROUPS = {
   'ป.4': ['ประถม', 'primary'],
   'ป.5': ['ประถม', 'primary'],
   'ป.6': ['ประถม', 'primary'],
+  'ปริญญาตรี': ['มหาวิทยาลัย', 'university', 'bachelor'],
+  'บุคคลทั่วไป': ['ทั่วไป', 'general', 'none'],
 };
 
 const ALIAS_TO_CANONICAL = Object.entries(SUBJECT_SYNONYMS).reduce((acc, [canonical, aliases]) => {

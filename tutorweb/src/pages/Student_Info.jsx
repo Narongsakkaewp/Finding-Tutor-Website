@@ -295,6 +295,7 @@ export default function StudentInfoPage({ setCurrentPage }) {
                     <option value="ม.5">มัธยมศึกษาปีที่ 5</option>
                     <option value="ม.6">มัธยมศึกษาปีที่ 6</option>
                     <option value="ปริญญาตรี">ปริญญาตรี</option>
+                    <option value="บุคคลทั่วไป">บุคคลทั่วไป</option>
                   </select>
                   <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-500">
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>

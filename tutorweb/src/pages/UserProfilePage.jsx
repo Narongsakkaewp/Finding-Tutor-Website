@@ -111,10 +111,10 @@ function UserProfilePage({ userId, onBack }) {
         const rawBio = String(user?.about_me || user?.about || '').trim();
         if (!rawBio) return '';
 
-        const normalizedBio = rawBio.replace(/\s+/g, ' ').trim();
-        if (normalizedBio === '""' || normalizedBio === "''" || normalizedBio === '"') return '';
+        const sanitizedBio = rawBio.replace(/["']/g, '').replace(/\s+/g, ' ').trim();
+        if (!sanitizedBio) return '';
 
-        return rawBio;
+        return sanitizedBio;
     }, [user]);
 
     if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">กำลังโหลดข้อมูล...</div>;
