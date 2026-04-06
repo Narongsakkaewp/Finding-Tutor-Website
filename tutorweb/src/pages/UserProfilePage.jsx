@@ -111,8 +111,12 @@ function UserProfilePage({ userId, onBack }) {
         const rawBio = String(user?.about_me || user?.about || '').trim();
         if (!rawBio) return '';
 
-        const sanitizedBio = rawBio.replace(/["']/g, '').replace(/\s+/g, ' ').trim();
+        const sanitizedBio = rawBio
+            .replace(/["'`“”‘’]+/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
         if (!sanitizedBio) return '';
+        if (!/[A-Za-zก-๙0-9]/.test(sanitizedBio)) return '';
 
         return sanitizedBio;
     }, [user]);
