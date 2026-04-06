@@ -658,11 +658,24 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                 )}
               </div>
 
-              <div className="max-w-2xl">
-                <p className="text-gray-600 leading-relaxed text-lg">
-                  "{profile.bio}"
-                </p>
-              </div>
+              {(() => {
+                const sanitizedBio = String(profile.bio || "")
+                  .replace(/["'`“”‘’]+/g, "")
+                  .replace(/\s+/g, " ")
+                  .trim();
+
+                if (!sanitizedBio || !/[A-Za-zก-๙0-9]/.test(sanitizedBio)) {
+                  return null;
+                }
+
+                return (
+                  <div className="max-w-2xl">
+                    <p className="text-gray-600 leading-relaxed text-lg">
+                      {sanitizedBio}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Interested Subjects Display */}
               {profile.interested_subjects && typeof profile.interested_subjects === 'string' && profile.interested_subjects.trim().length > 0 && (
