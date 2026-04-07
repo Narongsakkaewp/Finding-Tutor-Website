@@ -629,7 +629,7 @@ function Index({ setIsAuthenticated, onLoginSuccess }) {
               onClick={() => setShowRegister(true)}
               className="text-sm font-black bg-gray-900 text-white px-8 py-3.5 rounded-2xl hover:bg-indigo-600 transition-all shadow-xl hover:shadow-indigo-500/20 active:scale-95 transform translate-y-0"
             >
-              ลงทะเบียนฟรี
+              ลงทะเบียน
             </button>
           </div>
 

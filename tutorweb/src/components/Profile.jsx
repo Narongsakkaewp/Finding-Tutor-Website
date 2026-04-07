@@ -697,14 +697,16 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                   </div>
                   <span className="text-sm font-medium text-gray-600">{profile.city || "ยังไม่ได้ระบุที่อยู่"}</span>
                 </div>
+                
                 <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-colors group cursor-pointer">
                   <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg group-hover:bg-purple-600 group-hover:text-white transition-colors">
                     <Phone size={16} />
                   </div>
                   <span className="text-sm font-medium text-gray-600">{profile.phone || "0xx-xxx-xxxx"}</span>
                 </div>
-                <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-colors group cursor-pointer">
-                  <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-colors">
+
+                <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-yellow-200 transition-colors group cursor-pointer">
+                  <div className="p-1.5 bg-orange-50 text-orange-600 rounded-lg group-hover:bg-orange-600 group-hover:text-white transition-colors">
                     <Mail size={16} />
                   </div>
                   <span className="text-sm font-medium text-gray-600">{profile.email || "contact@student.com"}</span>

@@ -212,6 +212,25 @@ function getCanonicalSubject(subject) {
   return terms.find((term) => SUBJECT_SYNONYMS[term]) || normalizeText(subject);
 }
 
+function rowMatchesTopTerms(row, topTerms = []) {
+  if (!Array.isArray(topTerms) || topTerms.length === 0) return false;
+
+  const rowTerms = new Set(
+    expandTerms(
+      [
+        row.subject,
+        row.description,
+        row.target_student_level,
+        row.location,
+        row.name,
+        row.lastname,
+      ].filter(Boolean).join(' ')
+    )
+  );
+
+  return topTerms.some((term) => rowTerms.has(String(term || '').toLowerCase()));
+}
+
 function diversifyTutorRows(rows, limit) {
   const selected = [];
   const tutorCounts = new Map();
@@ -838,7 +857,25 @@ async function getTutorRecommendations(pool, userId, options = {}) {
 
   const activeRanked = ranked.filter((row) => !row.is_expired);
   const expiredRanked = ranked.filter((row) => row.is_expired);
-  const primaryRows = diversifyTutorRows(activeRanked, limit);
+  let primaryRows = diversifyTutorRows(activeRanked, limit);
+  const hasTopTermCoverage = primaryRows.some((row) => rowMatchesTopTerms(row, signals.topTerms));
+
+  if (!hasTopTermCoverage) {
+    const exactExpiredRows = expiredRanked
+      .filter((row) => row.recommendation_score > 0 && rowMatchesTopTerms(row, signals.topTerms))
+      .sort((a, b) => b.recommendation_score - a.recommendation_score);
+
+    if (exactExpiredRows.length > 0) {
+      const replacementLimit = Math.min(Math.max(1, Math.floor(limit / 3)), exactExpiredRows.length);
+      const keptActiveRows = primaryRows.slice(0, Math.max(0, limit - replacementLimit));
+      const replacementRows = exactExpiredRows.slice(0, replacementLimit).map((row) => ({
+        ...row,
+        is_expired: true,
+      }));
+      primaryRows = [...keptActiveRows, ...replacementRows];
+    }
+  }
+
   const primaryIds = new Set(primaryRows.map((row) => row.tutor_post_id));
   const lowerRelevanceRows = activeRanked.filter((row) => !primaryIds.has(row.tutor_post_id));
   const exploreRows = buildExploreTutorRows(lowerRelevanceRows, expiredRanked, Math.min(limit, 12));

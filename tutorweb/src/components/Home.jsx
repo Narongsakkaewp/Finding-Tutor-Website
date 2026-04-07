@@ -852,8 +852,8 @@ function HomeStudent() {
               {/* ✅ Tab Switcher (Compact Mobile Layout) */}
               <div className="bg-gray-100 p-1 rounded-xl border border-gray-200 inline-flex flex-wrap gap-1 shadow-sm">
                 <button onClick={() => setSearchTab("tutors")} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 ${searchTab === "tutors" ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:bg-gray-200/50"}`}><Users size={16} /> ติวเตอร์</button>
-                <button onClick={() => setSearchTab("courses")} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 ${searchTab === "courses" ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:bg-gray-200/50"}`}><BookOpen size={16} /> คอร์สเรียน</button>
-                <button onClick={() => setSearchTab("requests")} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 ${searchTab === "requests" ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:bg-gray-200/50"}`}><GraduationCap size={16} /> ประกาศหาคนสอน</button>
+                <button onClick={() => setSearchTab("courses")} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 ${searchTab === "courses" ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:bg-gray-200/50"}`}><BookOpen size={16} /> โพสต์ติวเตอร์</button>
+                <button onClick={() => setSearchTab("requests")} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 ${searchTab === "requests" ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:bg-gray-200/50"}`}><GraduationCap size={16} /> โพสต์นักเรียน</button>
               </div>
             </div>
 

@@ -92,11 +92,9 @@ app.use((req, res, next) => {
 const KEYWORD_MAP = {
   // 📐 หมวดคณิตศาสตร์
   'math': ['คณิต', 'เลข', 'คณิตศาสตร์', 'calculus', 'algebra', 'stat'],
-  'คณิต': ['math', 'เลข', 'คณิตศาสตร์', 'calculus', 'แคล'],
+  'คณิต': ['math', 'เลข', 'คณิตศาสตร์', 'calculus', 'แคล', 'สถิติ', 'แคลคูลัส'],
   'เลข': ['math', 'คณิต'],
-  'แคล': ['calculus', 'cal', 'คณิต', 'math'],
-  'แคลคูลัส': ['calculus', 'cal', 'คณิต', 'math'],
-  'สถิติ': ['stat', 'statistics', 'คณิต', 'math', 'data'],
+  'สถิติ': ['stat', 'statistics', 'math', 'data'],
 
   // 🧬 หมวดวิทยาศาสตร์
   'sci': ['วิทย์', 'วิทยาศาสตร์', 'bio', 'chem', 'phy'],
