@@ -61,28 +61,27 @@ function formatThaiDateRange(daysString, fallbackDate) {
         return fallbackDate || 'ตามตารางเรียน';
     }
 
-    const first = dates[0];
-    const last = dates[dates.length - 1];
-    const firstDay = first.getDate();
-    const lastDay = last.getDate();
-    const firstMonth = THAI_MONTHS[first.getMonth()];
-    const lastMonth = THAI_MONTHS[last.getMonth()];
-    const firstYear = first.getFullYear() + 543;
-    const lastYear = last.getFullYear() + 543;
+    const uniqueDates = dates.filter((date, index, arr) => {
+        if (index === 0) return true;
+        return !isSameDate(date, arr[index - 1]);
+    });
 
-    if (dates.length === 1) {
-        return `${firstDay} ${firstMonth} ${firstYear}`;
-    }
+    const grouped = uniqueDates.reduce((acc, date) => {
+        const key = `${date.getFullYear()}-${date.getMonth()}`;
+        if (!acc.has(key)) acc.set(key, []);
+        acc.get(key).push(date);
+        return acc;
+    }, new Map());
 
-    if (first.getMonth() === last.getMonth() && firstYear === lastYear) {
-        return `${firstDay}-${lastDay} ${firstMonth} ${firstYear}`;
-    }
+    const parts = [...grouped.values()].map((groupDates) => {
+        const sample = groupDates[0];
+        const dayList = groupDates.map((date) => date.getDate()).join(',');
+        const monthName = THAI_MONTHS[sample.getMonth()];
+        const year = sample.getFullYear() + 543;
+        return `${dayList} ${monthName} ${year}`;
+    });
 
-    if (firstYear === lastYear) {
-        return `${firstDay} ${firstMonth} - ${lastDay} ${lastMonth} ${firstYear}`;
-    }
-
-    return `${firstDay} ${firstMonth} ${firstYear} - ${lastDay} ${lastMonth} ${lastYear}`;
+    return parts.join(', ');
 }
 
 function formatTimeSummary(timeString) {

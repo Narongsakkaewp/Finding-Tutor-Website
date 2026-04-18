@@ -95,6 +95,7 @@ const normalizePost = (p = {}) => ({
   location: p.location || p.place || p.location_name || "",
   group_size: Number(p.group_size ?? p.seats ?? p.groupSize ?? 0),
   budget: Number(p.budget ?? p.price ?? p.cost ?? 0),
+  grade_level: p.grade_level ?? p.meta?.grade_level ?? "",
   preferred_days: p.preferred_days || p.days || p.available_days || "",
   preferred_time: p.preferred_time || p.time || p.available_time || "",
   contact_info: p.contact_info || p.contact || p.email || "",

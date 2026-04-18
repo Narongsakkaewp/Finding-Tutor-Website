@@ -123,6 +123,22 @@ const postGradeLevelOptions = [
 
 const today = new Date().toISOString().split("T")[0];
 
+const formatThaiShortDate = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  let match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) return `${Number(match[3])}/${Number(match[2])}/${Number(match[1]) + 543}`;
+
+  match = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (match) {
+    const buddhistYear = Number(match[3]) > 2400 ? Number(match[3]) : Number(match[3]) + 543;
+    return `${Number(match[1])}/${Number(match[2])}/${buddhistYear}`;
+  }
+
+  return raw;
+};
+
 const parseSessionDateTime = (dateValue, timeValue) => {
   const rawDate = String(dateValue || "").trim();
   if (!rawDate) return null;
@@ -182,7 +198,7 @@ const DateTimeDisplay = ({ daysStr, timesStr }) => {
     <ul className="list-disc pl-4 space-y-0.5">
       {daysArr.map((day, idx) => {
         const time = timesArr[idx] || timesArr[0] || "-"; // ถ้าไม่ได้ระบุเวลา ให้ดึงเวลาช่องแรกมาใช้
-        const formattedDate = new Date(day).toLocaleDateString("th-TH");
+        const formattedDate = formatThaiShortDate(day);
         return (
           <li key={idx} className="text-gray-700">
             {formattedDate} <span className="text-blue-600 font-medium ml-1">({time})</span>
@@ -333,6 +349,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
   const userType = pickUserType();
   const isTutor = userType === "tutor";
   const isAdmin = userType === "admin" || user?.role === "admin";
+  const canFavoritePosts = userType === "student";
   const meId = user.user_id || 0;
   const tutorId = useMemo(() => pickTutorId(), []);
 
@@ -568,6 +585,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
   };
 
   const toggleFavorite = async (post) => {
+    if (!canFavoritePosts) return;
     if (!meId) return alert("กรุณาเข้าสู่ระบบ");
 
     const postType = post.post_type || (feedType === "student" ? "student" : "tutor");
@@ -1070,10 +1088,12 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
 
 
                     <div className="flex items-center gap-2">
-                      <button disabled={favBusy} onClick={() => toggleFavorite(post)} className={`flex items-center gap-1 px-3 py-1.5 rounded-full border transition ${post.favorited ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-white border-gray-200 text-gray-600'} disabled:opacity-60`}>
-                        <Heart size={16} fill={post.favorited ? 'currentColor' : 'none'} />
-                        <span className="text-sm">{Number(post.fav_count || 0)}</span>
-                      </button>
+                      {canFavoritePosts && (
+                        <button disabled={favBusy} onClick={() => toggleFavorite(post)} className={`flex items-center gap-1 px-3 py-1.5 rounded-full border transition ${post.favorited ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-white border-gray-200 text-gray-600'} disabled:opacity-60`}>
+                          <Heart size={16} fill={post.favorited ? 'currentColor' : 'none'} />
+                          <span className="text-sm">{Number(post.fav_count || 0)}</span>
+                        </button>
+                      )}
 
                       <button
                         onClick={(e) => {

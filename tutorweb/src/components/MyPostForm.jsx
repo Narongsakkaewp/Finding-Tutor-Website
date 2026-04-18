@@ -15,6 +15,39 @@ const postGradeLevelOptions = [
 const today = new Date().toISOString().split("T")[0];
 const platformOptions = ["Zoom", "Google Meet", "Microsoft Teams", "Discord", "Line Call", "Other"];
 
+function normalizeDateInput(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+
+    const ymd = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (ymd) {
+        return `${ymd[1]}-${String(ymd[2]).padStart(2, "0")}-${String(ymd[3]).padStart(2, "0")}`;
+    }
+
+    const dmy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy) {
+        const day = String(dmy[1]).padStart(2, "0");
+        const month = String(dmy[2]).padStart(2, "0");
+        const year = Number(dmy[3]) > 2400 ? Number(dmy[3]) - 543 : Number(dmy[3]);
+        return `${year}-${month}-${day}`;
+    }
+
+    return raw;
+}
+
+function formatThaiDateLabel(value) {
+    const normalized = normalizeDateInput(value);
+    if (!normalized) return "";
+
+    const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return normalized;
+
+    const year = Number(match[1]) + 543;
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    return `${day}/${month}/${year}`;
+}
+
 function createInitialStudentFormData(initialData = {}) {
     const normalizedLevels = Array.isArray(initialData?.target_student_level)
         ? initialData.target_student_level
@@ -124,7 +157,7 @@ export default function MyPostForm({
             const dArr = daysStr.split(',').map(d => d.trim());
             const tArr = (timesStr || "").split(',').map(t => t.trim());
             const loadedList = dArr.map((d, i) => ({
-                date: d,
+                date: normalizeDateInput(d),
                 time: tArr[i] || ""
             })).filter(x => x.date);
             setDateList(loadedList);
@@ -311,7 +344,7 @@ export default function MyPostForm({
                             <span className="flex items-center gap-3 text-sm text-gray-700 font-medium">
                                 <span className="flex items-center gap-1.5 text-indigo-600">
                                     <Calendar size={16} />
-                                    {new Date(item.date).toLocaleDateString("th-TH")}
+                                    {formatThaiDateLabel(item.date)}
                                 </span>
                                 {item.time && (
                                     <span className="flex items-center gap-1.5 text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md">

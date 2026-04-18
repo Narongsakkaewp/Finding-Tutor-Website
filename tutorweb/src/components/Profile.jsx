@@ -4,6 +4,7 @@ import 'react-calendar/dist/Calendar.css';
 import { Edit, MoreVertical, Trash2, EyeOff, Eye, MapPin, Mail, Phone, GraduationCap, AppWindow, Star, X, Archive, Sparkles, User, Users, Flag, History, BookOpen, UserCheck, Clock, Calendar } from "lucide-react";
 import LongdoLocationPicker from './LongdoLocationPicker';
 import ReportModal from "./ReportModal";
+import MyPostForm from "./MyPostForm";
 import { API_BASE } from '../config';
 import { useTabRestoration, useScrollRestoration } from '../hooks/useRestoration';
 
@@ -23,9 +24,11 @@ const normalizePost = (p = {}) => ({
   meta: {
     preferred_days: p.meta?.preferred_days ?? p.preferred_days ?? "",
     preferred_time: p.meta?.preferred_time ?? p.preferred_time ?? "",
+    grade_level: p.meta?.grade_level ?? p.grade_level ?? "",
     location: p.meta?.location ?? p.location ?? "",
     group_size: p.meta?.group_size ?? p.group_size ?? "",
     budget: p.meta?.budget ?? p.budget ?? "",
+    contact_info: p.meta?.contact_info ?? p.contact_info ?? "",
   },
   comment_count: Number(p.comment_count ?? 0),
 });
@@ -43,17 +46,33 @@ const toLocalYMD = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const formatThaiShortDate = (value) => {
+  if (!value) return "";
+
+  const ymd = String(value).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (ymd) return `${Number(ymd[3])}/${Number(ymd[2])}/${Number(ymd[1]) + 543}`;
+
+  const dmy = String(value).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) {
+    const year = Number(dmy[3]);
+    return `${Number(dmy[1])}/${Number(dmy[2])}/${year > 2400 ? year : year + 543}`;
+  }
+
+  return String(value).trim();
+};
+
 const DateTimeDisplay = ({ daysStr, timesStr }) => {
   const days = daysStr ? daysStr.split(',').map(d => d.trim()) : [];
+  const times = timesStr ? timesStr.split(',').map(t => t.trim()) : [];
   return (
     <div className="flex flex-col gap-1.5">
       {days.length > 0 ? (
         days.map((day, idx) => (
           <div key={idx} className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-            <span className="font-semibold">{day}</span>
+            <span className="font-semibold">{formatThaiShortDate(day)}</span>
             <span className="text-indigo-300">|</span>
-            <span>{timesStr || "ไม่ระบุเวลา"}</span>
+            <span>{times[idx] || times[0] || "ไม่ระบุเวลา"}</span>
           </div>
         ))
       ) : (
@@ -479,7 +498,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
       description: post.content,
       preferred_days: post.meta?.preferred_days || "",
       preferred_time: post.meta?.preferred_time || "",
-      grade_level: profile?.gradeLevel || "",
+      grade_level: post.meta?.grade_level || profile?.gradeLevel || "",
       location: post.meta?.location || "",
       group_size: post.meta?.group_size || "",
       budget: post.meta?.budget || "",
@@ -488,6 +507,14 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
       contact_info: ci, // Fallback original
     });
     setOpenMenuFor(null);
+  };
+
+  const reloadOwnPosts = async () => {
+    const me = currentUser?.user_id || 0;
+    const r = await fetch(`${API_BASE}/api/student_posts?me=${me}&mine=1`);
+    const data = await r.json();
+    const onlyMine = Array.isArray(data) ? data.filter((p) => Number(p.owner_id) === Number(me)) : [];
+    setPosts(onlyMine.map(normalizePost));
   };
 
   const handleEditChange = (e) => {
@@ -1131,8 +1158,48 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
         onRestore={handleRestorePost}
         onRestoreAll={handleRestoreAll}
       />
-      {/* Edit Modal */}
       {editPost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEditPost(null)} />
+          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+              <h3 className="text-xl font-bold text-gray-900">แก้ไขโพสต์</h3>
+              <button onClick={() => setEditPost(null)} className="p-1 rounded-full hover:bg-gray-100">
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            <div className="p-6 max-h-[calc(90vh-73px)] overflow-y-auto">
+              <MyPostForm
+                feedType="student"
+                isTutor={false}
+                isAdmin={false}
+                meId={currentUser?.user_id}
+                tutorId={null}
+                editMode={true}
+                editingPostId={editPost._id}
+                initialData={{
+                  subject: editPost.subject || "",
+                  description: editPost.content || "",
+                  preferred_days: editPost.meta?.preferred_days || "",
+                  preferred_time: editPost.meta?.preferred_time || "",
+                  grade_level: editPost.meta?.grade_level || profile?.gradeLevel || "",
+                  location: editPost.meta?.location || "",
+                  group_size: editPost.meta?.group_size || "",
+                  budget: editPost.meta?.budget || "",
+                  contact_info: editPost.meta?.contact_info || "",
+                }}
+                onClose={() => setEditPost(null)}
+                onSuccess={async () => {
+                  await reloadOwnPosts();
+                  setEditPost(null);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Edit Modal */}
+      {false && editPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEditPost(null)} />
           <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
