@@ -1,21 +1,53 @@
+//tutorweb-sever/src/utils/discoveryEngine.js
 const SUBJECT_SYNONYMS = {
-  physics: ['ฟิสิกส์', 'physics', 'phy', 'physic', 'กลศาสตร์', 'อะตอม', 'atom', 'ไฟฟ้า', 'กล', 'quantum'],
-  chemistry: ['เคมี', 'chemistry', 'chem', 'อินทรีย์', 'organic', 'stoichiometry'],
-  biology: ['ชีวะ', 'ชีววิทยา', 'biology', 'bio', 'genetics', 'anatomy'],
-  science: ['วิทย์', 'วิทยาศาสตร์', 'science', 'sci', 'stem'],
-  math: ['คณิต', 'คณิตศาสตร์', 'math', 'mathematics', 'algebra', 'calculus', 'เลข', 'สถิติ', 'stat'],
-  english: ['อังกฤษ', 'ภาษาอังกฤษ', 'english', 'eng', 'toeic', 'ielts', 'toefl', 'grammar', 'speaking', 'presentation'],
-  chinese: ['จีน', 'ภาษาจีน', 'chinese', 'mandarin', 'hsk', 'pinyin'],
-  japanese: ['ญี่ปุ่น', 'ภาษาญี่ปุ่น', 'japanese', 'jlpt', 'n1', 'n2', 'n3', 'n4', 'n5'],
-  thai: ['ไทย', 'ภาษาไทย', 'thai'],
-  programming: ['เขียนโปรแกรม', 'programming', 'program', 'coding', 'code', 'developer', 'dev', 'software', 'algorithm'],
-  web: ['เว็บ', 'web', 'website', 'html', 'css', 'javascript', 'react', 'node', 'frontend', 'backend', 'fullstack', 'php'],
-  java: ['java', 'oop', 'object oriented'],
-  python: ['python', 'py', 'data science', 'machine learning', 'ml', 'ai'],
-  electronics: ['microcontroller', 'arduino', 'esp32', 'วงจร', 'อิเล็กทรอนิกส์', 'embedded'],
-  business: ['บัญชี', 'accounting', 'finance', 'economics', 'เศรษฐศาสตร์', 'ธุรกิจ', 'business'],
-  design: ['ออกแบบ', 'design', 'ui', 'ux', 'figma', 'illustrator', 'photoshop', 'graphic'],
-  music: ['ดนตรี', 'music', 'guitar', 'piano', 'vocal', 'ร้องเพลง'],
+  // === 📚 สายวิชาการหลัก (Academics) ===
+  physics: ['ฟิสิกส์', 'physics', 'phy', 'physic', 'กลศาสตร์', 'อะตอม', 'atom', 'ไฟฟ้า', 'กล', 'quantum', 'mechanics', 'electricity', 'motion'],
+  chemistry: ['เคมี', 'chemistry', 'chem', 'อินทรีย์', 'organic', 'stoichiometry', 'เคมีอินทรีย์', 'สารประกอบ', 'ธาตุ', 'โมล', 'reaction'],
+  biology: ['ชีวะ', 'ชีววิทยา', 'biology', 'bio', 'genetics', 'anatomy', 'พันธุศาสตร์', 'พฤกษศาสตร์'],
+  science: ['วิทย์', 'วิทยาศาสตร์', 'science', 'sci', 'stem', 'ดาราศาสตร์', 'astronomy', 'โลกและอวกาศ'],
+  math: ['คณิต', 'คณิตศาสตร์', 'math', 'mathematics', 'algebra', 'calculus', 'เลข', 'สถิติ', 'stat', 'geometry', 'trigonometry', 'probability', 'แคล', 'แคลคูลัส', 'discrete'],
+  social: ['สังคม', 'สังคมศึกษา', 'social', 'history', 'ประวัติศาสตร์', 'religion', 'ศาสนา', 'civics', 'หน้าที่พลเมือง', 'geography', 'ภูมิศาสตร์'],
+  law: ['กฎหมาย', 'law', 'นิติ', 'นิติศาสตร์', 'legal', 'แพ่ง', 'อาญา', 'รัฐธรรมนูญ'],
+  // === 🗣️ สายภาษา (Languages) ===
+  english: ['อังกฤษ', 'ภาษาอังกฤษ', 'english', 'eng', 'toeic', 'ielts', 'toefl', 'grammar', 'speaking', 'presentation', 'conversation', 'reading', 'writing', 'vocabulary'],
+  chinese: ['จีน', 'ภาษาจีน', 'chinese', 'mandarin', 'hsk', 'pinyin', 'จีนกลาง', 'เหล่าซือ'],
+  japanese: ['ญี่ปุ่น', 'ภาษาญี่ปุ่น', 'japanese', 'jlpt', 'n1', 'n2', 'n3','n4', 'n5', 'hiragana', 'katakana', 'kanji', 'เซนเซย์'],
+  korean: ['เกาหลี', 'ภาษาเกาหลี', 'korean', 'topik', 'hangul', 'ฮันกึล'],
+  french: ['ฝรั่งเศส', 'ภาษาฝรั่งเศส', 'french', 'francais', 'français', 'pat'],
+  german: ['เยอรมัน', 'ภาษาเยอรมัน', 'german', 'deutsch', 'goethe'],
+  thai: ['ไทย', 'ภาษาไทย', 'thai', 'หลักภาษา', 'วรรณคดี', 'tpat', 'tgat'],
+  // === 💻 สายเทคโนโลยีและเขียนโปรแกรม (Tech & Programming) ===
+  programming: ['เขียนโปรแกรม', 'programming', 'program', 'coding', 'code', 'developer', 'dev', 'software', 'algorithm', 'problem solving', 'c', 'rust', 'go'],
+  web: ['เว็บ', 'web', 'website', 'html', 'css', 'javascript', 'js', 'react', 'node', 'frontend', 'backend', 'fullstack', 'php', 'web development', 'tailwind', 'bootstrap', 'vue', 'nextjs', 'typescript'],
+  mobile: ['แอปมือถือ', 'mobile app', 'ios', 'android', 'flutter', 'react native', 'swift', 'kotlin', 'dart'],
+  java: ['java', 'oop', 'object oriented', 'จาวา'],
+  python: ['python', 'py', 'ไพธอน', 'machine learning', 'ml', 'ai', 'deep learning', 'pandas'],
+  cpp: ['c++', 'cpp', 'ซีพลัสพลัส'],
+  csharp: ['c#', 'csharp', 'ซีชาร์ป', '.net', 'dotnet'],
+  database: ['database', 'ฐานข้อมูล', 'sql', 'mysql', 'postgresql', 'db', 'mongodb', 'nosql'],
+  datastructure: ['data structure', 'data structures', 'โครงสร้างข้อมูล', 'linked list', 'tree', 'graph', 'stack', 'queue'],
+  algorithm: ['algorithm', 'algorithms', 'อัลกอริทึม', 'problem solving', 'sorting', 'searching'],
+  cloud: ['cloud', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'devops', 'server'],
+  network: ['network', 'เครือข่าย', 'cisco', 'ccna', 'it support', 'system admin', 'cybersecurity', 'security', 'ความปลอดภัยไซเบอร์'],
+  data_analytics: ['data analytics', 'data analysis', 'excel', 'powerbi', 'tableau', 'วิเคราะห์ข้อมูล', 'data science'],
+  // === 🔌 สายวิศวกรรมและอิเล็กทรอนิกส์ (Engineering & Electronics) ===
+  electronics: ['microcontroller', 'arduino', 'esp32', 'วงจร', 'อิเล็กทรอนิกส์', 'embedded', 'iot', 'ไฟฟ้า', 'circuit', 'digital logic', 'ect', 'raspberry pi'],
+  engineering: ['วิศวะ', 'วิศวกรรม', 'engineering', 'mechanic', 'drawing', 'autocad', 'solidworks'],
+  // === 💼 สายธุรกิจและการสื่อสาร (Business & Career) ===
+  business: ['ธุรกิจ', 'business', 'บริหาร', 'management', 'entrepreneur', 'startup'],
+  accounting: ['บัญชี', 'accounting', 'บัญชีเบื้องต้น', 'เดบิต', 'เครดิต', 'งบการเงิน', 'tax', 'ภาษี'],
+  economics: ['เศรษฐศาสตร์', 'economics', 'microeconomics', 'macroeconomics', 'demand', 'supply', 'elasticity'],
+  marketing: ['การตลาด', 'marketing', 'digital marketing', 'content', 'branding', 'seo', 'social media', 'ads'],
+  sales: ['การขาย', 'sales', 'sale engineer', 'account executive', 'b2b', 'crm', 'telesales', 'negotiation'],
+  communication: ['การสื่อสาร', 'communication', 'public speaking', 'soft skills', 'small talk', 'networking', 'presentation', 'บุคลิกภาพ'],
+  // === 🎨 สายศิลปะ การออกแบบ และดนตรี (Arts, Design & Music) ===
+  design: ['ออกแบบ', 'design', 'ui', 'ux', 'ux/ui', 'figma', 'illustrator', 'photoshop', 'graphic', 'adobe', 'canva'],
+  art: ['ศิลปะ', 'art', 'drawing', 'วาดรูป', 'painting', 'สีน้ำ', 'sketch', 'illustration', 'ประติมากรรม'],
+  video_editing: ['ตัดต่อ', 'video editing', 'premiere pro', 'after effects', 'vlog', 'youtube', 'tiktok'],
+  music: ['ดนตรี', 'music', 'guitar', 'piano', 'vocal', 'ร้องเพลง', 'กีตาร์', 'เปียโน', 'ทฤษฎีดนตรี', 'ไวโอลิน', 'กลอง'],
+  // === 🏃‍♂️ สายกีฬาและไลฟ์สไตล์ (Sports & Lifestyle) ===
+  sports: ['กีฬา', 'sports', 'ว่ายน้ำ', 'swimming', 'แบดมินตัน', 'badminton', 'เทนนิส', 'tennis', 'ฟุตบอล', 'football', 'โยคะ', 'yoga', 'ฟิตเนส'],
+  cooking: ['ทำอาหาร', 'cooking', 'เบเกอรี่', 'bakery', 'ทำขนม', 'culinary', 'บาริสต้า', 'ชงกาแฟ']
 };
 
 const STOPWORDS = new Set([
@@ -40,14 +72,25 @@ const GRADE_GROUPS = {
   'บุคคลทั่วไป': ['ทั่วไป', 'general', 'none'],
 };
 
+//ชุดคำวิชาและคำใกล้เคียงที่ใช้ในการขยายสัญญาณและการทำเหมืองข้อมูลเพื่อปรับปรุงการค้นหาและการแนะนำ
+function normalizeAliasKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[_\s./#+-]+/g, '');
+}
+
 const ALIAS_TO_CANONICAL = Object.entries(SUBJECT_SYNONYMS).reduce((acc, [canonical, aliases]) => {
   acc[canonical] = canonical;
+  acc[normalizeAliasKey(canonical)] = canonical;
   aliases.forEach((alias) => {
-    acc[String(alias).toLowerCase()] = canonical;
+    const lowered = String(alias).toLowerCase();
+    acc[lowered] = canonical;
+    acc[normalizeAliasKey(lowered)] = canonical;
   });
   return acc;
 }, {});
 
+//ตัดคำที่ไม่จำเป็นออก เช่น สัญลักษณ์พิเศษ ตัวเชื่อม และคำฟุ่มเฟือย เพื่อให้เหลือแต่คำสำคัญที่ใช้ในการค้นหาและการจับคู่
 function normalizeText(value) {
   return String(value || '')
     .toLowerCase()
@@ -57,6 +100,7 @@ function normalizeText(value) {
     .trim();
 }
 
+//แยกข้อความออกเป็นคำสำคัญ จากประโยคให้เหลือคำเดียว
 function tokenize(text) {
   const normalized = normalizeText(text);
   if (!normalized) return [];
@@ -71,23 +115,38 @@ function tokenize(text) {
     const phrase = `${base[i]} ${base[i + 1]}`.trim();
     if (phrase.length > 2) tokens.add(phrase);
   }
+  for (let i = 0; i < base.length - 2; i += 1) {
+    const phrase = `${base[i]} ${base[i + 1]} ${base[i + 2]}`.trim();
+    if (phrase.length > 4) tokens.add(phrase);
+  }
 
   return Array.from(tokens);
 }
 
+//ขยายคำที่เกี่ยวข้องกับคำค้นหา เช่น ถ้าค้นหาคำว่า "ฟิสิกส์" ก็จะขยายไปถึงคำว่า "physics", "กลศาสตร์", "อะตอม"
 function expandTerms(text) {
   const tokens = tokenize(text);
   const expanded = new Set(tokens);
 
   tokens.forEach((token) => {
-    const canonical = ALIAS_TO_CANONICAL[token];
+    const compactToken = normalizeAliasKey(token);
+    const canonical = ALIAS_TO_CANONICAL[token] || ALIAS_TO_CANONICAL[compactToken];
     if (canonical) {
       expanded.add(canonical);
       SUBJECT_SYNONYMS[canonical].forEach((alias) => expanded.add(String(alias).toLowerCase()));
     }
 
     Object.entries(SUBJECT_SYNONYMS).forEach(([key, aliases]) => {
-      if (token.includes(key) || aliases.some((alias) => token.includes(String(alias).toLowerCase()))) {
+      const matchesAlias =
+        token.includes(key) ||
+        compactToken.includes(normalizeAliasKey(key)) ||
+        aliases.some((alias) => {
+          const loweredAlias = String(alias).toLowerCase();
+          const compactAlias = normalizeAliasKey(loweredAlias);
+          return token.includes(loweredAlias) || compactToken.includes(compactAlias);
+        });
+
+      if (matchesAlias) {
         expanded.add(key);
         aliases.forEach((alias) => expanded.add(String(alias).toLowerCase()));
       }
@@ -97,6 +156,7 @@ function expandTerms(text) {
   return Array.from(expanded);
 }
 
+//ขยายคำที่ได้มา ให้เชื่อมกับคำที่ใกล้เคียงหรือคำพ้อง
 function addSignal(map, rawText, weight) {
   if (!rawText || !weight) return;
   expandTerms(rawText).forEach((term) => {
@@ -105,6 +165,7 @@ function addSignal(map, rawText, weight) {
   });
 }
 
+//ฟังก์ชั่นเรื่องเวลา เช่น ถ้าข้อมูลถูกสร้างวันนี้หรือเมื่อวาน จะมีน้ำหนักมากกว่าข้อมูลที่ถูกสร้างเมื่อ 20 วันก่อน
 function getRecencyMultiplier(dateValue, windows = {}) {
   const ageDays = daysSince(dateValue);
   if (ageDays <= (windows.oneDay ?? 1)) return windows.oneDayWeight ?? 2.8;
@@ -122,6 +183,7 @@ function serializeReasonTerms(signalMap, limit = 5) {
     .map(([term]) => term);
 }
 
+//ดูข้อความในโพสต์ว่าตรงกับคำสำคัญของผู้ใช้งานมากแค่ไหน
 function scoreTextAgainstSignals(text, signalMap, multiplier = 1) {
   const haystack = normalizeText(text);
   if (!haystack) return 0;
@@ -134,22 +196,25 @@ function scoreTextAgainstSignals(text, signalMap, multiplier = 1) {
   return score;
 }
 
+//คำนวณว่าโพสต์นั้นเก่าหรือใหม่แค่ไหน
 function daysSince(dateValue) {
   const value = new Date(dateValue);
   if (Number.isNaN(value.getTime())) return 365;
   return Math.max(0, (Date.now() - value.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+//ให้คะแนนความใหม่ของโพสต์
 function recencyScore(dateValue) {
   const ageDays = daysSince(dateValue);
-  if (ageDays <= 1) return 35;
-  if (ageDays <= 3) return 25;
-  if (ageDays <= 7) return 18;
-  if (ageDays <= 14) return 10;
-  if (ageDays <= 30) return 4;
+  if (ageDays <= 1) return 35; // โพสต์ที่สร้างในวันนี้หรือเมื่อวานจะได้คะแนนสูงสุด
+  if (ageDays <= 3) return 25; // โพสต์ที่สร้างในช่วง 3 วันที่ผ่านมา
+  if (ageDays <= 7) return 18; // โพสต์ที่สร้างในช่วง 7 วันที่ผ่านมา
+  if (ageDays <= 14) return 10; // โพสต์ที่สร้างในช่วง 14 วันที่ผ่านมา
+  if (ageDays <= 30) return 4; // โพสต์ที่สร้างในช่วง 30 วันที่ผ่านมา
   return 0;
 }
 
+//ให้คะแนนความนิยมของโพสต์/ติวเตอร์
 function popularityScore({ favCount = 0, reviewCount = 0, joinCount = 0, studentCount = 0, rating = 0 }) {
   return (
     Math.min(Number(favCount || 0), 20) * 1.8 +
@@ -160,6 +225,7 @@ function popularityScore({ favCount = 0, reviewCount = 0, joinCount = 0, student
   );
 }
 
+//เช็คว่าโพสต์เลยเวลาเรียนมาแล้วหรือยัง
 function calculateIsExpired(post) {
   const teachingDays = String(post.teaching_days || post.preferred_days || '').trim();
   const teachingTimes = String(post.teaching_time || post.preferred_time || '').trim();
@@ -207,11 +273,13 @@ function calculateIsExpired(post) {
   return daysSince(createdAt) > 45;
 }
 
+//เอาชื่อวิชาต่างๆที่ได้มา มาแปลงให้เป็นชื่อกลางที่มีอยู่ใน SUBJECT_SYNONYMS
 function getCanonicalSubject(subject) {
   const terms = expandTerms(subject);
   return terms.find((term) => SUBJECT_SYNONYMS[term]) || normalizeText(subject);
 }
 
+//เช็คว่าโพสต์นั้นตรงกับความสนใจของผู้ใช้หรือไม่ โดยดูจากคำสำคัญที่ของผู้ใช้
 function rowMatchesTopTerms(row, topTerms = []) {
   if (!Array.isArray(topTerms) || topTerms.length === 0) return false;
 
@@ -231,6 +299,7 @@ function rowMatchesTopTerms(row, topTerms = []) {
   return topTerms.some((term) => rowTerms.has(String(term || '').toLowerCase()));
 }
 
+//ไม่ให้ขึ้นติวเตอร์ซ้ำหรือวิชาเดิมซ้ำมากเกินไป
 function diversifyTutorRows(rows, limit) {
   const selected = [];
   const tutorCounts = new Map();
@@ -246,7 +315,7 @@ function diversifyTutorRows(rows, limit) {
     const tutorCount = tutorCounts.get(tutorKey) || 0;
     const subjectCount = subjectCounts.get(subjectKey) || 0;
 
-    if (tutorCount >= 2 || subjectCount >= 2) continue;
+    if (tutorCount >= 2 || subjectCount >= 2) continue; //ติวเตอร์เดิมไม่เกิน 2 โพสต์ วิชาเดิมไม่เกิน 2 โพสต์
 
     selected.push(row);
     tutorCounts.set(tutorKey, tutorCount + 1);
@@ -264,6 +333,7 @@ function diversifyTutorRows(rows, limit) {
   return selected;
 }
 
+//โดยเอาโพสต์ที่คะแนนรองลงมา หรือโพสต์หมดเวลาแล้วแต่น่าสนใจ มาจัดเป็นชุด explore ให้ผู้ใช้กดดูได้
 function buildExploreTutorRows(primaryRows, fallbackRows, limit) {
   const selected = [];
   const seen = new Set();
@@ -817,14 +887,17 @@ function mapStudentRow(row) {
   };
 }
 
+//ฟังก์ชันที่เอาไว้ดึงข้อมูลโพสต์ติวเตอร์มาแนะนำให้กับผู้เรียน โดยจะดูจากสัญญาณต่างๆของผู้เรียน เช่น ข้อมูลโปรไฟล์ โพสต์ที่เคยสร้าง คำค้นหาที่เคยทำ และการกระทำต่างๆในระบบ มาคำนวณคะแนนความเกี่ยวข้องของโพสต์แต่ละโพสต์ แล้วจัดอันดับและคัดเลือกโพสต์ที่น่าสนใจที่สุดมาแสดงเป็นผลลัพธ์
 async function getTutorRecommendations(pool, userId, options = {}) {
   const limit = Number(options.limit || 12);
   if (!userId) {
+    // ถ้ายังไม่รู้ว่าเป็นใคร ให้ใช้โพสต์ใหม่และโพสต์นิยมแทน
     const latest = await getTutorRecommendationCandidates(pool, 0, 120);
     const allRows = dedupeRows(latest, (row) => row.tutor_post_id);
     const fallbackRows = buildColdStartTutorRows(allRows, limit);
     const fallbackItems = fallbackRows.map(mapTutorRow);
     const fallbackIds = new Set(fallbackRows.map((row) => row.tutor_post_id));
+    // เตรียมโพสต์สำรองไว้ให้ผู้ใช้กดสำรวจเพิ่มเติม
     const exploreItems = buildExploreTutorRows(
       allRows.filter((row) => !calculateIsExpired(row) && !fallbackIds.has(row.tutor_post_id)),
       allRows.filter((row) => calculateIsExpired(row)),
@@ -836,9 +909,11 @@ async function getTutorRecommendations(pool, userId, options = {}) {
     return { items: fallbackItems, explore_items: exploreItems, based_on: 'โพสต์ใหม่และโพสต์ยอดนิยมล่าสุด', reason_terms: [] };
   }
 
+  // ดึงคำสำคัญของผู้ใช้ แล้วเอาไปเทียบกับโพสต์ติวเตอร์ทั้งหมด
   const signals = await getUserSignals(pool, userId, 'student');
   const candidates = await getTutorRecommendationCandidates(pool, userId, 240);
 
+  // คิดคะแนนแต่ละโพสต์และเช็กว่าโพสต์หมดเวลาหรือยัง
   let ranked = dedupeRows(candidates, (row) => row.tutor_post_id).map((row) => ({
     ...row,
     recommendation_score: scoreTutorCandidate(row, signals.signals),
@@ -846,21 +921,27 @@ async function getTutorRecommendations(pool, userId, options = {}) {
   }));
 
   if (signals.isColdStart) {
+    // ถ้าผู้ใช้ยังไม่มีข้อมูลพอ ให้ใช้ logic ผู้ใช้ใหม่แทน
     ranked = buildColdStartTutorRows(ranked, Math.max(limit * 3, 24)).map((row, index) => ({
       ...row,
       recommendation_score: Math.max(1, 100 - index),
       is_expired: calculateIsExpired(row),
     }));
   } else {
+    // ถ้ามีข้อมูลผู้ใช้แล้ว ให้เรียงตามคะแนนจากมากไปน้อย
     ranked = ranked.sort((a, b) => b.recommendation_score - a.recommendation_score);
   }
 
+  // แยกโพสต์ที่ยังเรียนได้ กับโพสต์ที่หมดเวลาแล้วออกจากกัน
   const activeRanked = ranked.filter((row) => !row.is_expired);
   const expiredRanked = ranked.filter((row) => row.is_expired);
+
+  // คัดโพสต์หลักให้หลากหลาย ไม่ซ้ำติวเตอร์หรือวิชาเดิมมากเกินไป
   let primaryRows = diversifyTutorRows(activeRanked, limit);
   const hasTopTermCoverage = primaryRows.some((row) => rowMatchesTopTerms(row, signals.topTerms));
 
   if (!hasTopTermCoverage) {
+    // ถ้าโพสต์หลักยังไม่ครอบคลุมคำที่ผู้ใช้สนใจ อนุญาตให้ดึงโพสต์หมดเวลาแต่ตรงคำมากมาแทรกได้บางส่วน
     const exactExpiredRows = expiredRanked
       .filter((row) => row.recommendation_score > 0 && rowMatchesTopTerms(row, signals.topTerms))
       .sort((a, b) => b.recommendation_score - a.recommendation_score);
@@ -878,6 +959,7 @@ async function getTutorRecommendations(pool, userId, options = {}) {
 
   const primaryIds = new Set(primaryRows.map((row) => row.tutor_post_id));
   const lowerRelevanceRows = activeRanked.filter((row) => !primaryIds.has(row.tutor_post_id));
+  // สร้างรายการสำรวจเพิ่มเติมจากโพสต์คะแนนรองลงมา
   const exploreRows = buildExploreTutorRows(lowerRelevanceRows, expiredRanked, Math.min(limit, 12));
 
   const items = primaryRows.map(mapTutorRow);
@@ -894,20 +976,24 @@ async function getTutorRecommendations(pool, userId, options = {}) {
 
 async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
   const limit = Number(options.limit || 30);
+  // ดูจากวิชาที่ติวเตอร์สอนได้และพฤติกรรมที่ผ่านมา
   const signals = await getUserSignals(pool, userId, 'tutor');
   const candidates = await getStudentRecommendationCandidates(pool, 240);
 
+  // คิดคะแนนว่าโพสต์นักเรียนไหนตรงกับติวเตอร์มากที่สุด
   let ranked = dedupeRows(candidates, (row) => row.student_post_id).map((row) => ({
     ...row,
     recommendation_score: scoreStudentCandidate(row, signals.signals),
   }));
 
   if (signals.isColdStart) {
+    // ถ้ายังไม่มีข้อมูลติวเตอร์พอ ให้เรียงตามความนิยมและความใหม่ของโพสต์
     ranked = ranked.sort((a, b) => (
       (popularityScore({ favCount: b.fav_count, joinCount: b.join_count }) + recencyScore(b.created_at)) -
       (popularityScore({ favCount: a.fav_count, joinCount: a.join_count }) + recencyScore(a.created_at))
     ));
   } else {
+    // ถ้ามีข้อมูลแล้ว ให้เรียงตามคะแนนความเกี่ยวข้อง
     ranked = ranked.sort((a, b) => b.recommendation_score - a.recommendation_score);
   }
 
@@ -922,12 +1008,14 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
 
 async function getMixedFeedRecommendations(pool, userId, options = {}) {
   const limit = Number(options.limit || 20);
+  // ใช้ข้อมูลความสนใจของนักเรียนเป็นตัวกลางสำหรับฟีดรวม
   const signals = await getUserSignals(pool, userId, 'student');
   const [tutors, students] = await Promise.all([
     getTutorRecommendationCandidates(pool, userId, 160),
     getStudentRecommendationCandidates(pool, 160),
   ]);
 
+  // คิดคะแนนโพสต์ติวเตอร์และโพสต์นักเรียนแยกกันก่อน
   const rankedTutors = dedupeRows(tutors, (row) => `t-${row.tutor_post_id}`).map((row) => ({
     ...mapTutorRow(row),
     recommendation_score: scoreTutorCandidate(row, signals.signals) + 8,
@@ -937,6 +1025,7 @@ async function getMixedFeedRecommendations(pool, userId, options = {}) {
     recommendation_score: scoreStudentCandidate(row, signals.signals),
   }));
 
+  // รวมสองฝั่งแล้วเรียงใหม่อีกรอบให้เหลือโพสต์ที่น่าสนใจที่สุด
   const merged = [...rankedTutors, ...rankedStudents]
     .sort((a, b) => b.recommendation_score - a.recommendation_score)
     .slice(0, limit);
