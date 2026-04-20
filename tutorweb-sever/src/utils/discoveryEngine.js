@@ -629,13 +629,14 @@ async function getTutorSignals(pool, userId) {
   };
 }
 
+//ดูว่าผู้ใช้เป็นนักเรียนหรือติวเตอร์ เพื่อไปดูข้อมูลส่วนตัวของเขา
 async function getUserSignals(pool, userId, roleHint = '') {
-  const role = roleHint || await getUserRole(pool, userId);
-  if (role === 'tutor' || role === 'teacher') return getTutorSignals(pool, userId);
-  return getStudentSignals(pool, userId);
+  const role = roleHint || await getUserRole(pool, userId); //ถ้าไม่รู้บทบาทของผู้ใช้ ก็ไปเช็คจากฐานข้อมูล
+  if (role === 'tutor' || role === 'teacher') return getTutorSignals(pool, userId); //เป็นติวเตอร์ก็ไปดูข้อมูลของติวเตอร์
+  return getStudentSignals(pool, userId); //เป็นนักเรียนก็ไปดูข้อมูลของนักเรียน
 }
 
-async function getTutorRecommendationCandidates(pool, userId = 0, limit = 300) {
+async function getTutorRecommendationCandidates(pool, userId = 0, limit = 300) { //โค้ดเชื่อมต่อฐานข้อมูลเพื่อดึงข้อมูลโพสต์ติวเตอร์
   const [rows] = await pool.query(
     `SELECT
         tp.tutor_post_id,
@@ -887,20 +888,20 @@ function mapStudentRow(row) {
   };
 }
 
-//ฟังก์ชันที่เอาไว้ดึงข้อมูลโพสต์ติวเตอร์มาแนะนำให้กับผู้เรียน โดยจะดูจากสัญญาณต่างๆของผู้เรียน เช่น ข้อมูลโปรไฟล์ โพสต์ที่เคยสร้าง คำค้นหาที่เคยทำ และการกระทำต่างๆในระบบ มาคำนวณคะแนนความเกี่ยวข้องของโพสต์แต่ละโพสต์ แล้วจัดอันดับและคัดเลือกโพสต์ที่น่าสนใจที่สุดมาแสดงเป็นผลลัพธ์
+//ส่วนที่เป็น Logic ที่แนะนำโพสต์ตต.ในหน้าฟีด
 async function getTutorRecommendations(pool, userId, options = {}) {
-  const limit = Number(options.limit || 12);
-  if (!userId) {
-    // ถ้ายังไม่รู้ว่าเป็นใคร ให้ใช้โพสต์ใหม่และโพสต์นิยมแทน
-    const latest = await getTutorRecommendationCandidates(pool, 0, 120);
-    const allRows = dedupeRows(latest, (row) => row.tutor_post_id);
-    const fallbackRows = buildColdStartTutorRows(allRows, limit);
-    const fallbackItems = fallbackRows.map(mapTutorRow);
-    const fallbackIds = new Set(fallbackRows.map((row) => row.tutor_post_id));
-    // เตรียมโพสต์สำรองไว้ให้ผู้ใช้กดสำรวจเพิ่มเติม
+  const limit = Number(options.limit || 12); //เริ่มต้น 12 โพสต์
+  if (!userId) { //ยังไม่รู้ว่าเป็นใคร ไม่มีข้อมูลอะไรเลย ให้ใช้โพสต์ใหม่และโพสต์นิยมแทน
+    const latest = await getTutorRecommendationCandidates(pool, 0, 120); //ดึงโพสต์ติวเตอร์ล่าสุด 120
+    const allRows = dedupeRows(latest, (row) => row.tutor_post_id); //ตัดโพสต์ซ้ำ
+    const fallbackRows = buildColdStartTutorRows(allRows, limit); //ถ้าเป็นผู้ใช้ใหม่ให้เป็น cold start
+    const fallbackItems = fallbackRows.map(mapTutorRow); //โพสต์ที่ผู้ใช้เห็นในหน้าแรก
+    const fallbackIds = new Set(fallbackRows.map((row) => row.tutor_post_id)); //เก็บ id ของโพสต์ที่แสดงในหน้าแรกไว้ เพื่อไม่ให้แนะนำซ้ำในแสดงเพิ่มเติม
+    
+    //โพสต์ที่ผู้ใช้จะเห็น เมื่อกดแสดงเพิ่มเติม
     const exploreItems = buildExploreTutorRows(
-      allRows.filter((row) => !calculateIsExpired(row) && !fallbackIds.has(row.tutor_post_id)),
-      allRows.filter((row) => calculateIsExpired(row)),
+      allRows.filter((row) => !calculateIsExpired(row) && !fallbackIds.has(row.tutor_post_id)), //เอาโพสต์ที่ยังเรียนได้ และไม่ซ้ำกับที่แสดงในหน้าแรกมาแนะนำเพิ่ม
+      allRows.filter((row) => calculateIsExpired(row)), //ถ้าโพสต์ไหนหมดเวลาแล้วแต่ยังน่าสนใจอยู่ก็เอามาแนะนำเพิ่ม
       Math.min(limit, 12)
     ).map((row) => ({
       ...mapTutorRow(row),
@@ -909,44 +910,41 @@ async function getTutorRecommendations(pool, userId, options = {}) {
     return { items: fallbackItems, explore_items: exploreItems, based_on: 'โพสต์ใหม่และโพสต์ยอดนิยมล่าสุด', reason_terms: [] };
   }
 
-  // ดึงคำสำคัญของผู้ใช้ แล้วเอาไปเทียบกับโพสต์ติวเตอร์ทั้งหมด
-  const signals = await getUserSignals(pool, userId, 'student');
-  const candidates = await getTutorRecommendationCandidates(pool, userId, 240);
+  const signals = await getUserSignals(pool, userId, 'student'); //ดึงข้อมูลนักเรียน ระบบจะไปดูข้อมูลของนักเรียนใน getUserSignals
+  const candidates = await getTutorRecommendationCandidates(pool, userId, 240); //ดึงโพสต์ติวเตอร์มา 240 โพสต์ เอามาคิด
 
-  // คิดคะแนนแต่ละโพสต์และเช็กว่าโพสต์หมดเวลาหรือยัง
+  // เอาทุกโพสต์ที่ได้มา มาคิดคะแนนก่อน
   let ranked = dedupeRows(candidates, (row) => row.tutor_post_id).map((row) => ({
     ...row,
-    recommendation_score: scoreTutorCandidate(row, signals.signals),
-    is_expired: calculateIsExpired(row),
+    recommendation_score: scoreTutorCandidate(row, signals.signals), //ให้คะแนนแต่ละโพสต์
+    is_expired: calculateIsExpired(row), //เช็คว่าหมดเวลาเรียนหรือยัง
   }));
 
-  if (signals.isColdStart) {
-    // ถ้าผู้ใช้ยังไม่มีข้อมูลพอ ให้ใช้ logic ผู้ใช้ใหม่แทน
+  if (signals.isColdStart) { //เช็คว่าเป็นผู้ใช้ใหม่ที่ไม่มีข้อมูลอะไรเลยไหม ถ้าใช่ก็ให้เรียงตามความนิยมและความใหม่ของโพสต์เหมือนเดิม
     ranked = buildColdStartTutorRows(ranked, Math.max(limit * 3, 24)).map((row, index) => ({
       ...row,
-      recommendation_score: Math.max(1, 100 - index),
+      recommendation_score: Math.max(1, 100 - index), //ให้คะแนนเป็นลำดับแทน เพราะมัน personalized ไม่ได้
       is_expired: calculateIsExpired(row),
     }));
   } else {
-    // ถ้ามีข้อมูลผู้ใช้แล้ว ให้เรียงตามคะแนนจากมากไปน้อย
+    //ถ้ามีข้อมูลผู้ใช้แล้ว เรียงตามคะแนนจากมากไปน้อย
     ranked = ranked.sort((a, b) => b.recommendation_score - a.recommendation_score);
   }
 
-  // แยกโพสต์ที่ยังเรียนได้ กับโพสต์ที่หมดเวลาแล้วออกจากกัน
+  //แยกโพสต์ที่ยังเรียนได้ กับโพสต์ที่หมดเวลาแล้วออกจากกัน
   const activeRanked = ranked.filter((row) => !row.is_expired);
   const expiredRanked = ranked.filter((row) => row.is_expired);
 
-  // คัดโพสต์หลักให้หลากหลาย ไม่ซ้ำติวเตอร์หรือวิชาเดิมมากเกินไป
+  //คัดโพสต์ให้หลากหลาย ไม่ซ้ำติวเตอร์หรือวิชาเดิมมากไป
   let primaryRows = diversifyTutorRows(activeRanked, limit);
-  const hasTopTermCoverage = primaryRows.some((row) => rowMatchesTopTerms(row, signals.topTerms));
+  const hasTopTermCoverage = primaryRows.some((row) => rowMatchesTopTerms(row, signals.topTerms)); //โพสต์ที่เอามามีตรงไหมถ้าไม่มีเลยทำบรรทัดต่อไป
 
-  if (!hasTopTermCoverage) {
-    // ถ้าโพสต์หลักยังไม่ครอบคลุมคำที่ผู้ใช้สนใจ อนุญาตให้ดึงโพสต์หมดเวลาแต่ตรงคำมากมาแทรกได้บางส่วน
-    const exactExpiredRows = expiredRanked
+  if (!hasTopTermCoverage) { //ถ้าโพสต์ยังไม่ครอบคลุมที่ผู้ใช้สนใจ ระบบจะดึงโพสต์หมดเวลาแต่ตรงคำสำคัญมาแทรกได้
+    const exactExpiredRows = expiredRanked //เอาโพสต์หมดเวลาแล้วแต่ตรงกับความสนใจของผู้ใช้มาแนะนำเพิ่ม
       .filter((row) => row.recommendation_score > 0 && rowMatchesTopTerms(row, signals.topTerms))
       .sort((a, b) => b.recommendation_score - a.recommendation_score);
 
-    if (exactExpiredRows.length > 0) {
+    if (exactExpiredRows.length > 0) { //ถ้ามีโพสต์หมดเวลาแต่ตรงกับความสนใจของผู้ใช้ ก็เอามาแนะนำเพิ่มได้
       const replacementLimit = Math.min(Math.max(1, Math.floor(limit / 3)), exactExpiredRows.length);
       const keptActiveRows = primaryRows.slice(0, Math.max(0, limit - replacementLimit));
       const replacementRows = exactExpiredRows.slice(0, replacementLimit).map((row) => ({
@@ -958,8 +956,7 @@ async function getTutorRecommendations(pool, userId, options = {}) {
   }
 
   const primaryIds = new Set(primaryRows.map((row) => row.tutor_post_id));
-  const lowerRelevanceRows = activeRanked.filter((row) => !primaryIds.has(row.tutor_post_id));
-  // สร้างรายการสำรวจเพิ่มเติมจากโพสต์คะแนนรองลงมา
+  const lowerRelevanceRows = activeRanked.filter((row) => !primaryIds.has(row.tutor_post_id)); //โพสต์คะแนนรองลงมา
   const exploreRows = buildExploreTutorRows(lowerRelevanceRows, expiredRanked, Math.min(limit, 12));
 
   const items = primaryRows.map(mapTutorRow);
@@ -970,15 +967,13 @@ async function getTutorRecommendations(pool, userId, options = {}) {
   const basedOn = signals.isColdStart
     ? 'โปรไฟล์ยังไม่ครบ จึงใช้โพสต์ใหม่ล่าสุดและความนิยมของติวเตอร์'
     : `วิเคราะห์จากความสนใจล่าสุด: ${signals.topTerms.slice(0, 5).join(', ')}`;
-
-  return { items, explore_items: exploreItems, based_on: basedOn, reason_terms: signals.topTerms };
+  return { items, explore_items: exploreItems, based_on: basedOn, reason_terms: signals.topTerms }; //แสดงสิ่งที่แนะนำมาได้ไป frontend
 }
 
 async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
   const limit = Number(options.limit || 30);
-  // ดูจากวิชาที่ติวเตอร์สอนได้และพฤติกรรมที่ผ่านมา
-  const signals = await getUserSignals(pool, userId, 'tutor');
-  const candidates = await getStudentRecommendationCandidates(pool, 240);
+  const signals = await getUserSignals(pool, userId, 'tutor'); //ดึงข้อมูลของติวเตอร์ว่าสอนอะไรได้บ้าง
+  const candidates = await getStudentRecommendationCandidates(pool, 240); //ดึงโพสต์นักเรียนมาเตรียมไว้
 
   // คิดคะแนนว่าโพสต์นักเรียนไหนตรงกับติวเตอร์มากที่สุด
   let ranked = dedupeRows(candidates, (row) => row.student_post_id).map((row) => ({
@@ -986,8 +981,8 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
     recommendation_score: scoreStudentCandidate(row, signals.signals),
   }));
 
-  if (signals.isColdStart) {
-    // ถ้ายังไม่มีข้อมูลติวเตอร์พอ ให้เรียงตามความนิยมและความใหม่ของโพสต์
+  if (signals.isColdStart) { //isColdStart คือเป็นค่าเริ่มต้นที่ไม่มีอะไรเลย
+    // ถ้ายังไม่มีข้อมูลติวเตอร์พอ ให้เรียงตามความนิยมและความใหม่ของโพสต์ เหมือนนักเรียนเลยจ้า
     ranked = ranked.sort((a, b) => (
       (popularityScore({ favCount: b.fav_count, joinCount: b.join_count }) + recencyScore(b.created_at)) -
       (popularityScore({ favCount: a.fav_count, joinCount: a.join_count }) + recencyScore(a.created_at))
@@ -997,7 +992,7 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
     ranked = ranked.sort((a, b) => b.recommendation_score - a.recommendation_score);
   }
 
-  return {
+  return { //แสดงผลการแนะนำโพสต์สำหรับติวเตอร์
     items: ranked.slice(0, limit).map(mapStudentRow),
     based_on: signals.isColdStart
       ? 'ยังไม่มีข้อมูลการสอนมากพอ จึงใช้โพสต์ใหม่และโพสต์ที่มีความเคลื่อนไหวสูง'
@@ -1008,8 +1003,9 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
 
 async function getMixedFeedRecommendations(pool, userId, options = {}) {
   const limit = Number(options.limit || 20);
-  // ใช้ข้อมูลความสนใจของนักเรียนเป็นตัวกลางสำหรับฟีดรวม
+  // ใช้ข้อมูลความสนใจของนักเรียนเป็นตัวกลางสำหรับฟีดรวม ตรงหน้ารายการที่สนใจ
   const signals = await getUserSignals(pool, userId, 'student');
+  // ดึงโพสต์ติวเตอร์และโพสต์นักเรียนมาพร้อมกัน
   const [tutors, students] = await Promise.all([
     getTutorRecommendationCandidates(pool, userId, 160),
     getStudentRecommendationCandidates(pool, 160),
@@ -1037,8 +1033,8 @@ async function getMixedFeedRecommendations(pool, userId, options = {}) {
   };
 }
 
-function buildTutorAggregateRows(rows) {
-  const byTutor = new Map();
+function buildTutorAggregateRows(rows) { //ติวเตอร์คนเดียวมีหลายโพสต์ จะเอาโพสต์ที่คะแนนดีที่สุดมาเป็นตัวแทน
+  const byTutor = new Map(); 
   rows.forEach((row) => {
     const key = row.tutor_id;
     const current = byTutor.get(key);
@@ -1049,10 +1045,13 @@ function buildTutorAggregateRows(rows) {
   return Array.from(byTutor.values());
 }
 
-async function smartSearch(pool, query, userId = 0) {
+async function smartSearch(pool, query, userId = 0) { //ระบบค้นหาที่ดูทั้งคำค้นหาและข้อมูลผู้ใช้ไปพร้อมกัน
+  // ถ้ามีผู้ใช้ ให้เอาความสนใจเดิมของเขามาช่วยค้นด้วย
   const signals = userId ? await getUserSignals(pool, userId).catch(() => ({ signals: new Map() })) : { signals: new Map() };
   const querySignals = new Map();
+  // คำค้นปัจจุบันเป็นตัวหลักของการค้นรอบนี้
   addSignal(querySignals, query, 20);
+  // เอาความสนใจเดิมมาผสม แต่ไม่ให้แรงเกินคำค้นหลัก
   for (const [term, weight] of (signals.signals || new Map()).entries()) {
     querySignals.set(term, (querySignals.get(term) || 0) + Math.min(weight, 14));
   }
@@ -1062,16 +1061,19 @@ async function smartSearch(pool, query, userId = 0) {
     getStudentRecommendationCandidates(pool, 220),
   ]);
 
+  // คิดคะแนนโพสต์ติวเตอร์ แล้วตัดโพสต์ที่ไม่เกี่ยวหรือหมดเวลาออก
   const tutorPosts = dedupeRows(tutors, (row) => row.tutor_post_id).map((row) => ({
     ...row,
     recommendation_score: scoreTutorCandidate(row, querySignals),
   })).filter((row) => row.recommendation_score > 0 && !calculateIsExpired(row));
 
+  // คิดคะแนนโพสต์นักเรียน แล้วตัดโพสต์ที่ไม่เกี่ยวออก
   const studentPosts = dedupeRows(students, (row) => row.student_post_id).map((row) => ({
     ...row,
     recommendation_score: scoreStudentCandidate(row, querySignals),
   })).filter((row) => row.recommendation_score > 0);
 
+  // รวมโพสต์ของติวเตอร์คนเดิมให้เหลือแค่ตัวแทนที่คะแนนดีที่สุด
   const tutorProfiles = buildTutorAggregateRows(tutorPosts).slice(0, 12).map((row) => ({
     tutor_id: row.tutor_id,
     name: `${row.name || ''} ${row.lastname || ''}`.trim(),
@@ -1086,10 +1088,14 @@ async function smartSearch(pool, query, userId = 0) {
   }));
 
   return {
+    // รายชื่อติวเตอร์ที่ตรงกับคำค้นมากที่สุด
     tutors: tutorProfiles,
+    // โพสต์ติวเตอร์ที่ตรงกับคำค้นมากที่สุด
     posts: tutorPosts.sort((a, b) => b.recommendation_score - a.recommendation_score).slice(0, 18).map(mapTutorRow),
+    // โพสต์นักเรียนที่ตรงกับคำค้นมากที่สุด
     students: studentPosts.sort((a, b) => b.recommendation_score - a.recommendation_score).slice(0, 18).map(mapStudentRow),
     keyword_used: query,
+    // คำหลักที่ระบบใช้ตีความคำค้นครั้งนี้
     reason_terms: serializeReasonTerms(querySignals, 6),
   };
 }
