@@ -1295,13 +1295,20 @@ function HomeTutor({ setCurrentPage, user }) {
               </p>
             </div>
 
-            <div className="relative z-10 hidden lg:flex flex-1 min-w-[320px] max-w-[420px] items-center justify-center self-stretch">
+            <div className="relative z-10 hidden lg:flex flex-1 min-w-[320px] max-w-[460px] items-center justify-center self-stretch">
               <div className="absolute inset-4 rounded-[2rem] bg-gradient-to-br from-indigo-50 via-white to-purple-50 shadow-inner" />
-              <img
-                src="/tutor_home_pic.jpg"
-                alt="Tutor home visual"
-                className="relative z-10 max-h-[320px] w-full object-contain drop-shadow-[0_18px_35px_rgba(79,70,229,0.18)]"
-              />
+              <div className="relative z-10 w-full overflow-hidden rounded-[2rem] border border-indigo-100/80 bg-white shadow-[0_22px_55px_rgba(79,70,229,0.16)] ring-1 ring-white/70">
+                <img
+                  src="/tutor_home_pic_hero.jpg"
+                  alt="Tutor home visual"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  width="1400"
+                  height="858"
+                  className="h-full min-h-[280px] w-full object-cover"
+                />
+              </div>
             </div>
 
             {/* Soft Background Decor */}
