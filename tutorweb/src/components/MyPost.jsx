@@ -141,6 +141,14 @@ const formatThaiShortDate = (value) => {
   return raw;
 };
 
+const formatScheduleTime = (value) => {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return text || "-";
+  const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]), 0);
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
 const parseSessionDateTime = (dateValue, timeValue) => {
   const rawDate = String(dateValue || "").trim();
   if (!rawDate) return null;
@@ -199,7 +207,7 @@ const DateTimeDisplay = ({ daysStr, timesStr }) => {
   return (
     <ul className="list-disc pl-4 space-y-0.5">
       {daysArr.map((day, idx) => {
-        const time = timesArr[idx] || timesArr[0] || "-"; // ถ้าไม่ได้ระบุเวลา ให้ดึงเวลาช่องแรกมาใช้
+        const time = formatScheduleTime(timesArr[idx] || timesArr[0]); // ถ้าไม่ได้ระบุเวลา ให้ดึงเวลาช่องแรกมาใช้
         const formattedDate = formatThaiShortDate(day);
         return (
           <li key={idx} className="text-gray-700">

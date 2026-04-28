@@ -39,6 +39,14 @@ const toLocalYMD = (date) => {
     return `${year}-${month}-${day}`;
 };
 
+const formatScheduleTime = (value) => {
+    const text = String(value || "").trim();
+    const match = text.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return text || "ไม่ระบุเวลา";
+    const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]), 0);
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
 const postGradeLevelOptions = [
     { value: "ประถมศึกษา", label: "ประถมศึกษา" },
     { value: "มัธยมต้น", label: "มัธยมศึกษาตอนต้น (ม.1-ม.3)" },
@@ -49,6 +57,7 @@ const postGradeLevelOptions = [
 
 const DateTimeDisplay = ({ daysStr, timesStr }) => {
     const days = daysStr ? daysStr.split(',').map(d => d.trim()) : [];
+    const times = timesStr ? timesStr.split(',').map(t => t.trim()) : [];
     return (
         <div className="flex flex-col gap-1.5">
             {days.length > 0 ? (
@@ -57,7 +66,7 @@ const DateTimeDisplay = ({ daysStr, timesStr }) => {
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
                         <span className="font-semibold">{day}</span>
                         <span className="text-indigo-300">|</span>
-                        <span>{timesStr || "ไม่ระบุเวลา"}</span>
+                        <span>{formatScheduleTime(times[idx] || times[0])}</span>
                     </div>
                 ))
             ) : (
@@ -845,7 +854,7 @@ function TutorProfile({ setCurrentPage, onEditProfile, user, onOpenPost, onViewP
                                                                     <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-indigo-100 text-indigo-700">ติวเตอร์</span>
                                                                     <span className="text-xs text-gray-400">•</span>
                                                                     <span className="text-xs text-gray-500 font-medium">
-                                                                        {new Date(post.createdAt).toLocaleString('th-TH')}
+                                                                        {new Date(post.createdAt).toLocaleString()}
                                                                     </span>
                                                                 </div>
                                                             </div>
@@ -963,7 +972,7 @@ function TutorProfile({ setCurrentPage, onEditProfile, user, onOpenPost, onViewP
                                                                         <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-indigo-100 text-indigo-700">{item.typeLabel}</span>
                                                                         <span className="text-xs text-gray-400">•</span>
                                                                         <span className="text-xs text-gray-500 font-medium">
-                                                                            {item.created_at ? new Date(item.created_at).toLocaleString("th-TH") : evtDate}
+                                                                            {item.created_at ? new Date(item.created_at).toLocaleString() : evtDate}
                                                                         </span>
                                                                     </div>
                                                                 </div>

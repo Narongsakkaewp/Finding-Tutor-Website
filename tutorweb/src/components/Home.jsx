@@ -30,6 +30,21 @@ const getUserContext = () => {
 
 const today = new Date().toISOString().split("T")[0];
 
+const formatScheduleTime = (value) => {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return text;
+  const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]), 0);
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
+const formatScheduleTimesList = (value) =>
+  String(value || "")
+    .split(",")
+    .map((item) => formatScheduleTime(item))
+    .filter(Boolean)
+    .join(", ");
+
 /** ---------------- UI Components -------------- */
 
 function Badge({ icon: Icon, text, color = "blue" }) {
@@ -964,7 +979,7 @@ function HomeStudent() {
                   </div>
                   <div className="p-3 border rounded-xl">
                     <div className="text-xs text-gray-500 font-bold mb-1">วัน/เวลาที่สอน</div>
-                    <div className="font-semibold">{preview.teaching_days || preview.meta?.teaching_days || "-"} {preview.teaching_time || preview.meta?.teaching_time}</div>
+                    <div className="font-semibold">{preview.teaching_days || preview.meta?.teaching_days || "-"} {formatScheduleTimesList(preview.teaching_time || preview.meta?.teaching_time)}</div>
                   </div>
                   <div className="p-4 border rounded-xl col-span-2 bg-indigo-50/50">
                     <div className="text-xs text-indigo-900/60 font-bold mb-2 uppercase tracking-wide">ข้อมูลติดต่อเพิ่มเติม</div>
@@ -1166,7 +1181,7 @@ function HomeStudent() {
               </div>
               <div className="p-3 bg-white border rounded-xl">
                 <div className="text-xs text-gray-500 font-bold uppercase">วัน/เวลาที่ต้องการรเรียน</div>
-                <div className="font-semibold text-blue-600 flex items-center gap-2"><Calendar size={16} /> {preview.preferred_days || "-"} {preview.preferred_time}</div>
+                <div className="font-semibold text-blue-600 flex items-center gap-2"><Calendar size={16} /> {preview.preferred_days || "-"} {formatScheduleTimesList(preview.preferred_time)}</div>
               </div>
               <div className="p-3 bg-white border rounded-xl">
                 <div className="text-xs text-gray-500 font-bold uppercase">ระดับชั้น</div>
@@ -1442,7 +1457,7 @@ function HomeTutor({ setCurrentPage, user }) {
               <div className="p-3 bg-white border rounded-xl">
                 <div className="text-xs text-gray-500 font-bold uppercase">วัน/เวลา</div>
                 <div className="font-semibold text-blue-600 flex items-center gap-2">
-                  <Calendar size={16} /> {previewPost.preferred_days || "-"} {previewPost.preferred_time}
+                  <Calendar size={16} /> {previewPost.preferred_days || "-"} {formatScheduleTimesList(previewPost.preferred_time)}
                 </div>
               </div>
               <div className="p-3 bg-white border rounded-xl">

@@ -62,6 +62,14 @@ const formatThaiShortDate = (value) => {
   return String(value).trim();
 };
 
+const formatScheduleTime = (value) => {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return text || "ไม่ระบุเวลา";
+  const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]), 0);
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
 const DateTimeDisplay = ({ daysStr, timesStr }) => {
   const days = daysStr ? daysStr.split(',').map(d => d.trim()) : [];
   const times = timesStr ? timesStr.split(',').map(t => t.trim()) : [];
@@ -73,7 +81,7 @@ const DateTimeDisplay = ({ daysStr, timesStr }) => {
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
             <span className="font-semibold">{formatThaiShortDate(day)}</span>
             <span className="text-indigo-300">|</span>
-            <span>{times[idx] || times[0] || "ไม่ระบุเวลา"}</span>
+            <span>{formatScheduleTime(times[idx] || times[0])}</span>
           </div>
         ))
       ) : (
@@ -829,7 +837,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                                     <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-rose-100 text-rose-700">นักเรียน</span>
                                     <span className="text-xs text-gray-400">•</span>
                                     <span className="text-xs text-gray-500 font-medium">
-                                      {new Date(p.createdAt).toLocaleString('th-TH')}
+                                      {new Date(p.createdAt).toLocaleString()}
                                     </span>
                                   </div>
                                 </div>
@@ -948,7 +956,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                                     <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-indigo-100 text-indigo-700">{item.typeLabel}</span>
                                     <span className="text-xs text-gray-400">•</span>
                                     <span className="text-xs text-gray-500 font-medium">
-                                      {item.created_at ? new Date(item.created_at).toLocaleString("th-TH") : evtDate}
+                                      {item.created_at ? new Date(item.created_at).toLocaleString() : evtDate}
                                     </span>
                                   </div>
                                 </div>

@@ -66,6 +66,14 @@ const ContactLink = ({ value }) => {
   return <span>{text}</span>;
 };
 
+const formatScheduleTime = (value) => {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return text || "-";
+  const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]), 0);
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
 const DateTimeDisplay = ({ daysStr, timesStr }) => {
   if (!daysStr) return <span>-</span>;
   const daysArr = daysStr.split(',').map(d => d.trim());
@@ -73,7 +81,7 @@ const DateTimeDisplay = ({ daysStr, timesStr }) => {
   return (
     <ul className="list-disc pl-4 space-y-0.5">
       {daysArr.map((day, idx) => {
-        const time = timesArr[idx] || timesArr[0] || "-";
+        const time = formatScheduleTime(timesArr[idx] || timesArr[0]);
         const formattedDate = new Date(day).toLocaleDateString("th-TH");
         return (
           <li key={idx} className="text-gray-700">
@@ -132,6 +140,15 @@ function mapTutorToUnified(t = {}) {
     preferred_days: t.meta?.teaching_days ?? t.teaching_days ?? "",
     preferred_time: t.meta?.teaching_time ?? t.teaching_time ?? "",
     contact_info: t.meta?.contact_info ?? t.contact_info ?? "",
+    grade_level: t.meta?.target_student_level ?? t.target_student_level ?? "",
+    meta: {
+      target_student_level: t.meta?.target_student_level ?? t.target_student_level ?? "",
+      teaching_days: t.meta?.teaching_days ?? t.teaching_days ?? "",
+      teaching_time: t.meta?.teaching_time ?? t.teaching_time ?? "",
+      location: t.meta?.location ?? t.location ?? "",
+      contact_info: t.meta?.contact_info ?? t.contact_info ?? "",
+      price: t.meta?.price ?? t.price ?? 0,
+    },
     join_count: Number(t.join_count ?? 0),
     joined: !!t.joined,
     _isTutor: true,
@@ -146,14 +163,7 @@ function mapTutorToUnified(t = {}) {
 function formatDisplayDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("th-TH", {
-    day: "numeric",
-    month: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return date.toLocaleString();
 }
 
 function isPostEdited(createdAt, updatedAt) {
@@ -377,7 +387,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
             <div className="flex flex-wrap gap-2 text-sm">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-medium border border-blue-100">
                 <GraduationCap size={16} className="shrink-0" />
-                {post.grade_level || post.meta?.target_student_level || "ไม่ระบุ"}
+                {post.grade_level || post.meta?.grade_level || post.meta?.target_student_level || "ไม่ระบุ"}
               </span>
 
               {/* 🌟 เปลี่ยนไอคอนดอลลาร์ เป็นสัญลักษณ์ ฿ (Baht) สไตล์คนไทย */}
