@@ -1277,56 +1277,27 @@ function HomeTutor({ setCurrentPage, user }) {
 
 
         {/* --- Tutor Hero: Light/Standard Theme "Find Students" --- */}
-        <div className="pt-8 md:pt-12 pb-10">
-          <div className="relative bg-white rounded-[3rem] shadow-2xl p-8 md:p-14 overflow-hidden min-h-[500px] flex items-center justify-between gap-10 border border-gray-100">
+        <div className="pt-8 pb-10">
+          <div className="relative bg-white rounded-[2rem] shadow-xl p-8 md:p-12 overflow-hidden min-h-[300px] flex items-center border border-gray-100">
 
-            <div className="absolute inset-0 z-0 overflow-hidden rounded-[3rem]">
-              <div className="absolute top-0 right-0 w-[780px] h-[780px] bg-gradient-to-bl from-indigo-100/55 via-purple-100/30 to-white rounded-full blur-3xl -mr-44 -mt-44 opacity-75"></div>
-              <div className="absolute bottom-0 left-0 w-[520px] h-[520px] bg-gradient-to-tr from-sky-100/40 via-indigo-50/35 to-white rounded-full blur-3xl -ml-24 -mb-24 opacity-70"></div>
-              <div className="absolute inset-y-8 right-8 hidden lg:block w-[390px] rounded-[2.5rem] bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/70 border border-indigo-100/60"></div>
-            </div>
-
-            <div className="relative z-10 w-full max-w-3xl flex flex-col items-start text-left">
-              <div className="inline-flex items-center gap-2 px-5 py-2 mb-5 text-sm font-semibold text-indigo-600 bg-white border border-indigo-100 rounded-full shadow-sm">
-                <Sparkles size={16} className="text-amber-400 fill-amber-400" />
+            <div className="relative z-10 w-full max-w-4xl flex flex-col items-start text-left">
+              <div className="inline-block px-3 py-1 mb-4 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full">
                 สำหรับติวเตอร์
               </div>
 
-              <h1 className="text-5xl md:text-6xl lg:text-[4.25rem] font-black text-gray-900 leading-[1.05] tracking-tight mb-4">
+              <h1 className="text-4xl md:text-5xl font-black text-gray-900 leading-tight mb-4">
                 ค้นหานักเรียน<br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">ที่ต้องการคุณ</span>
               </h1>
 
-              <p className="text-gray-500 text-lg md:text-xl max-w-2xl font-medium leading-relaxed mb-8">
+              <p className="text-gray-500 text-lg max-w-2xl font-medium mb-8">
                 เข้าถึงประกาศหาผู้สอนใหม่ๆ ที่ตรงกับวิชาและความถนัดของคุณ ระบบคัดกรองงานที่ใช่ให้คุณโดยอัตโนมัติ
               </p>
 
-              <div className="flex flex-wrap gap-3">
-                <div className="rounded-2xl border border-indigo-100 bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-400">Match</div>
-                  <div className="mt-1 text-sm font-semibold text-gray-700">Match with your teaching skills</div>
-                </div>
-                <div className="rounded-2xl border border-purple-100 bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-purple-400">Flow</div>
-                  <div className="mt-1 text-sm font-semibold text-gray-700">See new requests faster</div>
-                </div>
-              </div>
             </div>
 
-            <div className="relative z-10 hidden lg:flex flex-1 min-w-[320px] max-w-[460px] items-center justify-center self-stretch">
-              <div className="relative z-10 overflow-hidden rounded-[2.5rem] border-[8px] border-white shadow-2xl ring-1 ring-indigo-100/70">
-                <img
-                  src="/tutor_home_pic_hero.jpg"
-                  alt="Tutor home visual"
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  width="1400"
-                  height="858"
-                  className="h-[500px] w-[420px] object-cover"
-                />
-              </div>
-            </div>
+            {/* Soft Background Decor */}
+            <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-indigo-50 rounded-full blur-3xl -mr-20 -mt-20 opacity-60 pointer-events-none"></div>
           </div>
         </div>
 
