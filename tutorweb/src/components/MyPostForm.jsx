@@ -85,6 +85,7 @@ export default function MyPostForm({
 }) {
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState(() => createInitialStudentFormData(initialData));
+    const actorUserId = user?.user_id || meId || tutorId || 0;
 
     // ✅ State สำหรับจัดการ วัน/เวลา (แบบหลายรายการ)
     const [dateList, setDateList] = useState([]);
@@ -205,7 +206,7 @@ export default function MyPostForm({
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!user?.user_id) return alert("กรุณาเข้าสู่ระบบก่อนโพสต์");
+        if (!actorUserId) return alert("กรุณาเข้าสู่ระบบก่อนโพสต์");
         if (isAdmin) return alert("บัญชีแอดมินไม่สามารถสร้างหรือแก้ไขโพสต์ได้");
 
         // 🌟 ตรวจสอบว่าได้ใส่วันเวลาอย่างน้อย 1 วันหรือไม่
@@ -233,7 +234,7 @@ export default function MyPostForm({
                 if (teachingMode === "online" && platform === "Other" && !customPlatform.trim()) return alert("กรุณาระบุชื่อแพลตฟอร์ม");
 
                 const payload = {
-                    user_id: meId,
+                    user_id: actorUserId,
                     subject: formData.subject.trim(),
                     description: formData.description.trim(),
                     preferred_days: daysString, // 🌟 ส่งค่าวันใหม่
@@ -265,7 +266,7 @@ export default function MyPostForm({
                 if (!isTutor) throw new Error("เฉพาะติวเตอร์เท่านั้นที่โพสต์ฝั่งติวเตอร์ได้");
 
                 const payload = {
-                    tutor_id: tutorId,
+                    tutor_id: actorUserId,
                     subject: formData.subject.trim(),
                     description: formData.description.trim(),
                     target_student_level: formData.target_student_level.join(','),

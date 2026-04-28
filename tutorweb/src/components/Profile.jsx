@@ -21,6 +21,7 @@ const normalizePost = (p = {}) => ({
   subject: p.subject || "",
   content: p.content || p.description || p.details || "",
   createdAt: p.createdAt || p.created_at || p.created || new Date().toISOString(),
+  updatedAt: p.updatedAt || p.updated_at || p.updated || p.createdAt || p.created_at || null,
   meta: {
     preferred_days: p.meta?.preferred_days ?? p.preferred_days ?? "",
     preferred_time: p.meta?.preferred_time ?? p.preferred_time ?? "",
@@ -1175,6 +1176,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
                 isAdmin={false}
                 meId={currentUser?.user_id}
                 tutorId={null}
+                user={currentUser}
                 editMode={true}
                 editingPostId={editPost._id}
                 initialData={{

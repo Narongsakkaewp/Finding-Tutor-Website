@@ -57,6 +57,26 @@ const scheduleController = require('./src/controllers/scheduleController');
 const searchRoutes = require('./src/routes/searchRoutes');
 const favoriteRoutes = require('./src/routes/favoriteRoutes');
 const searchController = require('./src/controllers/searchController');
+const columnExistsCache = new Map();
+
+async function hasTableColumn(tableName, columnName) {
+  const safeTables = new Set(['student_posts', 'tutor_posts']);
+  if (!safeTables.has(tableName)) return false;
+
+  const cacheKey = `${tableName}.${columnName}`;
+  if (columnExistsCache.has(cacheKey)) return columnExistsCache.get(cacheKey);
+
+  try {
+    const [rows] = await pool.query(`SHOW COLUMNS FROM ${tableName} LIKE ?`, [columnName]);
+    const exists = Array.isArray(rows) && rows.length > 0;
+    columnExistsCache.set(cacheKey, exists);
+    return exists;
+  } catch (error) {
+    console.warn(`Column check failed for ${cacheKey}:`, error.message);
+    columnExistsCache.set(cacheKey, false);
+    return false;
+  }
+}
 // ----- Email Deps -----
 // Using native fetch for Brevo to avoid SDK CommonJS bugs
 const { initCron, checkAndSendNotifications } = require('./src/services/cronService');
@@ -765,6 +785,69 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
 });
 
 // ---------- /api/tutors (รายชื่อติวเตอร์) ----------
+app.get('/api/student_posts/:id', async (req, res) => {
+  try {
+    const postId = Number(req.params.id);
+    if (!Number.isFinite(postId)) {
+      return res.status(400).json({ message: 'Invalid id' });
+    }
+
+    const hasUpdatedAt = await hasTableColumn('student_posts', 'updated_at');
+
+    const [rows] = await pool.query(`
+      SELECT
+        sp.student_post_id, sp.student_id, sp.subject, sp.description,
+        sp.preferred_days, sp.preferred_time, sp.location, sp.group_size, sp.budget,
+        sp.grade_level, sp.contact_info,
+        COALESCE(sp.created_at, NOW()) AS created_at,
+        ${hasUpdatedAt ? 'COALESCE(sp.updated_at, sp.created_at, NOW()) AS updated_at,' : 'COALESCE(sp.created_at, NOW()) AS updated_at,'}
+        r.name, r.lastname, r.username,
+        spro.profile_picture_url
+      FROM student_posts sp
+      LEFT JOIN register r ON r.user_id = sp.student_id
+      LEFT JOIN student_profiles spro ON spro.user_id = sp.student_id
+      WHERE sp.student_post_id = ?
+      LIMIT 1
+    `, [postId]);
+
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    const r = rows[0];
+    const [[joinCount]] = await pool.query(
+      `SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status = 'approved'`,
+      [postId]
+    );
+
+    return res.json({
+      id: r.student_post_id,
+      owner_id: r.student_id,
+      subject: r.subject || '',
+      description: r.description || '',
+      preferred_days: r.preferred_days || '',
+      preferred_time: r.preferred_time || '',
+      location: r.location || '',
+      group_size: Number(r.group_size || 0),
+      budget: Number(r.budget || 0),
+      contact_info: r.contact_info || '',
+      grade_level: r.grade_level || 'ไม่ระบุ',
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      join_count: Number(joinCount.c || 0),
+      user: {
+        first_name: r.name || '',
+        last_name: r.lastname || '',
+        username: r.username || '',
+        profile_image: r.profile_picture_url || ''
+      }
+    });
+  } catch (error) {
+    console.error('GET /api/student_posts/:id error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 app.get('/api/tutors', async (req, res) => {
   try {
     const page = Math.max(Number(req.query.page) || 1, 1);
@@ -914,6 +997,7 @@ app.get('/api/tutors', async (req, res) => {
 // ---------- โพสต์ติวเตอร์ (ฟีด) ----------
 app.get('/api/tutor-posts', async (req, res) => {
   try {
+    const hasUpdatedAt = await hasTableColumn('tutor_posts', 'updated_at');
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const offset = (page - 1) * limit;
@@ -993,6 +1077,7 @@ app.get('/api/tutor-posts', async (req, res) => {
         tp.target_student_level,
         tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
+        ${hasUpdatedAt ? 'COALESCE(tp.updated_at, tp.created_at, NOW()) AS updated_at,' : 'COALESCE(tp.created_at, NOW()) AS updated_at,'}
         r.name, r.lastname, r.email, r.username, r.type,
         tpro.profile_picture_url, tpro.nickname, tpro.about_me, tpro.education, tpro.teaching_experience, tpro.phone,
         COALESCE(fvc.c,0) AS fav_count,
@@ -1086,6 +1171,7 @@ app.get('/api/tutor-posts', async (req, res) => {
           subject: r.subject,
           content: r.description,
           createdAt: r.created_at,
+          updatedAt: r.updated_at,
           group_size: Number(r.group_size || 0),
           authorId: {
             id: r.tutor_id,
@@ -1210,12 +1296,14 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
   try {
     const postId = Number(req.params.id);
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid id' });
+    const hasUpdatedAt = await hasTableColumn('tutor_posts', 'updated_at');
 
     const [rows] = await pool.query(`
       SELECT 
         tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
         tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
+        ${hasUpdatedAt ? 'COALESCE(tp.updated_at, tp.created_at, NOW()) AS updated_at,' : 'COALESCE(tp.created_at, NOW()) AS updated_at,'}
         r.name, r.lastname, r.username, tpro.profile_picture_url,
         (SELECT COUNT(*) FROM comments WHERE post_id = tp.tutor_post_id AND post_type = 'tutor') AS comment_count
       FROM tutor_posts tp
@@ -1249,6 +1337,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
       },
       user: { first_name: r.name || '', last_name: r.lastname || '', username: r.username, profile_image: r.profile_picture_url || '' },
       createdAt: r.created_at,
+      updatedAt: r.updated_at,
       join_count: Number(cnt.c || 0),
       comment_count: Number(r.comment_count || 0) // 🌟 เพิ่ม Count
     });
@@ -1349,6 +1438,7 @@ app.post('/api/register', async (req, res) => {
 // --------- Student Feed (แก้ไขให้รองรับ Search ยืดหยุ่น + เรียงคะแนน) ----------
 app.get('/api/student_posts', async (req, res) => {
   try {
+    const hasUpdatedAt = await hasTableColumn('student_posts', 'updated_at');
     const me = Number(req.query.me) || 0;
     const search = (req.query.search || '').trim();
 
@@ -1411,6 +1501,7 @@ app.get('/api/student_posts', async (req, res) => {
         sp.student_post_id, sp.student_id, sp.subject, sp.description,
         sp.preferred_days, TIME_FORMAT(sp.preferred_time, '%H:%i') AS preferred_time,
         sp.location, sp.group_size, sp.budget, sp.contact_info, sp.created_at,
+        ${hasUpdatedAt ? 'COALESCE(sp.updated_at, sp.created_at, NOW()) AS updated_at,' : 'COALESCE(sp.created_at, NOW()) AS updated_at,'}
         sp.grade_level, 
         r.name, r.lastname, r.email, r.username, r.type,
         spro.profile_picture_url, spro.phone,
@@ -1492,6 +1583,7 @@ app.get('/api/student_posts', async (req, res) => {
       contact_info: r.contact_info || '',
       grade_level: r.grade_level || 'ไม่ระบุ',
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+      updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : (r.created_at ? new Date(r.created_at).toISOString() : null),
       join_count: Number(r.join_count || 0),
       joined: !!r.joined,
       pending_me: !!r.pending_me,
@@ -3813,6 +3905,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
   try {
     const postId = Number(req.params.id);
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid id' });
+    const hasUpdatedAt = await hasTableColumn('tutor_posts', 'updated_at');
     const [rows] = await pool.query(
       `SELECT 
         tp.tutor_post_id,
@@ -3827,6 +3920,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
         tp.price,
         tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
+        ${hasUpdatedAt ? 'COALESCE(tp.updated_at, tp.created_at, NOW()) AS updated_at,' : 'COALESCE(tp.created_at, NOW()) AS updated_at,'}
         r.name,
         r.lastname,
         r.username,
@@ -3854,6 +3948,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
       description: post.description || "",
       group_size: Number(post.group_size || 0),
       createdAt: post.created_at,
+      updatedAt: post.updated_at,
       join_count: Number(post.join_count || 0),
       comment_count: Number(post.comment_count || 0),
       meta: {
@@ -4941,6 +5036,7 @@ app.put('/api/student_posts/:id', async (req, res) => {
   try {
     const postId = req.params.id;
     const b = req.body;
+    const hasUpdatedAt = await hasTableColumn('student_posts', 'updated_at');
 
     // 🔥 FIX: ดักจับชื่อตัวแปร
     const gradeLevel = b.grade_level || b.level || b.target_student_level;
@@ -4950,7 +5046,7 @@ app.put('/api/student_posts/:id', async (req, res) => {
     await pool.query(
       `UPDATE student_posts SET 
         subject=?, description=?, preferred_days=?, preferred_time=?, 
-        grade_level=?, location=?, group_size=?, budget=?, contact_info=?
+        grade_level=?, location=?, group_size=?, budget=?, contact_info=?${hasUpdatedAt ? ', updated_at=NOW()' : ''}
        WHERE student_post_id=?`,
       [
         b.subject,
@@ -4981,6 +5077,7 @@ app.put('/api/tutor-posts/:id', async (req, res) => {
 
     // 🔥 FIX: ดักจับชื่อตัวแปรให้ครบ (เผื่อ Frontend ส่งมาไม่ตรง)
     // รับทั้ง target_student_level, grade_level, level
+    const hasUpdatedAt = await hasTableColumn('tutor_posts', 'updated_at');
     const targetLevel = b.target_student_level || b.grade_level || b.level;
 
     // รับทั้ง group_size, capacity
@@ -4993,7 +5090,7 @@ app.put('/api/tutor-posts/:id', async (req, res) => {
     await pool.query(
       `UPDATE tutor_posts SET 
         subject=?, description=?, teaching_days=?, teaching_time=?, 
-        target_student_level=?, location=?, price=?, group_size=?, contact_info=?
+        target_student_level=?, location=?, price=?, group_size=?, contact_info=?${hasUpdatedAt ? ', updated_at=NOW()' : ''}
        WHERE tutor_post_id=?`,
       [
         b.subject,

@@ -90,6 +90,7 @@ const normalizePost = (p = {}) => ({
   id: p.id ?? p._id ?? p.student_post_id,
   owner_id: p.owner_id ?? p.student_id ?? p.user_id,
   createdAt: p.createdAt || p.created_at || p.created || new Date().toISOString(),
+  updatedAt: p.updatedAt || p.updated_at || p.updated || p.createdAt || p.created_at || p.created || null,
   subject: p.subject || p.title || "",
   description: p.description || p.body || p.details || "",
   location: p.location || p.place || p.location_name || "",
@@ -121,6 +122,7 @@ function mapTutorToUnified(t = {}) {
     id: t.id ?? t.tutor_post_id,
     owner_id: t.owner_id ?? t.tutor_id ?? t.user_id,
     createdAt: t.createdAt ?? t.created_at ?? new Date().toISOString(),
+    updatedAt: t.updatedAt ?? t.updated_at ?? t.createdAt ?? t.created_at ?? null,
     subject: t.subject || "",
     description: t.description || t.content || "",
     // tutor: data อยู่ใน meta เป็นหลัก (แต่กันไว้เผื่อบาง endpoint ส่ง top-level)
@@ -139,6 +141,27 @@ function mapTutorToUnified(t = {}) {
       profile_image: t.profile_picture_url || t.profile_image || (process.env.PUBLIC_URL + "/blank_avatar.jpg"),
     },
   };
+}
+
+function formatDisplayDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("th-TH", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function isPostEdited(createdAt, updatedAt) {
+  if (!createdAt || !updatedAt) return false;
+  const created = new Date(createdAt);
+  const updated = new Date(updatedAt);
+  if (Number.isNaN(created.getTime()) || Number.isNaN(updated.getTime())) return false;
+  return Math.abs(updated.getTime() - created.getTime()) > 1000;
 }
 
 function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, postType = null, onViewProfile }) {
@@ -176,7 +199,6 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
     if (found) {
       setPost(found);
       setLoading(false);
-      return;
     }
 
     (async () => {
@@ -257,6 +279,8 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
     return post?.user?.profile_image || post?.authorId?.avatarUrl || (process.env.PUBLIC_URL + "/blank_avatar.jpg");
   }, [post]);
 
+  const edited = useMemo(() => isPostEdited(post?.createdAt, post?.updatedAt), [post?.createdAt, post?.updatedAt]);
+
   // ✅ ใช้ค่าที่ "รวมรูปแบบแล้ว" ชุดเดียว (กันแสดงไม่ครบ)
   const locationText = post?.location || post?.meta?.location || "-";
   const dayText = post?.preferred_days || post?.meta?.teaching_days || "-";
@@ -314,17 +338,31 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
         <div className="w-full bg-white border border-gray-200 rounded-2xl p-6 md:p-8 shadow-sm">
           {/* ข้อมูล Header โพสต์ */}
           <div className="flex items-center gap-4 mb-5">
-            <ProfileImage
-              src={ownerAvatar}
-              alt="avatar"
-              className="w-14 h-14 rounded-full object-cover border border-gray-100 shadow-sm"
-            />
-            <div>
-              <div className="text-lg font-bold text-gray-900">{ownerName}</div>
-              <div className="text-sm text-gray-500">
-                {new Date(post.createdAt).toLocaleString()}
+            <button
+              type="button"
+              onClick={() => post?.owner_id ? onViewProfile?.(post.owner_id) : null}
+              className="flex items-center gap-4 text-left group"
+              disabled={!post?.owner_id || !onViewProfile}
+            >
+              <ProfileImage
+                src={ownerAvatar}
+                alt="avatar"
+                className="w-14 h-14 rounded-full object-cover border border-gray-100 shadow-sm"
+              />
+              <div>
+                <div className="text-lg font-bold text-gray-900 group-enabled:hover:text-blue-600 transition-colors">
+                  {ownerName}
+                </div>
+                <div className="text-sm text-gray-500">
+                  {formatDisplayDateTime(post.createdAt)}
+                </div>
+                {edited && (
+                  <div className="text-xs text-amber-700 mt-1">
+                    แก้ไขล่าสุดเมื่อ {formatDisplayDateTime(post.updatedAt)}
+                  </div>
+                )}
               </div>
-            </div>
+            </button>
           </div>
 
           <h1 className="text-2xl md:text-3xl font-black text-gray-900 mb-3">{post.subject}</h1>

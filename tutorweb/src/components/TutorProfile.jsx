@@ -5,6 +5,7 @@ import 'react-calendar/dist/Calendar.css';
 import { Edit, Star, MapPin, Phone, Trash2, EyeOff, Mail, GraduationCap, AppWindow, X, Archive, MoreVertical, Eye, Save, Flag, History, BookOpen, Clock, Calendar, Briefcase, Award, ChevronDown, ChevronUp } from "lucide-react";
 import LongdoLocationPicker from './LongdoLocationPicker';
 import ReportModal from "./ReportModal";
+import TutorPostForm from "./TutorPostForm";
 import { API_BASE } from '../config';
 import { useTabRestoration, useScrollRestoration } from '../hooks/useRestoration';
 
@@ -13,12 +14,16 @@ const normalizeTutorPost = (p = {}) => ({
     subject: p.subject || "ไม่มีชื่อวิชา",
     content: p.content || p.description || "",
     createdAt: p.createdAt || p.created_at || new Date().toISOString(),
-    meta: p.meta || {
-        teaching_days: p.teaching_days || "",
-        teaching_time: p.teaching_time || "",
-        location: p.location || "",
-        price: p.price || 0,
-        contact_info: p.contact_info || ""
+    updatedAt: p.updatedAt || p.updated_at || p.updated || p.createdAt || p.created_at || null,
+    meta: {
+        ...(p.meta || {}),
+        teaching_days: p.meta?.teaching_days || p.teaching_days || "",
+        teaching_time: p.meta?.teaching_time || p.teaching_time || "",
+        location: p.meta?.location || p.location || "",
+        price: p.meta?.price || p.price || 0,
+        contact_info: p.meta?.contact_info || p.contact_info || "",
+        group_size: p.meta?.group_size || p.group_size || "",
+        target_student_level: p.meta?.target_student_level || p.target_student_level || ""
     }
 });
 
@@ -1167,15 +1172,39 @@ function TutorProfile({ setCurrentPage, onEditProfile, user, onOpenPost, onViewP
             {editPost && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEditPost(null)} />
-                    <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
-                        <div className="flex justify-between items-center mb-6">
+                    <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
                             <h3 className="text-xl font-bold text-gray-900">แก้ไขโพสต์รับสอน</h3>
                             <button onClick={() => setEditPost(null)} className="p-1 rounded-full hover:bg-gray-100">
                                 <X size={20} className="text-gray-500" />
                             </button>
                         </div>
 
-                        <form onSubmit={handleUpdatePost} className="space-y-4">
+                        <div className="p-6 max-h-[calc(90vh-73px)] overflow-y-auto">
+                            <TutorPostForm
+                                tutorId={currentUser?.user_id || user?.user_id}
+                                initialData={{
+                                    id: editPost._id,
+                                    subject: editPost.subject || "",
+                                    description: editPost.content || "",
+                                    teaching_days: editPost.meta?.teaching_days || "",
+                                    teaching_time: editPost.meta?.teaching_time || "",
+                                    location: editPost.meta?.location || "",
+                                    price: editPost.meta?.price || "",
+                                    group_size: editPost.meta?.group_size || "",
+                                    target_student_level: editPost.meta?.target_student_level || "",
+                                    contact_info: editPost.meta?.contact_info || profile?.phone || profile?.email || "",
+                                }}
+                                onClose={() => setEditPost(null)}
+                                onSuccess={async () => {
+                                    const res = await fetch(`${API_BASE}/api/tutor-posts?tutorId=${currentUser?.user_id || user?.user_id}`);
+                                    const postsData = await res.json();
+                                    setTutorPosts(Array.isArray(postsData.items) ? postsData.items.map(normalizeTutorPost) : []);
+                                    setEditPost(null);
+                                }}
+                            />
+                        </div>
+                        {false && <form onSubmit={handleUpdatePost} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">วิชาที่สอน</label>
                                 <input type="text" name="subject" value={editForm.subject || ""} onChange={handleEditChange} required className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" />
@@ -1243,7 +1272,7 @@ function TutorProfile({ setCurrentPage, onEditProfile, user, onOpenPost, onViewP
                                     {updating ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
                                 </button>
                             </div>
-                        </form>
+                        </form>}
                     </div>
                 </div>
             )}

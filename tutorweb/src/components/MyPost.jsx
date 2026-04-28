@@ -36,6 +36,7 @@ const normalizeStudentPost = (p = {}) => ({
   id: p.id ?? p._id ?? p.student_post_id,
   owner_id: p.owner_id ?? p.student_id ?? p.user_id,
   createdAt: p.createdAt || p.created_at || p.created || new Date().toISOString(),
+  updatedAt: p.updatedAt || p.updated_at || p.updated || p.createdAt || p.created_at || null,
   subject: p.subject || p.title || "",
   description: p.description || p.content || "",
   grade_level: p.grade_level || (p.meta && p.meta.grade_level) || "ไม่ระบุ",
@@ -83,6 +84,7 @@ const normalizeTutorPost = (p = {}) => {
     id: p.id ?? p._id ?? p.tutor_post_id,
     owner_id: p.tutor_id ?? p.user_id ?? p.owner_id ?? p.authorId?.id,
     createdAt: p.createdAt || p.created_at || p.created || new Date().toISOString(),
+    updatedAt: p.updatedAt || p.updated_at || p.updated || p.createdAt || p.created_at || null,
     subject: p.subject || p.title || "",
     description: p.content || p.description || "",
     meta: {
