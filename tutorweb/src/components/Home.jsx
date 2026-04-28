@@ -1278,9 +1278,9 @@ function HomeTutor({ setCurrentPage, user }) {
 
         {/* --- Tutor Hero: Light/Standard Theme "Find Students" --- */}
         <div className="pt-8 pb-10">
-          <div className="relative bg-white rounded-[2rem] shadow-xl p-8 md:p-12 overflow-hidden min-h-[300px] flex items-center border border-gray-100">
+          <div className="relative bg-white rounded-[2rem] shadow-xl p-8 md:p-12 overflow-hidden min-h-[300px] flex items-center justify-between gap-8 border border-gray-100">
 
-            <div className="relative z-10 w-full max-w-4xl flex flex-col items-start text-left">
+            <div className="relative z-10 w-full max-w-3xl flex flex-col items-start text-left">
               <div className="inline-block px-3 py-1 mb-4 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-full">
                 สำหรับติวเตอร์
               </div>
@@ -1294,6 +1294,21 @@ function HomeTutor({ setCurrentPage, user }) {
                 เข้าถึงประกาศหาผู้สอนใหม่ๆ ที่ตรงกับวิชาและความถนัดของคุณ ระบบคัดกรองงานที่ใช่ให้คุณโดยอัตโนมัติ
               </p>
 
+            </div>
+
+            <div className="relative z-10 hidden lg:flex flex-1 min-w-[320px] max-w-[430px] items-center justify-center self-stretch">
+              <div className="w-full overflow-hidden rounded-[1.75rem] border border-indigo-100/80 bg-white shadow-[0_18px_40px_rgba(79,70,229,0.12)]">
+                <img
+                  src="/tutor_home_pic_hero.jpg"
+                  alt="Tutor hero visual"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  width="1400"
+                  height="858"
+                  className="h-[280px] w-full object-cover"
+                />
+              </div>
             </div>
 
             {/* Soft Background Decor */}
