@@ -1301,7 +1301,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
     const [rows] = await pool.query(`
       SELECT 
         tp.tutor_post_id, tp.tutor_id, tp.subject, tp.description,
-        tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
+        tp.target_student_level, tp.teaching_days, tp.teaching_time, tp.location, tp.group_size, tp.price, tp.contact_info,
         COALESCE(tp.created_at, NOW()) AS created_at,
         ${hasUpdatedAt ? 'COALESCE(tp.updated_at, tp.created_at, NOW()) AS updated_at,' : 'COALESCE(tp.created_at, NOW()) AS updated_at,'}
         r.name, r.lastname, r.username, tpro.profile_picture_url,
@@ -1328,7 +1328,9 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
       subject: r.subject,
       description: r.description,
       group_size: Number(r.group_size || 0),
+      target_student_level: r.target_student_level || '',
       meta: {
+        target_student_level: r.target_student_level || '',
         teaching_days: r.teaching_days,
         teaching_time: r.teaching_time,
         location: r.location,

@@ -329,6 +329,7 @@ function App() {
           <UserProfilePage
             userId={viewingUserId}
             onBack={() => setCurrentPage(profileBackPage || 'home')}
+            onOpenPost={(id, type) => openPostDetails(id, 'user_profile', type)}
           />
         );
       case 'admin_dashboard': return <AdminDashboard />;

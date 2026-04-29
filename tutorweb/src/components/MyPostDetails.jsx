@@ -71,7 +71,7 @@ const formatScheduleTime = (value) => {
   const match = text.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return text || "-";
   const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]), 0);
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return date.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
 const DateTimeDisplay = ({ daysStr, timesStr }) => {
@@ -163,7 +163,15 @@ function mapTutorToUnified(t = {}) {
 function formatDisplayDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString();
+  return date.toLocaleString("th-TH", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 }
 
 function isPostEdited(createdAt, updatedAt) {

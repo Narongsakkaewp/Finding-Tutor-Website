@@ -35,7 +35,7 @@ const formatScheduleTime = (value) => {
   const match = text.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return text;
   const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]), 0);
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return date.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
 const formatScheduleTimesList = (value) =>

@@ -44,7 +44,7 @@ const formatScheduleTime = (value) => {
     const match = text.match(/^(\d{1,2}):(\d{2})$/);
     if (!match) return text || "ไม่ระบุเวลา";
     const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]), 0);
-    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return date.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
 const postGradeLevelOptions = [
@@ -854,7 +854,7 @@ function TutorProfile({ setCurrentPage, onEditProfile, user, onOpenPost, onViewP
                                                                     <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-indigo-100 text-indigo-700">ติวเตอร์</span>
                                                                     <span className="text-xs text-gray-400">•</span>
                                                                     <span className="text-xs text-gray-500 font-medium">
-                                                                        {new Date(post.createdAt).toLocaleString()}
+                                                                        {new Date(post.createdAt).toLocaleString("th-TH", { hour12: false })}
                                                                     </span>
                                                                 </div>
                                                             </div>
@@ -972,7 +972,7 @@ function TutorProfile({ setCurrentPage, onEditProfile, user, onOpenPost, onViewP
                                                                         <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-indigo-100 text-indigo-700">{item.typeLabel}</span>
                                                                         <span className="text-xs text-gray-400">•</span>
                                                                         <span className="text-xs text-gray-500 font-medium">
-                                                                            {item.created_at ? new Date(item.created_at).toLocaleString() : evtDate}
+                                                                            {item.created_at ? new Date(item.created_at).toLocaleString("th-TH", { hour12: false }) : evtDate}
                                                                         </span>
                                                                     </div>
                                                                 </div>
