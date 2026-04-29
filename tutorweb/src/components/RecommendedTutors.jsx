@@ -159,7 +159,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
   const hasExploreItems = Array.isArray(recs.explore_items) && recs.explore_items.length > 0;
   const hasReasonTerms = Array.isArray(recs.reason_terms) && recs.reason_terms.length > 0;
   const basedOnLabel = hasReasonTerms
-    ? `อ้างอิงจากความสนใจล่าสุด: `: "แนะนำจากโพสต์ใหม่และโพสต์ยอดนิยมในระบบ";
+    ? `อ้างอิงจากความสนใจของคุณ `: "แนะนำจากโพสต์ใหม่และโพสต์ยอดนิยมในระบบ";
 
   if (!hasPrimaryItems && !hasExploreItems) {
     return (
