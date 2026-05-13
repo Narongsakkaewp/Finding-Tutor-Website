@@ -6,10 +6,19 @@ console.log("FavoriteController loaded/updated at " + new Date().toISOString());
 async function insertInteraction(conn, userId, actionType, relatedId, subjectKeyword) {
     const normalizedKeyword = String(subjectKeyword || '').trim();
     if (!userId || !normalizedKeyword) return;
-    await conn.query(
-        'INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at) VALUES (?, ?, ?, ?, NOW())',
-        [userId, actionType, relatedId, normalizedKeyword]
-    );
+    try {
+        await conn.query(
+            'INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at) VALUES (?, ?, ?, ?, NOW())',
+            [userId, actionType, relatedId, normalizedKeyword]
+        );
+    } catch (err) {
+        const fallbackActionType = actionType === 'favorite' ? 'favorite' : 'open_post';
+        if (fallbackActionType === actionType) throw err;
+        await conn.query(
+            'INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at) VALUES (?, ?, ?, ?, NOW())',
+            [userId, fallbackActionType, relatedId, normalizedKeyword]
+        );
+    }
 }
 
 // 1. กดถูกใจ / ยกเลิกถูกใจ (Toggle Like)

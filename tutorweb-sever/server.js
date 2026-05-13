@@ -4819,7 +4819,24 @@ async function insertUserInteractionSafe(userId, actionType, relatedId, subjectK
       [normalizedUserId, normalizedActionType, relatedId, normalizedKeyword]
     );
   } catch (err) {
-    console.warn('insertUserInteractionSafe failed:', err.message);
+    const fallbackActionType = normalizedActionType === 'favorite'
+      ? 'favorite'
+      : normalizedActionType.startsWith('search_')
+        ? 'search_open_post'
+        : 'open_post';
+    if (fallbackActionType === normalizedActionType) {
+      console.warn('insertUserInteractionSafe failed:', err.message);
+      return;
+    }
+    try {
+      await pool.query(
+        `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at)
+         VALUES (?, ?, ?, ?, NOW())`,
+        [normalizedUserId, fallbackActionType, relatedId, normalizedKeyword]
+      );
+    } catch (fallbackErr) {
+      console.warn('insertUserInteractionSafe fallback failed:', fallbackErr.message);
+    }
   }
 }
 
@@ -4839,6 +4856,26 @@ app.post('/api/interactions', async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) {
+    const fallbackActionType = normalizedActionType === 'favorite'
+      ? 'favorite'
+      : normalizedActionType.startsWith('search_')
+        ? 'search_open_post'
+        : 'open_post';
+
+    if (fallbackActionType !== normalizedActionType) {
+      try {
+        await pool.query(
+          `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at) 
+           VALUES (?, ?, ?, ?, NOW())`,
+          [user_id, fallbackActionType, related_id, normalizedKeyword]
+        );
+        return res.json({ success: true, fallback_action_type: fallbackActionType });
+      } catch (fallbackErr) {
+        console.error('POST /api/interactions fallback error:', fallbackErr);
+        return res.status(500).json({ success: false, message: fallbackErr.message });
+      }
+    }
+
     console.error('POST /api/interactions error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
