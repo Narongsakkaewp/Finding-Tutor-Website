@@ -4814,8 +4814,8 @@ async function insertUserInteractionSafe(userId, actionType, relatedId, subjectK
 
   try {
     await pool.query(
-      `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at)
+       VALUES (?, ?, ?, ?, NOW())`,
       [normalizedUserId, normalizedActionType, relatedId, normalizedKeyword]
     );
   } catch (err) {
@@ -4833,13 +4833,14 @@ app.post('/api/interactions', async (req, res) => {
 
   try {
     await pool.query(
-      `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword) 
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at) 
+       VALUES (?, ?, ?, ?, NOW())`,
       [user_id, normalizedActionType, related_id, normalizedKeyword]
     );
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false });
+    console.error('POST /api/interactions error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

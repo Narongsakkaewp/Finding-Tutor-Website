@@ -7,7 +7,7 @@ async function insertInteraction(conn, userId, actionType, relatedId, subjectKey
     const normalizedKeyword = String(subjectKeyword || '').trim();
     if (!userId || !normalizedKeyword) return;
     await conn.query(
-        'INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword) VALUES (?, ?, ?, ?)',
+        'INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at) VALUES (?, ?, ?, ?, NOW())',
         [userId, actionType, relatedId, normalizedKeyword]
     );
 }
