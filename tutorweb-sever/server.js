@@ -4881,6 +4881,23 @@ app.post('/api/interactions', async (req, res) => {
   }
 });
 
+app.get('/api/debug/db-check', async (req, res) => {
+  try {
+    const [dbRows] = await pool.query('SELECT DATABASE() AS db');
+    const [tableRows] = await pool.query('SHOW CREATE TABLE user_interactions');
+
+    res.json({
+      database: dbRows[0]?.db || null,
+      schema: tableRows[0]?.['Create Table'] || null,
+      dbHost: process.env.DB_HOST || null,
+      dbName: process.env.DB_NAME || null,
+      dbPort: process.env.DB_PORT || null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---------- Health ----------
 app.get('/health', (req, res) => res.json({ ok: true, time: new Date() }));
 
