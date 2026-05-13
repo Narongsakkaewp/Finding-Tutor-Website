@@ -422,6 +422,76 @@ async function processNotifications(conn, dayNames, targetDate, notiType, messag
             }
         }
     }
+
+    // --- D. Self-owned Student Posts (no join/offer required) ---
+    const [selfStudentPosts] = await conn.query(`
+    SELECT sp.student_post_id, sp.subject, sp.preferred_days, sp.preferred_time, sp.location,
+           sp.student_id AS owner_id,
+           ro.email AS owner_email,
+           ro.name AS owner_name, ro.lastname AS owner_lastname
+    FROM student_posts sp
+    JOIN register ro ON ro.user_id = sp.student_id
+    WHERE sp.student_id IS NOT NULL
+      AND sp.is_active = 1
+  `);
+
+    for (const post of selfStudentPosts) {
+        if (!isDayMatch(post.preferred_days, dayNames, targetDate)) continue;
+
+        const msg = `${messagePrefix}: ${post.subject}`;
+        const typeVar = notiType.replace('schedule', 'schedule_student');
+        const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.student_post_id, null, 'student_post');
+
+        if (isReminder && sentOwner) {
+            sendClassReminderEmail(post.owner_email, {
+                courseName: post.subject,
+                time: formatTimeSummary(post.preferred_time),
+                date: formatThaiDateRange(post.preferred_days, dateStr),
+                location: post.location || 'ไม่ระบุ',
+                role: 'student',
+                roleLabel: 'นักเรียน',
+                primaryLabel: 'ชื่อผู้สอน',
+                primaryName: 'ยังไม่มีติวเตอร์ตอบรับ',
+                participantLabel: 'สถานะ',
+                participantNames: 'โพสต์ของคุณยังไม่มีผู้เข้าร่วมเพิ่มเติม'
+            });
+        }
+    }
+
+    // --- E. Self-owned Tutor Posts (no join required) ---
+    const [selfTutorPosts] = await conn.query(`
+    SELECT tp.tutor_post_id, tp.subject, tp.teaching_days, tp.teaching_time, tp.location,
+           tp.tutor_id AS owner_id,
+           ro.email AS owner_email,
+           ro.name AS owner_name, ro.lastname AS owner_lastname
+    FROM tutor_posts tp
+    JOIN register ro ON ro.user_id = tp.tutor_id
+    WHERE tp.tutor_id IS NOT NULL
+      AND tp.is_active = 1
+  `);
+
+    for (const post of selfTutorPosts) {
+        if (!isDayMatch(post.teaching_days, dayNames, targetDate)) continue;
+
+        const msg = `${messagePrefix}: ${post.subject}`;
+        const typeVar = notiType.replace('schedule', 'schedule_tutor');
+        const sentOwner = await sendNotificationIfNotExists(conn, post.owner_id, typeVar, msg, post.tutor_post_id, null, 'tutor_post');
+
+        if (isReminder && sentOwner) {
+            sendClassReminderEmail(post.owner_email, {
+                courseName: post.subject,
+                time: formatTimeSummary(post.teaching_time),
+                date: formatThaiDateRange(post.teaching_days, dateStr),
+                location: post.location || 'ไม่ระบุ',
+                role: 'tutor',
+                roleLabel: 'ติวเตอร์',
+                primaryLabel: 'ชื่อผู้สอน',
+                primaryName: buildFullName(post.owner_name, post.owner_lastname) || 'ไม่ระบุ',
+                participantLabel: 'สถานะ',
+                participantNames: 'โพสต์ของคุณยังไม่มีผู้เรียนเข้าร่วม'
+            });
+        }
+    }
 }
 
 async function processCalendarEvents(conn, targetDate, notiType, messagePrefix) {

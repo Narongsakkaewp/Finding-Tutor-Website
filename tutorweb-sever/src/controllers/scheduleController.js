@@ -98,12 +98,7 @@ async function getAlertsForDate(conn, userId, targetDate, type, notificationDate
               ON j.student_post_id = sp.student_post_id
              AND j.status = 'approved'
              AND j.user_id = ?
-            WHERE (sp.student_id = ? AND EXISTS (
-                SELECT 1
-                FROM student_post_joins
-                WHERE student_post_id = sp.student_post_id
-                  AND status = 'approved'
-            ))
+            WHERE sp.student_id = ?
                OR (j.user_id IS NOT NULL)
         `, [userId, userId]);
 

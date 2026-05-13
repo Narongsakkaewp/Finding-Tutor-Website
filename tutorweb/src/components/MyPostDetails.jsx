@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { API_BASE } from '../config';
 import CommentSection from './CommentSection';
 import { GraduationCap, DollarSign, MapPin, Calendar, Mail, Clock } from "lucide-react";
-import { logUserInteraction } from '../utils/interactions';
 
 
 const ProfileImage = ({ src, alt, className }) => {
@@ -195,16 +194,6 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [postId, postType]);
 
-  useEffect(() => {
-    if (!me || !post?.id) return;
-    logUserInteraction({
-      userId: me,
-      actionType: 'open_post',
-      relatedId: post.id,
-      subjectKeyword: post.subject || '',
-    });
-  }, [me, post?.id, post?.subject]);
-
   // โหลดโพสต์ (พยายามใช้ cache ก่อน)
   useEffect(() => {
     const found = postsCache.find((p) => {
@@ -227,7 +216,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
         // ✅ Case 1: Tutor Post
         if (isTutorType) {
           try {
-            const rt = await fetch(`${API_BASE}/api/tutor-posts/${postId}`);
+            const rt = await fetch(`${API_BASE}/api/tutor-posts/${postId}?user_id=${me || 0}`);
             if (rt.ok) {
               const t = await rt.json();
               single = mapTutorToUnified(t);
@@ -241,7 +230,7 @@ function MyPostDetails({ postId, onBack, me, postsCache = [], setPostsCache, pos
         else {
           try {
             // Try direct fetch first (New API)
-            const rs = await fetch(`${API_BASE}/api/student_posts/${postId}`);
+            const rs = await fetch(`${API_BASE}/api/student_posts/${postId}?user_id=${me || 0}`);
             if (rs.ok) {
               const s = await rs.json();
               single = normalizePost(s);

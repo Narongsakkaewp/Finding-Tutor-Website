@@ -788,6 +788,7 @@ app.get('/api/subjects/:subject/posts', async (req, res) => {
 app.get('/api/student_posts/:id', async (req, res) => {
   try {
     const postId = Number(req.params.id);
+    const viewerId = Number(req.query.user_id || 0);
     if (!Number.isFinite(postId)) {
       return res.status(400).json({ message: 'Invalid id' });
     }
@@ -815,6 +816,7 @@ app.get('/api/student_posts/:id', async (req, res) => {
     }
 
     const r = rows[0];
+    await insertUserInteractionSafe(viewerId, 'open_post', postId, r.subject || '');
     const [[joinCount]] = await pool.query(
       `SELECT COUNT(*) AS c FROM student_post_joins WHERE student_post_id = ? AND status = 'approved'`,
       [postId]
@@ -1295,6 +1297,7 @@ app.get('/api/tutors/:tutorId/posts', async (req, res) => {
 app.get('/api/tutor-posts/:id', async (req, res) => {
   try {
     const postId = Number(req.params.id);
+    const viewerId = Number(req.query.user_id || 0);
     if (!Number.isFinite(postId)) return res.status(400).json({ message: 'invalid id' });
     const hasUpdatedAt = await hasTableColumn('tutor_posts', 'updated_at');
 
@@ -1316,6 +1319,7 @@ app.get('/api/tutor-posts/:id', async (req, res) => {
     if (!rows.length) return res.status(404).json({ message: 'not found' });
 
     const r = rows[0];
+    await insertUserInteractionSafe(viewerId, 'open_post', postId, r.subject || '');
 
     const [[cnt]] = await pool.query(
       'SELECT COUNT(*) AS c FROM tutor_post_joins WHERE tutor_post_id = ? AND status = "approved"',
@@ -4802,6 +4806,23 @@ async function getLatestPostsFallback(req, res, userId) {
 }
 
 // API สำหรับเก็บประวัติการคลิกดู
+async function insertUserInteractionSafe(userId, actionType, relatedId, subjectKeyword) {
+  const normalizedUserId = Number(userId || 0);
+  const normalizedKeyword = String(subjectKeyword || '').trim();
+  const normalizedActionType = String(actionType || '').trim() || 'open_post';
+  if (!normalizedUserId || !normalizedKeyword) return;
+
+  try {
+    await pool.query(
+      `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword)
+       VALUES (?, ?, ?, ?)`,
+      [normalizedUserId, normalizedActionType, relatedId, normalizedKeyword]
+    );
+  } catch (err) {
+    console.warn('insertUserInteractionSafe failed:', err.message);
+  }
+}
+
 app.post('/api/interactions', async (req, res) => {
   const { user_id, action_type, related_id, subject_keyword } = req.body;
   if (!user_id || !subject_keyword) return res.json({ success: false });

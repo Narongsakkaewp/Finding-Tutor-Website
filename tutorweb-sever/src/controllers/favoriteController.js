@@ -3,6 +3,15 @@ const pool = require('../../db'); // ✅ Path นี้ถูกแล้ว ถ
 const { getMixedFeedRecommendations } = require('../utils/discoveryEngine');
 console.log("FavoriteController loaded/updated at " + new Date().toISOString());
 
+async function insertInteraction(conn, userId, actionType, relatedId, subjectKeyword) {
+    const normalizedKeyword = String(subjectKeyword || '').trim();
+    if (!userId || !normalizedKeyword) return;
+    await conn.query(
+        'INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword) VALUES (?, ?, ?, ?)',
+        [userId, actionType, relatedId, normalizedKeyword]
+    );
+}
+
 // 1. กดถูกใจ / ยกเลิกถูกใจ (Toggle Like)
 exports.toggleLike = async (req, res) => {
     const { user_id, post_id, post_type } = req.body;
@@ -44,6 +53,16 @@ exports.toggleLike = async (req, res) => {
             'SELECT COUNT(*) AS c FROM posts_favorites WHERE post_type = ? AND post_id = ?',
             [post_type, post_id]
         );
+        if (action === 'liked') {
+            const [subjectRows] = await conn.query(
+                post_type === 'student'
+                    ? 'SELECT subject FROM student_posts WHERE student_post_id = ? LIMIT 1'
+                    : 'SELECT subject FROM tutor_posts WHERE tutor_post_id = ? LIMIT 1',
+                [post_id]
+            );
+            await insertInteraction(conn, user_id, 'favorite', post_id, subjectRows[0]?.subject || '');
+        }
+
         const fav_count = Number(cntRows[0]?.c || 0);
 
         // 3. ⚠️ สำคัญ: อัปเดตลงตารางโพสต์ (เพื่อให้ Query Feed เร็วขึ้น)

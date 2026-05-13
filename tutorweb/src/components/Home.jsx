@@ -702,11 +702,6 @@ function HomeStudent() {
         setLoadErr("");
         setLoading(true);
         const searchParam = query ? `&search=${encodeURIComponent(query)}` : "";
-
-        // Pass filters to Tutors Tab as well? 
-        // The /api/tutors endpoint in server.js doesn't support advanced filters yet (only basic search).
-        // Focusing on PostList (Courses) for now as prioritized.
-
         const res = await fetch(`${API_BASE}/api/tutors?page=1&limit=100${searchParam}&user_id=${userId || 0}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -818,7 +813,6 @@ function HomeStudent() {
               <SectionHeader title="วิชายอดฮิต" subtitle="อัปเดตตามความนิยมจริงแบบเรียลไทม์" icon={Sparkles} />
               <TrendingSubjectsList onOpen={(item) => handleSearch(item.name || item.id)} />
             </section> */}
-
 
             <section className="mt-12">
               <SectionHeader

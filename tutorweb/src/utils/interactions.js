@@ -17,9 +17,10 @@ export async function logUserInteraction({
   if (!userId || !normalizedSubjectKeyword) return;
 
   try {
-    await fetch(`${API_BASE}/api/interactions`, {
+    const res = await fetch(`${API_BASE}/api/interactions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
       body: JSON.stringify({
         user_id: userId,
         action_type: normalizedActionType,
@@ -27,6 +28,10 @@ export async function logUserInteraction({
         subject_keyword: normalizedSubjectKeyword,
       }),
     });
+    if (!res.ok) {
+      console.warn('Interaction log request failed:', normalizedActionType, normalizedSubjectKeyword);
+      return;
+    }
     notifyRecommendationRefresh();
   } catch (err) {
     console.error('Interaction log failed', err);
