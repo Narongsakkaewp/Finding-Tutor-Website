@@ -4810,13 +4810,22 @@ async function insertUserInteractionSafe(userId, actionType, relatedId, subjectK
   const normalizedUserId = Number(userId || 0);
   const normalizedKeyword = String(subjectKeyword || '').trim();
   const normalizedActionType = String(actionType || '').trim() || 'open_post';
+  const normalizedRelatedId = (() => {
+    if (relatedId == null || relatedId === '') return 0;
+    if (typeof relatedId === 'number' && Number.isFinite(relatedId)) return relatedId;
+    const text = String(relatedId).trim();
+    const direct = Number(text);
+    if (Number.isFinite(direct)) return direct;
+    const match = text.match(/(\d+)(?!.*\d)/);
+    return match ? Number(match[1]) : 0;
+  })();
   if (!normalizedUserId || !normalizedKeyword) return;
 
   try {
     await pool.query(
       `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at)
        VALUES (?, ?, ?, ?, NOW())`,
-      [normalizedUserId, normalizedActionType, relatedId, normalizedKeyword]
+      [normalizedUserId, normalizedActionType, normalizedRelatedId, normalizedKeyword]
     );
   } catch (err) {
     const fallbackActionType = normalizedActionType === 'favorite'
@@ -4828,15 +4837,15 @@ async function insertUserInteractionSafe(userId, actionType, relatedId, subjectK
       console.warn('insertUserInteractionSafe failed:', err.message);
       return;
     }
-    try {
-      await pool.query(
-        `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at)
-         VALUES (?, ?, ?, ?, NOW())`,
-        [normalizedUserId, fallbackActionType, relatedId, normalizedKeyword]
-      );
-    } catch (fallbackErr) {
-      console.warn('insertUserInteractionSafe fallback failed:', fallbackErr.message);
-    }
+      try {
+        await pool.query(
+          `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at)
+           VALUES (?, ?, ?, ?, NOW())`,
+          [normalizedUserId, fallbackActionType, normalizedRelatedId, normalizedKeyword]
+        );
+      } catch (fallbackErr) {
+        console.warn('insertUserInteractionSafe fallback failed:', fallbackErr.message);
+      }
   }
 }
 
@@ -4846,13 +4855,22 @@ app.post('/api/interactions', async (req, res) => {
 
   const normalizedActionType = String(action_type || '').trim() || 'open_post';
   const normalizedKeyword = String(subject_keyword || '').trim();
+  const normalizedRelatedId = (() => {
+    if (related_id == null || related_id === '') return 0;
+    if (typeof related_id === 'number' && Number.isFinite(related_id)) return related_id;
+    const text = String(related_id).trim();
+    const direct = Number(text);
+    if (Number.isFinite(direct)) return direct;
+    const match = text.match(/(\d+)(?!.*\d)/);
+    return match ? Number(match[1]) : 0;
+  })();
   if (!normalizedKeyword) return res.json({ success: false });
 
   try {
     await pool.query(
       `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at) 
        VALUES (?, ?, ?, ?, NOW())`,
-      [user_id, normalizedActionType, related_id, normalizedKeyword]
+      [user_id, normalizedActionType, normalizedRelatedId, normalizedKeyword]
     );
     res.json({ success: true });
   } catch (err) {
@@ -4863,14 +4881,14 @@ app.post('/api/interactions', async (req, res) => {
         : 'open_post';
 
     if (fallbackActionType !== normalizedActionType) {
-      try {
-        await pool.query(
-          `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at) 
-           VALUES (?, ?, ?, ?, NOW())`,
-          [user_id, fallbackActionType, related_id, normalizedKeyword]
-        );
-        return res.json({ success: true, fallback_action_type: fallbackActionType });
-      } catch (fallbackErr) {
+        try {
+          await pool.query(
+            `INSERT INTO user_interactions (user_id, action_type, related_id, subject_keyword, created_at) 
+             VALUES (?, ?, ?, ?, NOW())`,
+            [user_id, fallbackActionType, normalizedRelatedId, normalizedKeyword]
+          );
+          return res.json({ success: true, fallback_action_type: fallbackActionType });
+        } catch (fallbackErr) {
         console.error('POST /api/interactions fallback error:', fallbackErr);
         return res.status(500).json({ success: false, message: fallbackErr.message });
       }
