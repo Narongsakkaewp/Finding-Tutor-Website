@@ -211,17 +211,17 @@ function recencyScore(dateValue) {
   if (ageDays <= 7) return 18; // โพสต์ที่สร้างในช่วง 7 วันที่ผ่านมา
   if (ageDays <= 14) return 10; // โพสต์ที่สร้างในช่วง 14 วันที่ผ่านมา
   if (ageDays <= 30) return 4; // โพสต์ที่สร้างในช่วง 30 วันที่ผ่านมา
-  return 0;
+  return 0; // โพสต์ที่สร้างเกิน 30 วันจะไม่ได้คะแนนความใหม่
 }
 
 //ให้คะแนนความนิยมของโพสต์/ติวเตอร์
 function popularityScore({ favCount = 0, reviewCount = 0, joinCount = 0, studentCount = 0, rating = 0 }) {
   return (
-    Math.min(Number(favCount || 0), 20) * 1.8 +
-    Math.min(Number(reviewCount || 0), 20) * 2.2 +
-    Math.min(Number(joinCount || 0), 30) * 1.6 +
-    Math.min(Number(studentCount || 0), 60) * 1.2 +
-    Number(rating || 0) * 6
+    Math.min(Number(favCount || 0), 20) * 1.8 + //จำนวนการถูกใจ
+    Math.min(Number(reviewCount || 0), 20) * 2.2 + //จำนวนรีวิว
+    Math.min(Number(joinCount || 0), 30) * 1.6 + //จำนวนครั้งที่นักเรียนเข้าร่วมเรียน
+    Math.min(Number(studentCount || 0), 60) * 1.2 + //จำนวนครั้งที่สอนนักเรียนมาแล้ว
+    Number(rating || 0) * 6  //คะแนนรีวิวเฉลี่ย
   );
 }
 
@@ -448,7 +448,7 @@ async function getStudentSignals(pool, userId) {
   addSignal(signals, profile?.institution, 8); // สถานศึกษา
   addSignal(signals, profile?.faculty, 10); // คณะ
   addSignal(signals, profile?.major, 10); // สาขา
-  addSignal(signals, profile?.interested_subjects, 16); // วิชาที่สนใจ มีผลแรงที่สุดในฝั่งโปรไฟล์
+  addSignal(signals, profile?.interested_subjects, 16); // วิชาที่สนใจ
   addSignal(signals, profile?.about, 3); // about มีผลเสริมบริบท
 
   // ดึงโพสต์ที่นักเรียนเคยสร้าง เพื่อดูว่าเคยสนใจวิชาอะไร
@@ -460,9 +460,10 @@ async function getStudentSignals(pool, userId) {
      LIMIT 15`,
     [userId]
   );
+  // โพสต์เก่า ๆ จะมีผลน้อยกว่าโพสต์ใหม่ แต่ก็ยังมีผลอยู่บ้าง เพราะแสดงถึงความสนใจในอดีต
   myPosts.forEach((post) => {
-    addSignal(signals, post.subject, 16); // วิชาในโพสต์เก่า
-    addSignal(signals, post.description, 4); // รายละเอียดโพสต์
+    addSignal(signals, post.subject, 16); // คะแนนของวิชาในโพสต์เก่า
+    addSignal(signals, post.description, 4); // คะแนนของรายละเอียดโพสต์
     addSignal(signals, post.grade_level, 6); // ระดับชั้นที่เคยหาเรียน
   });
 
@@ -475,6 +476,7 @@ async function getStudentSignals(pool, userId) {
      LIMIT 80`,
     [userId]
   );
+
   searches.forEach((row, index) => {
     const positionWeight = Math.max(1, 8 - Math.floor(index / 4)); // คำค้นล่าสุดมีผลมากกว่าคำค้นเก่า
     const recencyWeight = getRecencyMultiplier(row.created_at, { // ยิ่งค้นหาใกล้ปัจจุบัน ยิ่งมีน้ำหนักมาก
@@ -991,7 +993,21 @@ async function getTutorRecommendations(pool, userId, options = {}) {
 
 async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
   const limit = Number(options.limit || 30);
-  const signals = await getUserSignals(pool, userId, 'tutor'); //ดึงข้อมูลของติวเตอร์ว่าสอนอะไรได้บ้าง
+  let signals;
+  try {
+    signals = await getUserSignals(pool, userId, 'tutor'); //ดึงข้อมูลของติวเตอร์ว่าสอนอะไรได้บ้าง
+  } catch (err) {
+    console.warn(`getStudentRecommendationsForTutor: fallback to cold start for user ${userId}:`, err.message);
+    signals = {
+      role: 'tutor',
+      signals: new Map(),
+      isColdStart: true,
+      topTerms: [],
+      address: '',
+      canTeachGrades: '',
+    };
+  }
+
   const candidates = await getStudentRecommendationCandidates(pool, 240); //ดึงโพสต์นักเรียนมาเตรียมไว้
 
   // คิดคะแนนว่าโพสต์นักเรียนไหนตรงกับติวเตอร์มากที่สุด
