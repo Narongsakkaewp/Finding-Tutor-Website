@@ -267,7 +267,7 @@ function App() {
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'home': return <Home setCurrentPage={setCurrentPage} user={user} />;
+      case 'home': return <Home setCurrentPage={setCurrentPage} user={user} onViewProfile={handleViewProfile} />;
       case 'notification':
         return (
           <Notification

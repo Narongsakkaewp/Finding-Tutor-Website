@@ -89,41 +89,57 @@ function TutorCard({ item, onOpen, onToggleSave }) {
   const toggle = (e) => { e.stopPropagation(); setLiked((v) => !v); onToggleSave?.(item); };
 
   return (
-    <div className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden cursor-pointer h-full flex flex-col" onClick={() => onOpen?.(item)}>
-      <div className="relative aspect-[4/3] w-full overflow-hidden">
+    <div
+      className="group bg-white rounded-[1.75rem] border border-slate-200/80 shadow-[0_12px_40px_rgba(15,23,42,0.08)] hover:shadow-[0_18px_55px_rgba(79,70,229,0.14)] hover:-translate-y-1 transition-all duration-300 overflow-hidden cursor-pointer h-full flex flex-col"
+      onClick={() => onOpen?.(item)}
+    >
+      <div className="relative aspect-[5/4] w-full overflow-hidden">
         <img src={item.image} alt={item.name} className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-500" loading="lazy" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/25 to-transparent opacity-80" />
         <button onClick={toggle} className={`absolute top-3 right-3 inline-flex items-center justify-center h-8 w-8 rounded-full backdrop-blur-md bg-white/30 border border-white/50 transition-colors hover:bg-white ${liked ? "text-rose-500 bg-white" : "text-white"}`}>
           <Heart className={`h-4 w-4 ${liked ? "fill-rose-500" : ""}`} />
         </button>
-        <div className="absolute bottom-3 left-3 right-3 text-white">
-          <div className="font-bold text-lg truncate flex items-center gap-1">
-            {item.name} {item.nickname && `(${item.nickname})`}
+        <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+          {/* <div className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[11px] font-semibold backdrop-blur-md">
+            <Users size={12} className="text-cyan-100" />
+            ติวเตอร์หน้าใหม่
+          </div> */}
+          <div className="mt-3 font-bold text-xl leading-tight line-clamp-2">
+            {item.name} 
+            <div> {item.nickname && `(ติวเตอร์${item.nickname})`}</div> 
           </div>
-          {item.username && <div className="text-xs text-indigo-100 font-medium opacity-90">@{item.username}</div>}
-          <div className="text-sm text-gray-200 truncate">{item.subject}</div>
+          {item.username && <div className="mt-1 text-xs text-indigo-100 font-medium opacity-90">@{item.username}</div>}
         </div>
       </div>
-      <div className="p-4 space-y-3 flex-1 flex flex-col">
-        <div className="flex items-center justify-between">
-          <Badge icon={Star} text={`${Number(item.rating || 0).toFixed(1)} (${item.reviews || 0})`} color="amber" />
-          <div className="text-sm font-semibold text-indigo-600">฿{priceText(item.price)}/ชม.</div>
+      <div className="p-4 space-y-4 flex-1 flex flex-col">
+        <div className="space-y-2">
+          <div className="text-sm font-semibold text-slate-900 line-clamp-2 min-h-[2.5rem]">
+            {item.subject || "ยังไม่ระบุวิชาที่สอน"}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge icon={Star} text={`${Number(item.rating || 0).toFixed(1)} (${item.reviews || 0})`} color="amber" />
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
+        <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 space-y-2">
           {(item.city?.startsWith("Online:") || item.city === "Online") ? (
-            <>
-              <Users size={14} className="text-indigo-500" />
-              <span className="truncate text-indigo-600 font-medium">{item.city}</span>
-            </>
+            <div className="flex items-center gap-2 text-sm">
+              <MonitorPlay size={15} className="text-indigo-500 shrink-0" />
+              <span className="truncate text-indigo-700 font-medium">{item.city}</span>
+            </div>
           ) : (
-            <>
-              <MapPin size={14} />
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <MapPin size={15} className="shrink-0 text-slate-400" />
               <span className="truncate">{item.city || "ไม่พบสถานที่"}</span>
-            </>
+            </div>
+          )}
+          {item.about_me ? (
+            <p className="text-xs leading-5 text-slate-500 line-clamp-2">{item.about_me}</p>
+          ) : (
+            <p className="text-xs leading-5 text-slate-400">กดดูรายละเอียดเพื่อดูข้อมูลติวเตอร์เพิ่มเติม</p>
           )}
         </div>
-        <div className="mt-auto pt-2">
-          <button className="w-full py-2.5 rounded-xl bg-gray-50 text-gray-900 font-medium text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors">ดูโปรไฟล์</button>
+        <div className="mt-auto grid grid-cols-[1fr_auto] gap-2 pt-1">
+          <button className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-semibold text-sm hover:bg-indigo-600 transition-colors">ดูรายละเอียด</button>
         </div>
       </div>
     </div>
@@ -600,7 +616,7 @@ function TrendingSubjectsList({ onOpen }) {
 // ... (Rest of code)
 
 /** ========== STUDENT HOME (Main Page) ========== */
-function HomeStudent() {
+function HomeStudent({ onViewProfile }) {
   const [query, setQuery] = useState("");
   const [preview, setPreview] = useState(null);
   const [previewType, setPreviewType] = useState(null);
@@ -667,6 +683,19 @@ function HomeStudent() {
 
   const user = JSON.parse(localStorage.getItem('user'));
   const userId = user?.user_id;
+
+  const openUserProfileFromTutor = (tutor) => {
+    const targetUserId = Number(
+      tutor?.dbTutorId ||
+      tutor?.user_id ||
+      tutor?.owner_id ||
+      tutor?.user?.id ||
+      String(tutor?.id || "").replace(/^t-/, "")
+    );
+    if (!targetUserId || !onViewProfile) return;
+    setPreview(null);
+    onViewProfile(targetUserId);
+  };
 
   const openPreviewWithTracking = (item, type, actionType = "open_post") => {
     logUserInteraction({
@@ -1027,12 +1056,24 @@ function HomeStudent() {
               </h4>
 
               <div className="flex items-start gap-4">
-                <img src={preview.image || preview.authorId?.avatarUrl || "/../blank_avatar.jpg"} alt={preview.name || preview.authorId?.name} className="w-20 h-20 rounded-full object-cover border shadow-sm" />
+                <button
+                  type="button"
+                  onClick={() => openUserProfileFromTutor(preview)}
+                  className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                >
+                  <img src={preview.image || preview.authorId?.avatarUrl || "/../blank_avatar.jpg"} alt={preview.name || preview.authorId?.name} className="w-20 h-20 rounded-full object-cover border shadow-sm hover:opacity-90 transition-opacity" />
+                </button>
                 <div>
-                  <h5 className="text-xl font-bold text-gray-900">
-                    {preview.name || preview.authorId?.name} {preview.nickname ? `(${preview.nickname})` : ""}
-                  </h5>
-                  {(preview.username || preview.user?.username || preview.authorId?.username) && <div className="text-sm text-gray-500 font-medium">@{preview.username || preview.user?.username || preview.authorId?.username}</div>}
+                  <button
+                    type="button"
+                    onClick={() => openUserProfileFromTutor(preview)}
+                    className="text-left group"
+                  >
+                    <h5 className="text-xl font-bold text-gray-900 group-hover:text-indigo-600 group-hover:underline underline-offset-4 transition-colors">
+                      {preview.name || preview.authorId?.name} {preview.nickname ? `(${preview.nickname})` : ""}
+                    </h5>
+                    {(preview.username || preview.user?.username || preview.authorId?.username) && <div className="text-sm text-gray-500 font-medium group-hover:text-indigo-500 transition-colors">@{preview.username || preview.user?.username || preview.authorId?.username}</div>}
+                  </button>
                   {/* แสดงรีวิวถ้ามี */}
                   {preview.reviews > 0 && (
                     <div className="flex items-center gap-2 mt-1">
@@ -1240,7 +1281,7 @@ function DashboardStats() {
 }
 
 /** ========== TUTOR HOME ========== */
-function HomeTutor({ setCurrentPage, user }) {
+function HomeTutor({ setCurrentPage, user, onViewProfile }) {
   const { user_id } = getUserContext();
   const [tutors, setTutors] = useState([]);
   const [loadingTutors, setLoadingTutors] = useState(true);
@@ -1249,6 +1290,19 @@ function HomeTutor({ setCurrentPage, user }) {
   const [previewTutor, setPreviewTutor] = useState(null); // For tutor profiles
   const [searchQuery, setSearchQuery] = useState("");
   const [recKey, setRecKey] = useState(0);
+
+  const openUserProfileFromTutor = (tutor) => {
+    const targetUserId = Number(
+      tutor?.dbTutorId ||
+      tutor?.user_id ||
+      tutor?.owner_id ||
+      tutor?.user?.id ||
+      String(tutor?.id || "").replace(/^t-/, "")
+    );
+    if (!targetUserId || !onViewProfile) return;
+    setPreviewTutor(null);
+    onViewProfile(targetUserId);
+  };
 
   const handleSearch = async (keyword) => {
     setSearchQuery(keyword);
@@ -1488,9 +1542,22 @@ function HomeTutor({ setCurrentPage, user }) {
           <div className="space-y-8 divide-y divide-gray-100">
             <div className="space-y-6">
               <div className="flex items-start gap-4">
-                <img src={previewTutor.image || "/../blank_avatar.jpg"} alt={previewTutor.name} className="w-20 h-20 rounded-full object-cover border shadow-sm" />
+                <button
+                  type="button"
+                  onClick={() => openUserProfileFromTutor(previewTutor)}
+                  className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                >
+                  <img src={previewTutor.image || "/../blank_avatar.jpg"} alt={previewTutor.name} className="w-20 h-20 rounded-full object-cover border shadow-sm hover:opacity-90 transition-opacity" />
+                </button>
                 <div>
-                  <h5 className="text-xl font-bold text-gray-900">{previewTutor.name} {previewTutor.nickname ? `(${previewTutor.nickname})` : ""}</h5>
+                  <button
+                    type="button"
+                    onClick={() => openUserProfileFromTutor(previewTutor)}
+                    className="text-left group"
+                  >
+                    <h5 className="text-xl font-bold text-gray-900 group-hover:text-indigo-600 group-hover:underline underline-offset-4 transition-colors">{previewTutor.name} {previewTutor.nickname ? `(${previewTutor.nickname})` : ""}</h5>
+                    {previewTutor.username && <div className="text-sm text-gray-500 font-medium group-hover:text-indigo-500 transition-colors">@{previewTutor.username}</div>}
+                  </button>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="flex items-center gap-1 text-xs text-amber-500 font-bold"><Star size={12} className="fill-amber-500" /> {Number(previewTutor.rating || 0).toFixed(1)} ({previewTutor.reviews || 0} รีวิว)</span>
                   </div>
@@ -1510,16 +1577,16 @@ function HomeTutor({ setCurrentPage, user }) {
 
 /** ========== ROUTER ========== */
 /** ========== MAIN EXPORT ========== */
-export default function Home({ setCurrentPage, user }) { // Receive user prop
+export default function Home({ setCurrentPage, user, onViewProfile }) { // Receive user prop
   const { role } = getUserContext();
 
   if (role === "tutor") {
     // Pass user prop to HomeTutor
-    return <HomeTutor setCurrentPage={setCurrentPage} user={user} />;
+    return <HomeTutor setCurrentPage={setCurrentPage} user={user} onViewProfile={onViewProfile} />;
   }
 
   // Pass user prop to HomeStudent if needed (optional, but good for future)
-  return <HomeStudent setCurrentPage={setCurrentPage} user={user} />;
+  return <HomeStudent setCurrentPage={setCurrentPage} user={user} onViewProfile={onViewProfile} />;
 }
 
 function TutorReviewsList({ tutorId, API_BASE }) {
