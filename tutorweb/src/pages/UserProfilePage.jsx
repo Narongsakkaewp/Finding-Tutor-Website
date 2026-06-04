@@ -103,6 +103,10 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
   }, []);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [userId]);
+
+  useEffect(() => {
     if (!userId) return;
     void fetchProfileData();
   }, [userId]);
