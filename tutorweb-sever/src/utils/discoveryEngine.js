@@ -1,4 +1,4 @@
-//tutorweb-sever/src/utils/discoveryEngine.js
+﻿//tutorweb-sever/src/utils/discoveryEngine.js
 const SUBJECT_SYNONYMS = {
   // === 📚 สายวิชาการหลัก (Academics) ===
   physics: ['ฟิสิกส์', 'physics', 'phy', 'physic', 'กลศาสตร์', 'อะตอม', 'atom', 'ไฟฟ้า', 'กล', 'quantum', 'mechanics', 'electricity', 'motion'],
@@ -17,7 +17,7 @@ const SUBJECT_SYNONYMS = {
   german: ['เยอรมัน', 'ภาษาเยอรมัน', 'german', 'deutsch', 'goethe'],
   thai: ['ไทย', 'ภาษาไทย', 'thai', 'หลักภาษา', 'วรรณคดี', 'tpat', 'tgat'],
   // === 💻 สายเทคโนโลยีและเขียนโปรแกรม (Tech & Programming) ===
-  programming: ['เขียนโปรแกรม', 'programming', 'program', 'coding', 'code', 'developer', 'dev', 'software', 'algorithm', 'problem solving', 'c', 'rust', 'go'],
+  programming: ['เขียนโปรแกรม', 'programming', 'program', 'coding', 'code', 'developer', 'dev', 'software', 'algorithm', 'problem solving', 'python', 'java', 'data structure', 'data structures', 'c', 'rust', 'go'],
   web: ['เว็บ', 'web', 'website', 'html', 'css', 'javascript', 'js', 'react', 'node', 'frontend', 'backend', 'fullstack', 'php', 'web development', 'tailwind', 'bootstrap', 'vue', 'nextjs', 'typescript'],
   mobile: ['แอปมือถือ', 'mobile app', 'ios', 'android', 'flutter', 'react native', 'swift', 'kotlin', 'dart'],
   java: ['java', 'oop', 'object oriented', 'จาวา'],
@@ -44,7 +44,7 @@ const SUBJECT_SYNONYMS = {
   design: ['ออกแบบ', 'design', 'ui', 'ux', 'ux/ui', 'figma', 'illustrator', 'photoshop', 'graphic', 'adobe', 'canva'],
   art: ['ศิลปะ', 'art', 'drawing', 'วาดรูป', 'painting', 'สีน้ำ', 'sketch', 'illustration', 'ประติมากรรม'],
   video_editing: ['ตัดต่อ', 'video editing', 'premiere pro', 'after effects', 'vlog', 'youtube', 'tiktok'],
-  music: ['ดนตรี', 'music', 'guitar', 'piano', 'vocal', 'ร้องเพลง', 'กีตาร์', 'เปียโน', 'ทฤษฎีดนตรี', 'ไวโอลิน', 'กลอง'],
+  music: ['ดนตรี', 'music', 'guitar', 'piano', 'vocal', 'ร้องเพลง', 'กีตาร์', 'กีตาร์ไฟฟ้า', 'electric guitar', 'เปียโน', 'ทฤษฎีดนตรี', 'ไวโอลิน', 'กลอง'],
   // === 🏃‍♂️ สายกีฬาและไลฟ์สไตล์ (Sports & Lifestyle) ===
   sports: ['กีฬา', 'sports', 'ว่ายน้ำ', 'swimming', 'แบดมินตัน', 'badminton', 'เทนนิส', 'tennis', 'ฟุตบอล', 'football', 'โยคะ', 'yoga', 'ฟิตเนส'],
   cooking: ['ทำอาหาร', 'cooking', 'เบเกอรี่', 'bakery', 'ทำขนม', 'culinary', 'บาริสต้า', 'ชงกาแฟ']
@@ -72,6 +72,85 @@ const GRADE_GROUPS = {
   'บุคคลทั่วไป': ['ทั่วไป', 'general', 'none'],
 };
 
+//เพดานคะแนนรวมของระบบ (รวม 100 คะแนน ตามที่อาจารย์กำหนด)
+const RECOMMENDATION_SCORE_CAPS = Object.freeze({
+  relevance: 60,   // Relevance score สูงสุด 60 คะแนน
+  popularity: 20,  // Popularity score สูงสุด 20 คะแนน
+  recency: 20,     // Recency score สูงสุด 20 คะแนน
+});
+
+// เกณฑ์ขั้นต่ำของ Relevance (ต้องได้มากกว่า 80% ของเพดาน ถึงจะนำไปคิดรวม)
+const RELEVANCE_THRESHOLD_RATIO = 0.80; // 80% ของ 60 = 48 คะแนน
+
+const MAX_SIGNAL_WEIGHT_PER_TERM = 100;
+
+const STUDENT_PROFILE_SIGNAL_WEIGHTS = Object.freeze({
+  gradeLevel: 28,
+  gradeGroup: 16,
+  institution: 0,
+  faculty: 5,
+  major: 15,
+  interestedSubjects: 45,
+  about: 4,
+});
+
+const STUDENT_POST_HISTORY_SIGNAL_WEIGHTS = Object.freeze({
+  subject: 50,
+  description: 20,
+  gradeLevel: 18,
+});
+
+const TUTOR_PROFILE_SIGNAL_WEIGHTS = Object.freeze({
+  canTeachSubjects: 55,
+  canTeachGrades: 8,
+  aboutMe: 15,
+});
+
+const TUTOR_POST_HISTORY_SIGNAL_WEIGHTS = Object.freeze({
+  subject: 55,
+  description: 15,
+  targetStudentLevel: 5,
+});
+
+const INTERACTION_SIGNAL_WEIGHTS = Object.freeze({
+  favorite: 4,
+  openPost: 2.5,
+  openRecommendation: 2,
+  openExploreRecommendation: 1.5,
+  searchOpenPost: 3,
+  searchOpenTutor: 2,
+  default: 1,
+});
+
+// Relevance field points สำหรับโพสต์ติวเตอร์
+// สูตรการคำนวณ: Subject + CanTeach * TargetLevel (Subject ต้องมีคะแนนสูงสุด)
+const TUTOR_RELEVANCE_FIELD_POINTS = Object.freeze({
+  subject: 55,           // Subject: สูงสุด (ตัวหลักของสูตร)
+  canTeachSubjects: 45,  // CanTeach จะถูกคูณด้วย TargetLevel ตามสูตร Subject + CanTeach * Level
+  targetStudentLevel: 100, // ใช้คำนวณเป็นตัวคูณ 0-1 ไม่ได้นำไปบวกตรง ๆ
+});
+
+const STUDENT_RELEVANCE_FIELD_POINTS = Object.freeze({
+  subject: 28,
+  description: 8,
+  gradeLevel: 4,
+  major: 8,
+  faculty: 2,
+  institution: 0,
+});
+
+// Popularity field points สำหรับโพสต์ติวเตอร์ (ตัวแปรย่อย: Favorites, Joins, Rating)
+const TUTOR_POPULARITY_FIELD_POINTS = Object.freeze({
+  favorites: 30,  // จำนวนการกดถูกใจ
+  joins: 30,      // จำนวนการเข้าร่วม
+  rating: 40,     // คะแนนรีวิว (สำคัญที่สุดในส่วน popularity)
+});
+
+const STUDENT_POPULARITY_FIELD_POINTS = Object.freeze({
+  favorites: 45,
+  joins: 55,
+});
+
 //ชุดคำวิชาและคำใกล้เคียงที่ใช้ในการขยายสัญญาณและการทำเหมืองข้อมูลเพื่อปรับปรุงการค้นหาและการแนะนำ
 function normalizeAliasKey(value) {
   return String(value || '')
@@ -88,14 +167,22 @@ const ALIAS_TO_CANONICAL = Object.entries(SUBJECT_SYNONYMS).reduce((acc, [canoni
     acc[normalizeAliasKey(lowered)] = canonical;
   });
   return acc;
-}, {});
+}, Object.create(null));
+
+const AMBIGUOUS_ALIAS_CONTEXT_GUARDS = [
+  {
+    candidateAliases: ['ไฟฟ้า', 'electricity', 'electric'],
+    blockedCanonicals: ['physics', 'electronics'],
+    requiredContextTerms: ['กีตาร์', 'guitar', 'ดนตรี', 'music', 'ร้องเพลง', 'riff', 'ริฟฟ์', 'instrument'],
+  },
+];
 
 //ตัดคำที่ไม่จำเป็นออก เช่น สัญลักษณ์พิเศษ ตัวเชื่อม และคำฟุ่มเฟือย เพื่อให้เหลือแต่คำสำคัญที่ใช้ในการค้นหาและการจับคู่
 function normalizeText(value) {
   return String(value || '')
     .toLowerCase()
     .replace(/[_]+/g, ' ')
-    .replace(/[^\p{L}\p{N}\s./#+-]+/gu, ' ')
+    .replace(/[^\p{L}\p{M}\p{N}\s./#+-]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -128,23 +215,54 @@ function expandTerms(text) {
   const tokens = tokenize(text);
   const expanded = new Set(tokens);
 
+  const tokenHasContext = (sourceToken, contextTerms = []) => {
+    const compactSourceToken = normalizeAliasKey(sourceToken);
+    return contextTerms.some((term) => {
+      const loweredTerm = String(term).toLowerCase();
+      const compactTerm = normalizeAliasKey(loweredTerm);
+      return sourceToken.includes(loweredTerm) || (compactTerm && compactSourceToken.includes(compactTerm));
+    });
+  };
+
+  const isGuardedAmbiguousMatch = (sourceToken, candidate, canonicalKey) => {
+    const loweredCandidate = String(candidate || '').toLowerCase();
+    return AMBIGUOUS_ALIAS_CONTEXT_GUARDS.some((guard) => {
+      const candidateMatch = guard.candidateAliases.some((alias) => String(alias).toLowerCase() === loweredCandidate);
+      if (!candidateMatch) return false;
+      if (!guard.blockedCanonicals.includes(canonicalKey)) return false;
+      return tokenHasContext(sourceToken, guard.requiredContextTerms);
+    });
+  };
+
+  const matchesTerm = (sourceToken, compactSourceToken, candidate) => {
+    const loweredCandidate = String(candidate).toLowerCase();
+    const compactCandidate = normalizeAliasKey(loweredCandidate);
+
+    if (!compactCandidate) return false;
+
+    if (compactCandidate.length <= 2) {
+      return sourceToken === loweredCandidate || compactSourceToken === compactCandidate;
+    }
+
+    return sourceToken.includes(loweredCandidate) || compactSourceToken.includes(compactCandidate);
+  };
+
   tokens.forEach((token) => {
     const compactToken = normalizeAliasKey(token);
-    const canonical = ALIAS_TO_CANONICAL[token] || ALIAS_TO_CANONICAL[compactToken];
+    const canonical = Object.prototype.hasOwnProperty.call(ALIAS_TO_CANONICAL, token)
+      ? ALIAS_TO_CANONICAL[token]
+      : (Object.prototype.hasOwnProperty.call(ALIAS_TO_CANONICAL, compactToken)
+        ? ALIAS_TO_CANONICAL[compactToken]
+        : null);
     if (canonical) {
       expanded.add(canonical);
-      SUBJECT_SYNONYMS[canonical].forEach((alias) => expanded.add(String(alias).toLowerCase()));
+      (SUBJECT_SYNONYMS[canonical] || []).forEach((alias) => expanded.add(String(alias).toLowerCase()));
     }
 
     Object.entries(SUBJECT_SYNONYMS).forEach(([key, aliases]) => {
       const matchesAlias =
-        token.includes(key) ||
-        compactToken.includes(normalizeAliasKey(key)) ||
-        aliases.some((alias) => {
-          const loweredAlias = String(alias).toLowerCase();
-          const compactAlias = normalizeAliasKey(loweredAlias);
-          return token.includes(loweredAlias) || compactToken.includes(compactAlias);
-        });
+        (!isGuardedAmbiguousMatch(token, key, key) && matchesTerm(token, compactToken, key)) ||
+        aliases.some((alias) => !isGuardedAmbiguousMatch(token, alias, key) && matchesTerm(token, compactToken, alias));
 
       if (matchesAlias) {
         expanded.add(key);
@@ -161,7 +279,7 @@ function addSignal(map, rawText, weight) {
   if (!rawText || !weight) return;
   expandTerms(rawText).forEach((term) => {
     if (!term || STOPWORDS.has(term) || term.length < 2) return;
-    map.set(term, (map.get(term) || 0) + weight);
+    map.set(term, Math.min(MAX_SIGNAL_WEIGHT_PER_TERM, (map.get(term) || 0) + weight));
   });
 }
 
@@ -183,17 +301,272 @@ function serializeReasonTerms(signalMap, limit = 5) {
     .map(([term]) => term);
 }
 
+function buildPrimaryInterestTerms(rawText) {
+  const terms = new Set(
+    expandTerms(rawText)
+      .map((term) => normalizeText(term))
+      .filter(Boolean)
+  );
+
+  const techTerms = ['python', 'java', 'data structure', 'data structures', 'datastructure', 'algorithm', 'programming'];
+  if (techTerms.some((term) => terms.has(term))) {
+    ['programming', 'coding', 'code', 'developer', 'software', 'algorithm', 'data structure'].forEach((term) => terms.add(term));
+  }
+
+  return Array.from(terms);
+}
+
+function sumConfigPoints(config) {
+  return Object.values(config).reduce((sum, value) => sum + Number(value || 0), 0);
+}
+
+function scaleToWeightedCap(rawScore, rawMax, weightedCap) {
+  if (!rawMax || !weightedCap) return 0;
+  const safeRaw = Math.max(0, Number(rawScore || 0));
+  const ratio = Math.min(1, safeRaw / rawMax);
+  return Number((ratio * weightedCap).toFixed(2));
+}
+
+function softCapScore(rawScore, weightedCap, pivot = 1) {
+  if (!weightedCap || !pivot) return 0;
+  const safeRaw = Math.max(0, Number(rawScore || 0));
+  const normalized = 1 - Math.exp(-safeRaw / pivot);
+  return Number((normalized * weightedCap).toFixed(2));
+}
+
+function capRecommendationScore(relevanceScore, popularityScoreValue, recencyScoreValue) {
+  const relevance = Math.min(RECOMMENDATION_SCORE_CAPS.relevance, Math.max(0, Number(relevanceScore || 0)));
+  const popularity = Math.min(RECOMMENDATION_SCORE_CAPS.popularity, Math.max(0, Number(popularityScoreValue || 0)));
+  const recency = Math.min(RECOMMENDATION_SCORE_CAPS.recency, Math.max(0, Number(recencyScoreValue || 0)));
+  const totalCap = sumConfigPoints(RECOMMENDATION_SCORE_CAPS);
+  return Number(Math.min(totalCap, relevance + popularity + recency).toFixed(2));
+}
+
+// ตรวจสอบว่า relevance ผ่านเกณฑ์ขั้นต่ำ 80% หรือไม่
+// ถ้าไม่ผ่าน → relevance = 0 (ไม่นำไปรวมคะแนน ตามเงื่อนไขของอาจารย์)
+function applyRelevanceThreshold(relevanceScore) {
+  const relevanceCap = RECOMMENDATION_SCORE_CAPS.relevance;
+  const relevanceThreshold = relevanceCap * RELEVANCE_THRESHOLD_RATIO; // 80% ของ 60 = 48
+  if (relevanceScore <= 0 || relevanceScore <= relevanceThreshold) return 0;
+  return relevanceScore;
+}
+
+function parseScheduleDateTime(dateValue, timeValue) {
+  const dateText = String(dateValue || '').trim();
+  if (!dateText) return null;
+
+  const ymd = dateText.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  const dmy = dateText.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (!ymd && !dmy) return null;
+
+  const year = ymd ? Number(ymd[1]) : Number(dmy[3]) > 2400 ? Number(dmy[3]) - 543 : Number(dmy[3]);
+  const month = ymd ? Number(ymd[2]) - 1 : Number(dmy[2]) - 1;
+  const day = ymd ? Number(ymd[3]) : Number(dmy[1]);
+  const timeText = String(timeValue || '').trim();
+  const timeMatch = timeText.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+
+  const parsed = new Date(
+    year,
+    month,
+    day,
+    timeMatch ? Number(timeMatch[1]) : 23,
+    timeMatch ? Number(timeMatch[2]) : 59,
+    timeMatch ? Number(timeMatch[3] || 0) : 59
+  );
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getPostSessionTimes(post = {}) {
+  const dayText = String(post.teaching_days || post.preferred_days || '').trim();
+  const timeText = String(post.teaching_time || post.preferred_time || '').trim();
+  const extractedDays = dayText.match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}/g);
+  const extractedTimes = timeText.match(/\d{1,2}:\d{2}(?::\d{2})?/g);
+  const days = (extractedDays || dayText.split(',')).map((entry) => entry.trim()).filter(Boolean);
+  const times = (extractedTimes || timeText.split(',')).map((entry) => entry.trim());
+
+  return days
+    .map((day, index) => parseScheduleDateTime(day, times[index] || times[0] || ''))
+    .filter(Boolean);
+}
+
+function getPostLastSessionTime(post = {}) {
+  const sessions = getPostSessionTimes(post);
+  if (!sessions.length) return null;
+  return sessions.reduce((latest, session) => (
+    !latest || session.getTime() > latest.getTime() ? session : latest
+  ), null);
+}
+
+function getFieldMatchPercent(text, signalMap, rawMax = 180) {
+  return scoreFieldAgainstSignals(text, signalMap, 100, { rawMax });
+}
+
+function buildTutorRelevanceBreakdown(row, signals) {
+  const subjectMatch = getFieldMatchPercent(row.subject, signals, 180);
+  const canTeachSource = [row.can_teach_subjects, row.subject].filter(Boolean).join(' ');
+  const canTeachMatch = getFieldMatchPercent(canTeachSource, signals, 180);
+  const levelMatch = getFieldMatchPercent(row.target_student_level, signals, 50);
+  const levelMultiplier = levelMatch / 100;
+  const relevancePercent = Math.min(
+    100,
+    (subjectMatch * 0.55) + (canTeachMatch * levelMultiplier * 0.45)
+  );
+  const relevanceScore = scaleToWeightedCap(relevancePercent, 100, RECOMMENDATION_SCORE_CAPS.relevance);
+  const passesRelevance =
+    subjectMatch > 0 &&
+    canTeachMatch > 0 &&
+    levelMatch > 0 &&
+    relevancePercent > 80;
+
+  return {
+    subject_match: Number(subjectMatch.toFixed(2)),
+    can_teach_match: Number(canTeachMatch.toFixed(2)),
+    level_match: Number(levelMatch.toFixed(2)),
+    relevance_percent: Number(relevancePercent.toFixed(2)),
+    relevance_score: passesRelevance ? relevanceScore : 0,
+    passes_relevance: passesRelevance,
+  };
+}
+
+function buildTutorRecommendationScore(row, signals) {
+  const relevance = buildTutorRelevanceBreakdown(row, signals);
+  if (!relevance.passes_relevance) {
+    return {
+      ...relevance,
+      popularity_score: 0,
+      recency_score: 0,
+      recommendation_score: 0,
+    };
+  }
+
+  const popularity = popularityScore({
+    favCount: row.fav_count,
+    reviewCount: row.review_count,
+    joinCount: row.join_count,
+    rating: row.avg_rating,
+  }, 'tutor');
+  const recency = recencyScore(row.created_at);
+
+  return {
+    ...relevance,
+    popularity_score: popularity,
+    recency_score: recency,
+    recommendation_score: capRecommendationScore(relevance.relevance_score, popularity, recency),
+  };
+}
+
+function matchesTutorRecommendationConditions(row) {
+  return (
+    Number(row.subject_match || 0) > 0 &&
+    Number(row.can_teach_match || 0) > 0 &&
+    Number(row.level_match || 0) > 0
+  );
+}
+
+function getTutorInterestRank(row, topTerms = []) {
+  if (!Array.isArray(topTerms) || topTerms.length === 0) return 999;
+
+  const rowTerms = new Set(
+    expandTerms([row.subject, row.can_teach_subjects].filter(Boolean).join(' '))
+      .map((term) => normalizeText(term))
+      .filter(Boolean)
+  );
+
+  for (let index = 0; index < topTerms.length; index += 1) {
+    const termVariants = expandTerms(topTerms[index]).map((term) => normalizeText(term)).filter(Boolean);
+    if (termVariants.some((term) => rowTerms.has(term))) return index;
+  }
+
+  return 999;
+}
+
+function matchesPrimaryInterests(row, primaryInterestTerms = []) {
+  if (!Array.isArray(primaryInterestTerms) || primaryInterestTerms.length === 0) return true;
+
+  const rowTerms = new Set(
+    expandTerms([row.subject, row.can_teach_subjects].filter(Boolean).join(' '))
+      .map((term) => normalizeText(term))
+      .filter(Boolean)
+  );
+
+  return primaryInterestTerms.some((term) => rowTerms.has(normalizeText(term)));
+}
+
+function compareTutorRecommendationRows(a, b) {
+  return (
+    Number(a.interest_rank ?? 999) - Number(b.interest_rank ?? 999) ||
+    Number(b.relevance_percent || 0) - Number(a.relevance_percent || 0) ||
+    Number(b.relevance_score || 0) - Number(a.relevance_score || 0) ||
+    Number(b.recommendation_score || 0) - Number(a.recommendation_score || 0) ||
+    new Date(b.created_at || 0) - new Date(a.created_at || 0)
+  );
+}
+
+function getExpandedTermSet(text) {
+  return new Set(
+    expandTerms(text)
+      .map((term) => normalizeText(term))
+      .filter(Boolean)
+  );
+}
+
+function withoutExcludedTerms(signalMap, excludedTerms) {
+  if (!excludedTerms?.size) return signalMap;
+  const filtered = new Map();
+  signalMap.forEach((weight, term) => {
+    if (!excludedTerms.has(normalizeText(term))) filtered.set(term, weight);
+  });
+  return filtered;
+}
+
+function scoreFieldAgainstSignals(text, signalMap, fieldCap, options = {}) {
+  if (!fieldCap) return 0;
+  const scopedSignals = withoutExcludedTerms(signalMap, options.excludeTerms);
+  const rawScore = scoreTextAgainstSignals(text, scopedSignals, 1);
+  return scaleToWeightedCap(rawScore, options.rawMax || 700, fieldCap);
+}
+
+function buildTutorRelevanceRawScore(row, signals) {
+  return buildTutorRelevanceBreakdown(row, signals).relevance_score;
+}
+
+function buildStudentRelevanceRawScore(row, signals) {
+  const subjectTerms = getExpandedTermSet(row.subject);
+  return (
+    scoreFieldAgainstSignals(row.subject, signals, STUDENT_RELEVANCE_FIELD_POINTS.subject) +
+    scoreFieldAgainstSignals(row.description, signals, STUDENT_RELEVANCE_FIELD_POINTS.description, { excludeTerms: subjectTerms }) +
+    scoreFieldAgainstSignals(row.major, signals, STUDENT_RELEVANCE_FIELD_POINTS.major) +
+    scoreFieldAgainstSignals(row.grade_level, signals, STUDENT_RELEVANCE_FIELD_POINTS.gradeLevel, { rawMax: 1200 }) +
+    scoreFieldAgainstSignals(row.faculty, signals, STUDENT_RELEVANCE_FIELD_POINTS.faculty)
+  );
+}
+
 //ดูข้อความในโพสต์ว่าตรงกับคำสำคัญของผู้ใช้งานมากแค่ไหน
 function scoreTextAgainstSignals(text, signalMap, multiplier = 1) {
   const haystack = normalizeText(text);
-  if (!haystack) return 0;
+  if (!haystack || !signalMap?.size || !multiplier) return 0;
+
+  const fieldTerms = new Set(
+    expandTerms(text)
+      .map((term) => normalizeText(term))
+      .filter(Boolean)
+  );
 
   let score = 0;
-  for (const [term, weight] of signalMap.entries()) {
-    if (haystack === term) score += weight * 7 * multiplier;
-    else if (haystack.includes(term)) score += weight * 3 * multiplier;
-  }
-  return score;
+  signalMap.forEach((weight, term) => {
+    const normalizedTerm = normalizeText(term);
+    const numericWeight = Number(weight || 0);
+    if (!normalizedTerm || numericWeight <= 0) return;
+
+    if (fieldTerms.has(normalizedTerm)) {
+      score += numericWeight * 7 * multiplier;
+    } else if (haystack.includes(normalizedTerm)) {
+      score += numericWeight * 3 * multiplier;
+    }
+  });
+
+  return Number(score.toFixed(2));
 }
 
 //คำนวณว่าโพสต์นั้นเก่าหรือใหม่แค่ไหน
@@ -206,69 +579,46 @@ function daysSince(dateValue) {
 //ให้คะแนนความใหม่ของโพสต์
 function recencyScore(dateValue) {
   const ageDays = daysSince(dateValue);
-  if (ageDays <= 1) return 35; // โพสต์ที่สร้างในวันนี้หรือเมื่อวานจะได้คะแนนสูงสุด
-  if (ageDays <= 3) return 25; // โพสต์ที่สร้างในช่วง 3 วันที่ผ่านมา
-  if (ageDays <= 7) return 18; // โพสต์ที่สร้างในช่วง 7 วันที่ผ่านมา
-  if (ageDays <= 14) return 10; // โพสต์ที่สร้างในช่วง 14 วันที่ผ่านมา
-  if (ageDays <= 30) return 4; // โพสต์ที่สร้างในช่วง 30 วันที่ผ่านมา
-  return 0; // โพสต์ที่สร้างเกิน 30 วันจะไม่ได้คะแนนความใหม่
+  let rawScore = 0;
+  if (ageDays <= 1) rawScore = 100; // โพสต์ที่สร้างในวันนี้หรือเมื่อวาน
+  else if (ageDays <= 3) rawScore = 80; // โพสต์ใน 3 วันที่ผ่านมา
+  else if (ageDays <= 7) rawScore = 60; // โพสต์ใน 7 วันที่ผ่านมา
+  else if (ageDays <= 14) rawScore = 35; // โพสต์ใน 14 วันที่ผ่านมา
+  else if (ageDays <= 30) rawScore = 15; // โพสต์ใน 30 วันที่ผ่านมา
+  return scaleToWeightedCap(rawScore, 100, RECOMMENDATION_SCORE_CAPS.recency);
 }
 
 //ให้คะแนนความนิยมของโพสต์/ติวเตอร์
-function popularityScore({ favCount = 0, reviewCount = 0, joinCount = 0, studentCount = 0, rating = 0 }) {
-  return (
-    Math.min(Number(favCount || 0), 20) * 1.8 + //จำนวนการถูกใจ
-    Math.min(Number(reviewCount || 0), 20) * 2.2 + //จำนวนรีวิว
-    Math.min(Number(joinCount || 0), 30) * 1.6 + //จำนวนครั้งที่นักเรียนเข้าร่วมเรียน
-    Math.min(Number(studentCount || 0), 60) * 1.2 + //จำนวนครั้งที่สอนนักเรียนมาแล้ว
-    Number(rating || 0) * 6  //คะแนนรีวิวเฉลี่ย
-  );
+function popularityScore(
+  { favCount = 0, reviewCount = 0, joinCount = 0, rating = 0 },
+  type = 'tutor'
+) {
+  let rawScore = 0;
+  let rawMax = 100;
+
+  if (type === 'student') {
+    rawScore =
+      (Math.min(Number(favCount || 0), 20) / 20) * STUDENT_POPULARITY_FIELD_POINTS.favorites +
+      (Math.min(Number(joinCount || 0), 30) / 30) * STUDENT_POPULARITY_FIELD_POINTS.joins;
+    rawMax = sumConfigPoints(STUDENT_POPULARITY_FIELD_POINTS);
+  } else {
+    // ตัวแปรย่อย Popularity ของติวเตอร์: Favorites, Joins, Rating
+    rawScore =
+      (Math.min(Number(favCount || 0), 20) / 20) * TUTOR_POPULARITY_FIELD_POINTS.favorites +
+      (Math.min(Number(joinCount || 0), 30) / 30) * TUTOR_POPULARITY_FIELD_POINTS.joins +
+      (Math.min(Number(rating || 0), 5) / 5) * TUTOR_POPULARITY_FIELD_POINTS.rating;
+    rawMax = sumConfigPoints(TUTOR_POPULARITY_FIELD_POINTS);
+  }
+
+  return scaleToWeightedCap(rawScore, rawMax, RECOMMENDATION_SCORE_CAPS.popularity);
 }
 
 //เช็คว่าโพสต์เลยเวลาเรียนมาแล้วหรือยัง
 function calculateIsExpired(post) {
-  const teachingDays = String(post.teaching_days || post.preferred_days || '').trim();
-  const teachingTimes = String(post.teaching_time || post.preferred_time || '').trim();
   const createdAt = post.created_at || post.createdAt;
+  const sessions = getPostSessionTimes(post);
 
-  if (teachingDays) {
-    const dates = teachingDays.split(',').map((entry) => entry.trim()).filter(Boolean);
-    const times = teachingTimes.split(',').map((entry) => entry.trim());
-    if (dates.length > 0) {
-      const now = new Date();
-      let foundConcreteDate = false;
-      let foundFuture = false;
-
-      for (let index = 0; index < dates.length; index += 1) {
-        const item = dates[index];
-        const ymd = item.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-        const dmy = item.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-        if (!ymd && !dmy) return false;
-
-        foundConcreteDate = true;
-        const year = ymd ? Number(ymd[1]) : Number(dmy[3]) > 2400 ? Number(dmy[3]) - 543 : Number(dmy[3]);
-        const month = ymd ? Number(ymd[2]) - 1 : Number(dmy[2]) - 1;
-        const day = ymd ? Number(ymd[3]) : Number(dmy[1]);
-        const timeValue = times[index] || times[0] || '';
-        const timeMatch = timeValue.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-        const targetDate = new Date(
-          year,
-          month,
-          day,
-          timeMatch ? Number(timeMatch[1]) : 23,
-          timeMatch ? Number(timeMatch[2]) : 59,
-          timeMatch ? Number(timeMatch[3] || 0) : 59
-        );
-
-        if (targetDate >= now) {
-          foundFuture = true;
-          break;
-        }
-      }
-
-      if (foundConcreteDate && !foundFuture) return true;
-    }
-  }
+  if (sessions.length) return !sessions.some((session) => session.getTime() >= Date.now());
 
   return daysSince(createdAt) > 45;
 }
@@ -299,13 +649,28 @@ function rowMatchesTopTerms(row, topTerms = []) {
   return topTerms.some((term) => rowTerms.has(String(term || '').toLowerCase()));
 }
 
+function rowMatchesCoreSubjectTerms(row, topTerms = []) {
+  if (!Array.isArray(topTerms) || topTerms.length === 0) return false;
+
+  const rowTerms = new Set(
+    expandTerms(
+      [
+        row.subject,
+        row.can_teach_subjects,
+      ].filter(Boolean).join(' ')
+    )
+  );
+
+  return topTerms.some((term) => rowTerms.has(String(term || '').toLowerCase()));
+}
+
 //ไม่ให้ขึ้นติวเตอร์ซ้ำหรือวิชาเดิมซ้ำมากเกินไป
 function diversifyTutorRows(rows, limit) {
   const selected = [];
   const tutorCounts = new Map();
   const subjectCounts = new Map();
 
-  const sorted = [...rows].sort((a, b) => b.recommendation_score - a.recommendation_score);
+  const sorted = [...rows].sort(compareTutorRecommendationRows);
   const subjectKeyOf = (row) => getCanonicalSubject(row.subject);
 
   for (const row of sorted) {
@@ -439,17 +804,18 @@ async function getStudentSignals(pool, userId) {
     profile?.grade_level || profile?.institution || profile?.faculty || profile?.major ||
     profile?.about || profile?.interested_subjects
   );
+  const primaryInterestTerms = buildPrimaryInterestTerms(profile?.interested_subjects);
 
   if (profile?.grade_level) { //โค้ดที่เช็คว่ามีข้อมูลระดับชั้นหรือไม่ ถ้ามีจะเพิ่มคะแนนความสนใจด้วย
-    addSignal(signals, profile.grade_level, 10); //
-    (GRADE_GROUPS[profile.grade_level] || []).forEach((gradeAlias) => addSignal(signals, gradeAlias, 7));
+    addSignal(signals, profile.grade_level, STUDENT_PROFILE_SIGNAL_WEIGHTS.gradeLevel);
+      (GRADE_GROUPS[profile.grade_level] || []).forEach((gradeAlias) => addSignal(signals, gradeAlias, STUDENT_PROFILE_SIGNAL_WEIGHTS.gradeGroup));
     reasons.push(`ระดับชั้น ${profile.grade_level}`);
   }
-  addSignal(signals, profile?.institution, 8); // สถานศึกษา
-  addSignal(signals, profile?.faculty, 10); // คณะ
-  addSignal(signals, profile?.major, 10); // สาขา
-  addSignal(signals, profile?.interested_subjects, 16); // วิชาที่สนใจ
-  addSignal(signals, profile?.about, 3); // about มีผลเสริมบริบท
+  addSignal(signals, profile?.institution, STUDENT_PROFILE_SIGNAL_WEIGHTS.institution); // ตัดสถานศึกษาออกจากการคิดคะแนน
+  addSignal(signals, profile?.faculty, STUDENT_PROFILE_SIGNAL_WEIGHTS.faculty); // คณะ
+  addSignal(signals, profile?.major, STUDENT_PROFILE_SIGNAL_WEIGHTS.major); // สาขา
+  addSignal(signals, profile?.interested_subjects, STUDENT_PROFILE_SIGNAL_WEIGHTS.interestedSubjects); // วิชาที่สนใจ
+  addSignal(signals, profile?.about, STUDENT_PROFILE_SIGNAL_WEIGHTS.about); // about ใช้เสริมบริบท
 
   // ดึงโพสต์ที่นักเรียนเคยสร้าง เพื่อดูว่าเคยสนใจวิชาอะไร
   const [myPosts] = await pool.query(
@@ -462,9 +828,9 @@ async function getStudentSignals(pool, userId) {
   );
   // โพสต์เก่า ๆ จะมีผลน้อยกว่าโพสต์ใหม่ แต่ก็ยังมีผลอยู่บ้าง เพราะแสดงถึงความสนใจในอดีต
   myPosts.forEach((post) => {
-    addSignal(signals, post.subject, 16); // คะแนนของวิชาในโพสต์เก่า
-    addSignal(signals, post.description, 4); // คะแนนของรายละเอียดโพสต์
-    addSignal(signals, post.grade_level, 6); // ระดับชั้นที่เคยหาเรียน
+    addSignal(signals, post.subject, STUDENT_POST_HISTORY_SIGNAL_WEIGHTS.subject); // วิชาที่เคยโพสต์หาเรียน
+    addSignal(signals, post.description, STUDENT_POST_HISTORY_SIGNAL_WEIGHTS.description); // รายละเอียดโพสต์เก่า
+    addSignal(signals, post.grade_level, STUDENT_POST_HISTORY_SIGNAL_WEIGHTS.gradeLevel); // ระดับชั้นที่เคยหาเรียน
   });
 
   const [searches] = await pool.query(
@@ -487,7 +853,7 @@ async function getStudentSignals(pool, userId) {
       twentyDayWeight: 0.9,
       defaultWeight: 0.4,
     });
-    addSignal(signals, row.keyword, 8 * positionWeight * recencyWeight); // เพิ่มคำค้นเข้าไปเป็นความสนใจของผู้ใช้
+    addSignal(signals, row.keyword, 1.2 * positionWeight * recencyWeight); // ใช้เป็นสัญญาณเสริม ไม่ให้กลบโปรไฟล์หลัก
   });
 
   // ดึงพฤติกรรมการใช้งานจริง เช่น กดถูกใจ เปิดโพสต์ หรือเปิดจากหน้าแนะนำ
@@ -504,18 +870,18 @@ async function getStudentSignals(pool, userId) {
   interactions.forEach((row, index) => {
     // แต่ละการกระทำสำคัญไม่เท่ากัน favorite จะหนักกว่า open_post
     const baseWeight = row.action_type === 'favorite'
-      ? 18
+      ? INTERACTION_SIGNAL_WEIGHTS.favorite
       : row.action_type === 'open_post'
-        ? 14
+        ? INTERACTION_SIGNAL_WEIGHTS.openPost
         : row.action_type === 'open_recommendation'
-          ? 12
+          ? INTERACTION_SIGNAL_WEIGHTS.openRecommendation
           : row.action_type === 'open_explore_recommendation'
-            ? 9
+            ? INTERACTION_SIGNAL_WEIGHTS.openExploreRecommendation
             : row.action_type === 'search_open_post'
-              ? 16
+              ? INTERACTION_SIGNAL_WEIGHTS.searchOpenPost
               : row.action_type === 'search_open_tutor'
-              ? 12
-                : 8;
+                ? INTERACTION_SIGNAL_WEIGHTS.searchOpenTutor
+                : INTERACTION_SIGNAL_WEIGHTS.default;
     const positionWeight = Math.max(1, 10 - Math.floor(index / 6)); // interaction ล่าสุดสำคัญกว่า
     const recencyWeight = getRecencyMultiplier(row.created_at, { // interaction ใหม่กว่ามีผลมากกว่า
       oneDayWeight: 3.4,
@@ -539,7 +905,7 @@ async function getStudentSignals(pool, userId) {
      LIMIT 30`,
     [userId]
   );
-  favoriteSubjects.forEach((row) => addSignal(signals, row.subject, 12)); // น้ำหนักรองจาก favorite interaction โดยตรง
+  favoriteSubjects.forEach((row) => addSignal(signals, row.subject, 4)); // ใช้เสริมแนววิชาที่ชอบ แต่ไม่แรงกว่าโปรไฟล์
 
   return {
     role: 'student', // ระบุว่าชุดข้อมูลนี้เป็นของนักเรียน
@@ -548,6 +914,7 @@ async function getStudentSignals(pool, userId) {
     hasProfileInfo, // นักเรียนมีข้อมูลโปรไฟล์กรอกไว้หรือยัง
     isColdStart: signals.size === 0, // ถ้าไม่มีคำสำคัญเลย ถือว่าเป็นผู้ใช้ใหม่
     topTerms: serializeReasonTerms(signals), // คำสำคัญอันดับต้น ๆ ที่ระบบมองว่าเด่น
+    primaryInterestTerms,
     gradeLevel: profile?.grade_level || '', // ส่งระดับชั้นออกไปใช้ต่อ
     institution: profile?.institution || '', // ส่งสถานศึกษาออกไปใช้ต่อ
     faculty: profile?.faculty || '', // ส่งคณะออกไปใช้ต่อ
@@ -566,9 +933,9 @@ async function getTutorSignals(pool, userId) {
     [userId]
   );
 
-  addSignal(signals, profile?.can_teach_subjects, 18); // วิชาที่สอนได้ สำคัญที่สุดสำหรับฝั่งติวเตอร์
-  addSignal(signals, profile?.can_teach_grades, 8); // ระดับชั้นที่รับสอน
-  addSignal(signals, profile?.about_me, 3); // about_me ใช้ช่วยเสริมบริบท
+  addSignal(signals, profile?.can_teach_subjects, TUTOR_PROFILE_SIGNAL_WEIGHTS.canTeachSubjects); // วิชาที่สอนได้ สำคัญที่สุดสำหรับฝั่งติวเตอร์
+  addSignal(signals, profile?.can_teach_grades, TUTOR_PROFILE_SIGNAL_WEIGHTS.canTeachGrades); // ระดับชั้นที่รับสอน
+  addSignal(signals, profile?.about_me, TUTOR_PROFILE_SIGNAL_WEIGHTS.aboutMe); // about_me ใช้ช่วยเสริมบริบท
 
   // ดึงโพสต์เก่าของติวเตอร์ เพื่อดูว่ามักเปิดสอนเรื่องอะไร
   const [myPosts] = await pool.query(
@@ -580,9 +947,9 @@ async function getTutorSignals(pool, userId) {
     [userId]
   );
   myPosts.forEach((row) => {
-    addSignal(signals, row.subject, 18); // หัวข้อวิชาของโพสต์เก่า
-    addSignal(signals, row.description, 4); // รายละเอียดโพสต์เก่า
-    addSignal(signals, row.target_student_level, 6); // กลุ่มผู้เรียนที่เคยเปิดรับสอน
+    addSignal(signals, row.subject, TUTOR_POST_HISTORY_SIGNAL_WEIGHTS.subject); // หัวข้อวิชาของโพสต์เก่า
+    addSignal(signals, row.description, TUTOR_POST_HISTORY_SIGNAL_WEIGHTS.description); // รายละเอียดโพสต์เก่า
+    addSignal(signals, row.target_student_level, TUTOR_POST_HISTORY_SIGNAL_WEIGHTS.targetStudentLevel); // กลุ่มผู้เรียนที่เคยเปิดรับสอน
   });
 
   // ดึงประวัติการค้นหาย้อนหลัง 20 วัน เพื่อจับความสนใจล่าสุดของติวเตอร์
@@ -605,7 +972,7 @@ async function getTutorSignals(pool, userId) {
       twentyDayWeight: 0.85,
       defaultWeight: 0.4,
     });
-    addSignal(signals, row.keyword, 7 * positionWeight * recencyWeight); // เพิ่มคำค้นเข้าไปในความสนใจของติวเตอร์
+    addSignal(signals, row.keyword, 1.2 * positionWeight * recencyWeight); // เพิ่มคำค้นเป็นสัญญาณเสริม
   });
 
   // ดึงพฤติกรรมที่ติวเตอร์เคยทำจริง เช่น favorite หรือเปิดดูโพสต์
@@ -619,7 +986,11 @@ async function getTutorSignals(pool, userId) {
     [userId]
   ).catch(() => [[]]);
   interactions.forEach((row, index) => {
-    const baseWeight = row.action_type === 'favorite' ? 14 : row.action_type === 'open_post' ? 12 : 8; // favorite หนักกว่า open_post
+    const baseWeight = row.action_type === 'favorite'
+      ? INTERACTION_SIGNAL_WEIGHTS.favorite
+      : row.action_type === 'open_post'
+        ? INTERACTION_SIGNAL_WEIGHTS.openPost
+        : INTERACTION_SIGNAL_WEIGHTS.default; // favorite หนักกว่า open_post
     const positionWeight = Math.max(1, 10 - Math.floor(index / 6)); // interaction ล่าสุดสำคัญกว่า
     const recencyWeight = getRecencyMultiplier(row.created_at, { // interaction ใหม่กว่ามีน้ำหนักมากกว่า
       oneDayWeight: 3.2,
@@ -779,61 +1150,6 @@ async function getStudentRecommendationCandidates(pool, limit = 300) {
   return rows;
 }
 
-function scoreTutorCandidate(row, signals) { //ฟังก์ชั่นคำนวณคะแนนความตรงของโพสต์ติวเตอร์กับความสนใจของนร. ดูจากฟิล์ดในโพสต์
-  //การให้คะแนน ตรงชื่อวิชาให้สำคัญสุด
-  const relevanceScore = // scoreTextAgainstSignals ฟังก์ชั่นที่ดูว่าข้อความในฟิลด์นั้นตรงกับคำสำคัญของผู้ใช้แค่ไหน และคูณด้วยน้ำหนักที่กำหนด
-    scoreTextAgainstSignals(row.subject, signals, 3.2) + 
-    scoreTextAgainstSignals(row.can_teach_subjects, signals, 2.4) +
-    scoreTextAgainstSignals(row.description, signals, 1.2) +
-    scoreTextAgainstSignals(row.about_me, signals, 0.8) +
-    scoreTextAgainstSignals(row.target_student_level, signals, 1.1);
-
-  let score = relevanceScore; //เริ่มต้นคะแนนรวมจากความเกี่ยวข้องก่อน
-  score += recencyScore(row.created_at);
-  score += popularityScore({
-    favCount: row.fav_count,
-    reviewCount: row.review_count,
-    joinCount: row.join_count,
-    studentCount: row.students_taught_count,
-    rating: row.avg_rating,
-  });
-
-  const targetLevel = normalizeText(row.target_student_level);
-  const gradeSignals = serializeReasonTerms(signals, 12).filter((term) => targetLevel.includes(term));
-  if (gradeSignals.length > 0) score += 20;
-  if (signals.size > 0 && relevanceScore === 0) score -= 36; //ผู้ใช้มีข้อมูลแล้ว แต่โพสต์ไม่เกี่ยวเลย ติดลบ 36
-  else if (signals.size > 0 && relevanceScore < 18) score -= 12; //โพสต์เกี่ยวข้องน้อยมาก ติดลบ 12
-
-  return score;
-}
-
-function scoreStudentCandidate(row, signals) { // คำนวณคะแนนว่าโพสต์นักเรียนนี้ตรงกับความสนใจของติวเตอร์แค่ไหน
-  // relevanceScore = คะแนนความเกี่ยวข้องหลักของโพสต์นี้
-  // row = ข้อมูลโพสต์นักเรียน 1 โพสต์
-  // signals = คำสำคัญและน้ำหนักความสนใจของผู้ใช้ที่เก็บมาในรูปแบบ Map
-  const relevanceScore =
-    scoreTextAgainstSignals(row.subject, signals, 3.1) + // ชื่อวิชาสำคัญที่สุด จึงให้น้ำหนักสูง
-    scoreTextAgainstSignals(row.description, signals, 1.2) + // รายละเอียดโพสต์ช่วยบอกบริบทเพิ่มเติม
-    scoreTextAgainstSignals(row.grade_level, signals, 1.2) + // ระดับชั้นช่วยให้จับกลุ่มผู้เรียนได้ตรงขึ้น
-    scoreTextAgainstSignals(row.institution, signals, 0.8) + // สถานศึกษามีผล แต่เบากว่าวิชา
-    scoreTextAgainstSignals(row.faculty, signals, 1.0) + // คณะช่วยบอกสายการเรียน
-    scoreTextAgainstSignals(row.major, signals, 1.0); // สาขาช่วยบอกความต้องการเฉพาะทาง
-
-  let score = relevanceScore; // เริ่มต้นคะแนนรวมจากความเกี่ยวข้องก่อน
-  score += recencyScore(row.created_at); // เพิ่มคะแนนให้โพสต์ใหม่
-  score += popularityScore({
-    favCount: row.fav_count, // จำนวนคนกดถูกใจโพสต์นี้
-    joinCount: row.join_count, // จำนวนคนที่เข้าร่วมโพสต์นี้แล้ว
-  });
-
-  // ถ้าผู้ใช้มีข้อมูลความสนใจแล้ว แต่โพสต์นี้ไม่ตรงเลย ให้หักคะแนนแรง
-  if (signals.size > 0 && relevanceScore === 0) score -= 28;
-  // ถ้าตรงน้อยมาก ก็หักคะแนนเล็กลงมาอีกระดับ
-  else if (signals.size > 0 && relevanceScore < 16) score -= 10;
-
-  return score; // คืนคะแนนรวมสุดท้ายของโพสต์นักเรียนนี้
-}
-
 function dedupeRows(rows, keyFn) {
   const seen = new Set();
   return rows.filter((row) => {
@@ -845,6 +1161,7 @@ function dedupeRows(rows, keyFn) {
 }
 
 function mapTutorRow(row) {
+  const lastSession = getPostLastSessionTime(row);
   return {
     ...row,
     id: row.tutor_post_id,
@@ -864,7 +1181,8 @@ function mapTutorRow(row) {
     location: row.location || '',
     price: Number(row.price || 0),
     contact_info: row.contact_info || '',
-    is_expired: calculateIsExpired(row),
+    is_expired: row.is_expired ?? calculateIsExpired(row),
+    expired_at: lastSession ? lastSession.toISOString() : null,
     user: {
       first_name: row.name,
       last_name: row.lastname,
@@ -887,6 +1205,12 @@ function mapTutorRow(row) {
     students_taught_count: Number(row.students_taught_count || 0),
     joined: row.my_join_status === 'approved' || row.my_join_status === 'pending',
     pending_me: row.my_join_status === 'pending',
+    relevance_score: Number(row.relevance_score || 0),
+    relevance_percent: Number(row.relevance_percent || 0),
+    popularity_score: Number(row.popularity_score || 0),
+    recency_score: Number(row.recency_score || 0),
+    recommendation_score: Number(row.recommendation_score || 0),
+    score_breakdown: row.score_breakdown || null,
   };
 }
 
@@ -912,8 +1236,9 @@ function mapStudentRow(row) {
 //ส่วนที่เป็น Logic ที่แนะนำโพสต์ตต.ในหน้าฟีด
 async function getTutorRecommendations(pool, userId, options = {}) {
   const limit = Number(options.limit || 12); //เริ่มต้น 12 โพสต์
+  const candidateLimit = Math.max(500, limit * 50);
   if (!userId) { //ยังไม่รู้ว่าเป็นใคร ไม่มีข้อมูลอะไรเลย ให้ใช้โพสต์ใหม่และโพสต์นิยมแทน
-    const latest = await getTutorRecommendationCandidates(pool, 0, 120); //ดึงโพสต์ติวเตอร์ล่าสุด 120
+    const latest = await getTutorRecommendationCandidates(pool, 0, candidateLimit); //ดึงโพสต์ติวเตอร์ให้กว้างพอรวมโพสต์หมดอายุ
     const allRows = dedupeRows(latest, (row) => row.tutor_post_id); //dedupeRows ตัดโพสต์ซ้ำออก จะได้โพสต์ที่ไม่ซ้ำกันเก็บใน AllRows
     const fallbackRows = buildColdStartTutorRows(allRows, limit); //เอาโพสต์ที่ได้มาไปผ่านฟังก์ชั่น buildColdStartTutorRows ตัวแปร fallbackrows คือโพสต์ที่ผ่านการคัดแล้วสำหรับกรณีผู้ใช้ใหม่
     const fallbackItems = fallbackRows.map(mapTutorRow); //แปลงรูปแบบข้อมูลให้พร้อมแสดงผล
@@ -932,53 +1257,99 @@ async function getTutorRecommendations(pool, userId, options = {}) {
   }
 
   const signals = await getUserSignals(pool, userId, 'student'); //ดึงข้อมูลนักเรียน ระบบจะไปดูข้อมูลของนักเรียนใน getUserSignals กรณีที่ Login หรือมี Userid แล้ว
-  const candidates = await getTutorRecommendationCandidates(pool, userId, 240); //ดึงโพสต์ติวเตอร์มา 240 โพสต์ เอามาคิด
+  const candidates = await getTutorRecommendationCandidates(pool, userId, candidateLimit); //ดึงโพสต์ติวเตอร์ให้กว้างพอรวมโพสต์หมดอายุที่เกี่ยวข้อง
 
-  //เอาทุกโพสต์ที่ได้มา มาคิดคะแนนก่อน
-  let ranked = dedupeRows(candidates, (row) => row.tutor_post_id).map((row) => ({ //ตัดโพสต์ซ้ำ
-    ...row,
-    recommendation_score: scoreTutorCandidate(row, signals.signals), //คิดคะแนนแต่ละโพสต์ ที่คำนวณจาก scoreTutorCandidate
-    is_expired: calculateIsExpired(row), //เช็คว่าหมดเวลาเรียนหรือยัง
-  }));
+  // คิดคะแนนตามสูตร 100 คะแนน:
+  // Relevance 60 (ต้องผ่าน >80% ก่อน), Recency 20, Popularity 20
+  const scoredRows = dedupeRows(candidates, (row) => row.tutor_post_id).map((row) => {
+    const score = buildTutorRecommendationScore(row, signals.signals);
+    const lastSession = getPostLastSessionTime(row);
+    const interestRank = getTutorInterestRank(row, signals.topTerms);
+    const matchesPrimaryInterest = matchesPrimaryInterests(row, signals.primaryInterestTerms);
+    return {
+      ...row,
+      ...score,
+      score_breakdown: {
+        relevance: score.relevance_score,
+        recency: score.recency_score,
+        popularity: score.popularity_score,
+        subject_match: score.subject_match,
+        can_teach_match: score.can_teach_match,
+        level_match: score.level_match,
+        relevance_percent: score.relevance_percent,
+        interest_rank: interestRank,
+        matches_primary_interest: matchesPrimaryInterest,
+      },
+      interest_rank: interestRank,
+      matches_primary_interest: matchesPrimaryInterest,
+      is_expired: calculateIsExpired(row),
+      expired_at: lastSession ? lastSession.toISOString() : null,
+    };
+  });
+  let ranked = scoredRows;
 
   if (signals.isColdStart) { //เช็คว่าเป็นผู้ใช้ใหม่ที่ไม่มีข้อมูลอะไรเลยไหม ถ้าใช่ก็ให้เรียงตามความนิยมและความใหม่ของโพสต์เหมือนเดิม
-    ranked = buildColdStartTutorRows(ranked, Math.max(limit * 3, 24)).map((row, index) => ({
+    // แยก expired ออกก่อน เพราะ buildColdStartTutorRows จะ filter เฉพาะ active
+    const expiredBeforeColdStart = ranked.filter((row) => row.is_expired);
+    const coldStartActive = buildColdStartTutorRows(ranked, Math.max(limit * 3, 24)).map((row, index) => ({
       ...row,
       recommendation_score: Math.max(1, 100 - index), //ให้คะแนนเป็นลำดับแทน เพราะมัน personalized ไม่ได้
       is_expired: calculateIsExpired(row),
     }));
+    // รวม active จาก coldStart กับ expired กลับเข้าด้วยกัน
+    ranked = [...coldStartActive, ...expiredBeforeColdStart];
   } else {
-    //ถ้ามีข้อมูลผู้ใช้แล้ว เรียงตามคะแนนจากมากไปน้อย
-    ranked = ranked.sort((a, b) => b.recommendation_score - a.recommendation_score);
+    // ถ้ามีข้อมูลผู้ใช้แล้ว ตัดโพสต์ที่ relevance ไม่ผ่านออกจากรายการหลัก
+    ranked = ranked.filter((row) => row.passes_relevance && row.matches_primary_interest);
   }
 
   //แยกโพสต์ที่ยังเรียนได้ กับโพสต์ที่หมดเวลาแล้วออกจากกัน
-  const activeRanked = ranked.filter((row) => !row.is_expired);
-  const expiredRanked = ranked.filter((row) => row.is_expired);
+  const activeRanked = ranked
+    .filter((row) => !row.is_expired)
+    .sort(compareTutorRecommendationRows);
+
+  // โพสต์หมดอายุ: แสดงได้ แต่ต้องเรียงจากวันเรียน/วันหมดอายุล่าสุดไปเก่าสุด
+  const expiredRanked = scoredRows
+    .filter((row) => (
+      row.is_expired &&
+      row.matches_primary_interest &&
+      (signals.isColdStart || matchesTutorRecommendationConditions(row))
+    ))
+    .sort((a, b) => {
+      const bExpiredAt = b.expired_at ? new Date(b.expired_at).getTime() : 0;
+      const aExpiredAt = a.expired_at ? new Date(a.expired_at).getTime() : 0;
+      return bExpiredAt - aExpiredAt;
+    });
 
   //คัดโพสต์ให้หลากหลาย ไม่ซ้ำติวเตอร์หรือวิชาเดิมมากไป
   let primaryRows = diversifyTutorRows(activeRanked, limit); //โพสต์หลักที่เลือกมาแล้วว่ายัง active อยู่ diversifyTutorRows กันติวเตอร์ซ้ำหรือโพสต์วิชาเดิมๆ
-  const hasTopTermCoverage = primaryRows.some((row) => rowMatchesTopTerms(row, signals.topTerms)); //โพสต์ที่เอามามีตรงไหมถ้าไม่มีเลยทำบรรทัดต่อไป
 
-  if (!hasTopTermCoverage) { //ถ้าโพสต์ยังไม่ครอบคลุมที่ผู้ใช้สนใจ ระบบจะดึงโพสต์หมดเวลาแต่ตรงคำสำคัญมาแทรกได้
-    const exactExpiredRows = expiredRanked //เอาโพสต์หมดเวลาแล้วแต่ตรงกับความสนใจของผู้ใช้มาแนะนำเพิ่ม
-      .filter((row) => row.recommendation_score > 0 && rowMatchesTopTerms(row, signals.topTerms))
-      .sort((a, b) => b.recommendation_score - a.recommendation_score);
-
-    if (exactExpiredRows.length > 0) { //ถ้ามีโพสต์หมดเวลาแต่ตรงคะแนนที่ได้มากกว่า 0 และตรงกับคำสำคัญของผู้ใช้
-      const replacementLimit = Math.min(Math.max(1, Math.floor(limit / 3)), exactExpiredRows.length); //โพสต์ที่หมดเวลาแต่ตรงกับผู้ใช้
-      const keptActiveRows = primaryRows.slice(0, Math.max(0, limit - replacementLimit));
-      const replacementRows = exactExpiredRows.slice(0, replacementLimit).map((row) => ({
-        ...row,
-        is_expired: true,
-      }));
-      primaryRows = [...keptActiveRows, ...replacementRows];
-    }
+  if (primaryRows.length === 0) {
+    primaryRows = activeRanked.slice(0, limit);
   }
 
+  // รายการหน้าหลักมี 2 กลุ่ม: active ที่ผ่าน threshold ก่อน แล้วตามด้วย expired ที่ยังอิง Subject/CanTeach/Level ของผู้ใช้
+  primaryRows = [...primaryRows, ...expiredRanked.slice(0, limit)];
+
   const primaryIds = new Set(primaryRows.map((row) => row.tutor_post_id));
-  const lowerRelevanceRows = activeRanked.filter((row) => !primaryIds.has(row.tutor_post_id)); //โพสต์คะแนนรองลงมา
-  const exploreRows = buildExploreTutorRows(lowerRelevanceRows, expiredRanked, Math.min(limit, 12));
+  const exploreSourceRows = signals.isColdStart ? ranked : scoredRows;
+  const lowerRelevanceRows = exploreSourceRows
+    .filter((row) => !row.is_expired && row.matches_primary_interest && !primaryIds.has(row.tutor_post_id))
+    .sort(compareTutorRecommendationRows); // โพสต์คะแนนรองลงมา/ใกล้เคียง ใช้ในปุ่มดูติวเตอร์เพิ่มเติม
+  // โพสต์หมดอายุใน explore: แสดงได้และเรียงจากหมดล่าสุดไปเก่าสุด แม้ไม่ผ่าน threshold หลัก
+  const expiredForExplore = exploreSourceRows
+    .filter((row) => (
+      row.is_expired &&
+      !primaryIds.has(row.tutor_post_id) &&
+      row.matches_primary_interest &&
+      (signals.isColdStart || matchesTutorRecommendationConditions(row))
+    ))
+    .sort((a, b) => {
+      const bExpiredAt = b.expired_at ? new Date(b.expired_at).getTime() : 0;
+      const aExpiredAt = a.expired_at ? new Date(a.expired_at).getTime() : 0;
+      return bExpiredAt - aExpiredAt;
+    });
+  const exploreRows = buildExploreTutorRows(lowerRelevanceRows, expiredForExplore, Math.min(limit, 12));
 
   const items = primaryRows.map(mapTutorRow);
   const exploreItems = exploreRows.map((row) => ({
@@ -987,8 +1358,21 @@ async function getTutorRecommendations(pool, userId, options = {}) {
   }));
   const basedOn = signals.isColdStart
     ? 'โปรไฟล์ยังไม่ครบ จึงใช้โพสต์ใหม่ล่าสุดและความนิยมของติวเตอร์'
-    : `วิเคราะห์จากความสนใจล่าสุด: ${signals.topTerms.slice(0, 5).join(', ')}`;
-  return { items, explore_items: exploreItems, based_on: basedOn, reason_terms: signals.topTerms }; //แสดงสิ่งที่แนะนำมาได้ไป frontend
+    : `คัดโพสต์ที่ Subject, CanTeach และ Level ตรงกัน โดย Relevance ต้องมากกว่า 80: ${signals.topTerms.slice(0, 5).join(', ')}`;
+  return {
+    items,
+    explore_items: exploreItems,
+    based_on: basedOn,
+    reason_terms: signals.topTerms,
+    score_policy: {
+      total: 100,
+      relevance: 60,
+      recency: 20,
+      popularity: 20,
+      relevance_threshold: 80,
+      formula: 'Subject + CanTeach * Level',
+    },
+  }; //แสดงสิ่งที่แนะนำมาได้ไป frontend
 }
 
 async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
@@ -1008,7 +1392,7 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
     };
   }
 
-  const candidates = await getStudentRecommendationCandidates(pool, 240); //ดึงโพสต์นักเรียนมาเตรียมไว้
+  const candidates = await getStudentRecommendationCandidates(pool, 120); //ดึงโพสต์นักเรียนมาเท่าที่พอใช้ เพื่อลดเวลาประมวลผล
 
   // คิดคะแนนว่าโพสต์นักเรียนไหนตรงกับติวเตอร์มากที่สุด
   let ranked = dedupeRows(candidates, (row) => row.student_post_id).map((row) => ({
@@ -1019,8 +1403,8 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
   if (signals.isColdStart) { //isColdStart คือเป็นค่าเริ่มต้นที่ไม่มีอะไรเลย
     // ถ้ายังไม่มีข้อมูลติวเตอร์พอ ให้เรียงตามความนิยมและความใหม่ของโพสต์ เหมือนนักเรียนเลยจ้า
     ranked = ranked.sort((a, b) => (
-      (popularityScore({ favCount: b.fav_count, joinCount: b.join_count }) + recencyScore(b.created_at)) -
-      (popularityScore({ favCount: a.fav_count, joinCount: a.join_count }) + recencyScore(a.created_at))
+      (popularityScore({ favCount: b.fav_count, joinCount: b.join_count }, 'student') + recencyScore(b.created_at)) -
+      (popularityScore({ favCount: a.fav_count, joinCount: a.join_count }, 'student') + recencyScore(a.created_at))
     ));
   } else {
     // ถ้ามีข้อมูลแล้ว ให้เรียงตามคะแนนความเกี่ยวข้อง
@@ -1042,14 +1426,14 @@ async function getMixedFeedRecommendations(pool, userId, options = {}) {
   const signals = await getUserSignals(pool, userId, 'student');
   // ดึงโพสต์ติวเตอร์และโพสต์นักเรียนมาพร้อมกัน
   const [tutors, students] = await Promise.all([
-    getTutorRecommendationCandidates(pool, userId, 160),
-    getStudentRecommendationCandidates(pool, 160),
+    getTutorRecommendationCandidates(pool, userId, 90),
+    getStudentRecommendationCandidates(pool, 90),
   ]);
 
   // คิดคะแนนโพสต์ติวเตอร์และโพสต์นักเรียนแยกกันก่อน
   const rankedTutors = dedupeRows(tutors, (row) => `t-${row.tutor_post_id}`).map((row) => ({
     ...mapTutorRow(row),
-    recommendation_score: scoreTutorCandidate(row, signals.signals) + 8,
+    recommendation_score: scoreTutorCandidate(row, signals.signals),
   })).filter((row) => !row.is_expired);
   const rankedStudents = dedupeRows(students, (row) => `s-${row.student_post_id}`).map((row) => ({
     ...mapStudentRow(row),
@@ -1092,8 +1476,8 @@ async function smartSearch(pool, query, userId = 0) { //ระบบค้นห
   }
 
   const [tutors, students] = await Promise.all([
-    getTutorRecommendationCandidates(pool, userId, 220),
-    getStudentRecommendationCandidates(pool, 220),
+    getTutorRecommendationCandidates(pool, userId, 120),
+    getStudentRecommendationCandidates(pool, 120),
   ]);
 
   // คิดคะแนนโพสต์ติวเตอร์ แล้วตัดโพสต์ที่ไม่เกี่ยวหรือหมดเวลาออก
@@ -1135,6 +1519,107 @@ async function smartSearch(pool, query, userId = 0) { //ระบบค้นห
   };
 }
 
+function scoreTutorCandidate(row, signals) {
+  return buildTutorRecommendationScore(row, signals).recommendation_score;
+}
+
+function scoreStudentCandidate(row, signals) {
+  let relevanceScore = buildStudentRelevanceRawScore(row, signals);
+
+  const popularity = popularityScore({
+    favCount: row.fav_count,
+    joinCount: row.join_count,
+  }, 'student');
+  const recency = recencyScore(row.created_at);
+  let popularityFactor = 1;
+  let recencyFactor = 1;
+
+  if (signals.size > 0 && relevanceScore === 0) {
+    popularityFactor = 0.2;
+    recencyFactor = 0.25;
+  } else if (signals.size > 0 && relevanceScore < 8) {
+    relevanceScore = Math.max(0, relevanceScore - 3);
+    popularityFactor = 0.55;
+    recencyFactor = 0.7;
+  }
+
+  return capRecommendationScore(relevanceScore, popularity * popularityFactor, recency * recencyFactor);
+}
+
+// ฟังก์ชันสำหรับหน้าหลัก (Homepage Feed)
+// แสดง 2 ส่วน:
+// 1. matched_posts: โพสต์ที่ตรงเงื่อนไขทุกอย่าง (Subject, CanTeach, Level) และ relevance ผ่านเกณฑ์ 80%
+// 2. expired_posts: โพสต์ที่หมดอายุแล้ว เรียงจากหมดอายุล่าสุดไปเก่าสุด
+async function getHomepageFeed(pool, userId, options = {}) {
+  const limit = Number(options.limit || 20);
+
+  // ดึง signals ของผู้ใช้ (ถ้ามี userId)
+  const signals = userId
+    ? await getUserSignals(pool, userId, 'student').catch(() => ({ signals: new Map(), topTerms: [], isColdStart: true }))
+    : { signals: new Map(), topTerms: [], isColdStart: true };
+
+  const candidates = await getTutorRecommendationCandidates(pool, userId || 0, 200);
+  const allRows = dedupeRows(candidates, (row) => row.tutor_post_id);
+
+  // แยกโพสต์ active และ expired
+  const activeRows = allRows.filter((row) => !calculateIsExpired(row));
+  const expiredRows = allRows.filter((row) => calculateIsExpired(row));
+
+  // ส่วนที่ 1: โพสต์ที่ตรงเงื่อนไขทุกอย่าง
+  // - ต้องตรงทั้ง Subject, CanTeach และ TargetLevel
+  // - relevance percent ต้องมากกว่า 80 จึงนำ Relevance/Recency/Popularity ไปคิดรวม
+  const matchedPosts = activeRows
+    .map((row) => {
+      const score = buildTutorRecommendationScore(row, signals.signals);
+      return {
+        ...row,
+        ...score,
+        is_expired: false,
+      };
+    })
+    .filter((row) => row.passes_relevance)
+    .sort((a, b) => b.recommendation_score - a.recommendation_score)
+    .slice(0, limit)
+    .map(mapTutorRow);
+
+  // ส่วนที่ 2: โพสต์ที่หมดอายุแล้ว เรียงจากหมดอายุล่าสุดไปเก่าสุด
+  // (ใช้ created_at เป็น proxy เพราะโพสต์ที่สร้างล่าสุดและหมดอายุ = หมดอายุล่าสุด)
+  const expiredSorted = expiredRows
+    .map((row) => {
+      const score = buildTutorRecommendationScore(row, signals.signals);
+      const lastSession = getPostLastSessionTime(row);
+      return {
+        ...row,
+        ...score,
+        is_expired: true,
+        expired_at: lastSession ? lastSession.toISOString() : null,
+      };
+    })
+    .sort((a, b) => {
+      const bExpiredAt = b.expired_at ? new Date(b.expired_at).getTime() : 0;
+      const aExpiredAt = a.expired_at ? new Date(a.expired_at).getTime() : 0;
+      return bExpiredAt - aExpiredAt;
+    })
+    .slice(0, limit)
+    .map(mapTutorRow);
+
+  return {
+    matched_posts: matchedPosts,         // โพสต์ที่ตรงเงื่อนไขทุกอย่าง
+    expired_posts: expiredSorted,         // โพสต์หมดอายุ เรียงจากล่าสุดไปเก่าสุด
+    relevance_threshold_used: 80,
+    score_policy: {
+      total: 100,
+      relevance: 60,
+      recency: 20,
+      popularity: 20,
+      formula: 'Subject + CanTeach * Level',
+    },
+    based_on: signals.isColdStart
+      ? 'โพสต์ที่ตรงเงื่อนไขและโพสต์หมดอายุล่าสุด'
+      : `ตรงกับความสนใจ: ${signals.topTerms.slice(0, 5).join(', ')}`,
+  };
+}
+
 module.exports = {
   SUBJECT_SYNONYMS,
   expandTerms,
@@ -1145,4 +1630,5 @@ module.exports = {
   getStudentRecommendationsForTutor,
   getMixedFeedRecommendations,
   smartSearch,
+  getHomepageFeed,
 };

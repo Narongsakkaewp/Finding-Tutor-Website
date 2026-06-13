@@ -42,6 +42,54 @@ const formatScheduleTimesList = (value) =>
     .filter(Boolean)
     .join(", ");
 
+const parseSessionDateTime = (dateValue, timeValue) => {
+  const dateText = String(dateValue || "").trim();
+  if (!dateText) return null;
+
+  const ymd = dateText.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  const dmy = dateText.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (!ymd && !dmy) return null;
+
+  const year = ymd ? Number(ymd[1]) : Number(dmy[3]) > 2400 ? Number(dmy[3]) - 543 : Number(dmy[3]);
+  const month = ymd ? Number(ymd[2]) - 1 : Number(dmy[2]) - 1;
+  const day = ymd ? Number(ymd[3]) : Number(dmy[1]);
+  const timeText = String(timeValue || "").trim();
+  const timeMatch = timeText.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+
+  const parsed = new Date(
+    year,
+    month,
+    day,
+    timeMatch ? Number(timeMatch[1]) : 23,
+    timeMatch ? Number(timeMatch[2]) : 59,
+    timeMatch ? Number(timeMatch[3] || 0) : 59
+  );
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isPostExpiredBySchedule = (post = {}) => {
+  if (post.is_expired === true) return true;
+
+  const rawDays = post.meta?.preferred_days || post.preferred_days || post.meta?.teaching_days || post.teaching_days || "";
+  const rawTimes = post.meta?.preferred_time || post.preferred_time || post.meta?.teaching_time || post.teaching_time || "";
+  const dayText = String(rawDays || "");
+  const timeText = String(rawTimes || "");
+  const extractedDays = dayText.match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}/g);
+  const extractedTimes = timeText.match(/\d{1,2}:\d{2}(?::\d{2})?/g);
+  const days = (extractedDays || dayText.split(",")).map((item) => item.trim()).filter(Boolean);
+  const times = (extractedTimes || timeText.split(",")).map((item) => item.trim());
+
+  if (!days.length) return false;
+
+  const sessions = days
+    .map((day, index) => parseSessionDateTime(day, times[index] || times[0] || ""))
+    .filter(Boolean);
+
+  if (!sessions.length) return false;
+  return !sessions.some((session) => session.getTime() >= Date.now());
+};
+
 const toCalendarKey = (date) => {
   const d = new Date(date);
   if (Number.isNaN(d.getTime())) return "";
@@ -74,7 +122,7 @@ const normalizeUserPosts = (studentPosts = [], tutorPosts = []) => {
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 };
 
-function UserProfilePage({ userId, onBack, onOpenPost }) {
+function UserProfilePage({ userId, onBack, onOpenPost, onNotFound }) {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState("posts");
   const [userPosts, setUserPosts] = useState([]);
@@ -93,7 +141,7 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
       const raw = JSON.parse(localStorage.getItem("user") || "{}");
       const role = String(localStorage.getItem("userType") || raw?.role || raw?.type || "").toLowerCase();
       return {
-        userId: Number(raw?.user_id || 0),
+        userId: Number(raw?.user_id || raw?.id || 0),
         role,
         isTutor: role === "tutor" || role === "teacher",
       };
@@ -117,6 +165,10 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
       setError("");
 
       const basicRes = await fetch(`${API_URL}/api/profile/${userId}`);
+      if (basicRes.status === 404) {
+        onNotFound?.();
+        return;
+      }
       if (!basicRes.ok) throw new Error("ไม่พบข้อมูลผู้ใช้งาน");
 
       let userData = await basicRes.json();
@@ -218,6 +270,7 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
 
     const postId = post.id || post._id || post.student_post_id || post.tutor_post_id;
     if (!postId) return;
+    if (isPostExpiredBySchedule(post)) return alert("โพสต์นี้หมดเวลาแล้ว ไม่สามารถเข้าร่วมหรือเสนอสอนได้");
 
     if (post.post_type === "tutor") {
       if (viewer.isTutor) return alert("บัญชีติวเตอร์ไม่สามารถ Join โพสต์ติวเตอร์ได้");
@@ -559,6 +612,9 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
                     const time = formatScheduleTimesList(p.meta?.preferred_time || p.preferred_time || p.meta?.teaching_time || p.teaching_time || "-");
                     const location = p.meta?.location || p.location || "-";
                     const price = p.meta?.budget || p.budget || p.meta?.price || p.price || p.hourly_rate;
+                    const level = p.post_type === "tutor"
+                      ? (p.meta?.target_student_level || p.target_student_level || "-")
+                      : (p.meta?.grade_level || p.grade_level || "-");
                     const groupSize = Number(p.meta?.group_size || p.group_size || 0);
                     const joinedCount = Number(p.join_count || 0);
                     const displayJoinedCount = p.post_type === "student" ? joinedCount + 1 : joinedCount;
@@ -570,13 +626,19 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
                     const isOwnProfile = viewer.userId && viewer.userId === Number(userId);
                     const canJoinStudentPost = !isOwnProfile;
                     const canJoinTutorPost = !viewer.isTutor && !isOwnProfile;
+                    const isExpired = isPostExpiredBySchedule(p);
 
                     return (
                       <div
                         key={postId}
                         onClick={() => openPostDetail(postId, openType)}
-                        className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer"
+                        className={`bg-white border rounded-xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer relative overflow-hidden ${isExpired ? "border-red-100 bg-gray-50/80 opacity-90" : "border-gray-200 hover:border-indigo-200"}`}
                       >
+                        {isExpired && (
+                          <div className="absolute top-0 right-0 bg-red-500 text-white text-[11px] font-bold px-3 py-1 rounded-bl-xl shadow-sm">
+                            หมดเวลาแล้ว
+                          </div>
+                        )}
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-3">
                             <img
@@ -622,7 +684,19 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
                               <p className="text-sm font-semibold text-slate-700 truncate">{subject}</p>
                             </div>
                           </div>
-                          {/* 2. วันที่เรียน */}
+                          {/* 2. ระดับชั้น */}
+                          <div className="flex items-start gap-3">
+                            <div className="flex shrink-0 items-center justify-center w-10 h-10 rounded-full bg-blue-50 text-blue-600">
+                              <GraduationCap size={18} strokeWidth={2.5} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">
+                                {p.post_type === "tutor" ? "ระดับชั้นที่สอน" : "ระดับชั้น"}
+                              </p>
+                              <p className="text-sm font-semibold text-slate-700 truncate" title={level}>{level}</p>
+                            </div>
+                          </div>
+                          {/* 3. วันที่เรียน */}
                           <div className="flex items-start gap-3">
                             <div className="flex shrink-0 items-center justify-center w-10 h-10 rounded-full bg-teal-50 text-teal-600">
                               <Calendar size={18} strokeWidth={2.5} />
@@ -632,7 +706,7 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
                               <p className="text-sm font-semibold text-slate-700 truncate">{date}</p>
                             </div>
                           </div>
-                          {/* 3. เวลาเรียน */}
+                          {/* 4. เวลาเรียน */}
                           <div className="flex items-start gap-3">
                             <div className="flex shrink-0 items-center justify-center w-10 h-10 rounded-full bg-fuchsia-50 text-fuchsia-600">
                               <Clock size={18} strokeWidth={2.5} />
@@ -642,7 +716,7 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
                               <p className="text-sm font-semibold text-slate-700 truncate">{time}</p>
                             </div>
                           </div>
-                          {/* 4. สถานที่เรียน */}
+                          {/* 5. สถานที่เรียน */}
                           <div className="flex items-start gap-3">
                             <div className="flex shrink-0 items-center justify-center w-10 h-10 rounded-full bg-amber-50 text-amber-600">
                               <MapPin size={18} strokeWidth={2.5} />
@@ -652,7 +726,7 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
                               <p className="text-sm font-semibold text-slate-700 truncate" title={location}>{location}</p>
                             </div>
                           </div>
-                          {/* 5. ราคา */}
+                          {/* 6. ราคา */}
                           <div className="flex items-start gap-3">
                             <div className="flex shrink-0 items-center justify-center w-10 h-10 rounded-full bg-cyan-50 text-cyan-600">
                               <span className="text-lg font-bold">฿</span>
@@ -664,7 +738,7 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
                               </p>
                             </div>
                           </div>
-                          {/* 6. จำนวนผู้เรียน */}
+                          {/* 7. จำนวนผู้เรียน */}
                           {groupSize > 0 && (
                             <div className="flex items-start gap-3">
                               <div className="flex shrink-0 items-center justify-center w-10 h-10 rounded-full bg-rose-50 text-rose-600">
@@ -693,7 +767,16 @@ function UserProfilePage({ userId, onBack, onOpenPost }) {
                         <div className="mt-4 pt-3 border-t border-gray-50 flex flex-wrap items-center justify-between gap-3">
                           <span className="text-xs text-gray-400">คลิกเพิ่มดูข้อมูลเพิ่มเติม</span>
 
-                          {p.post_type === "student" ? (
+                          {isExpired ? (
+                            <button
+                              type="button"
+                              disabled
+                              onClick={(e) => e.stopPropagation()}
+                              className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gray-400 cursor-not-allowed"
+                            >
+                              หมดเวลาแล้ว
+                            </button>
+                          ) : p.post_type === "student" ? (
                             canJoinStudentPost ? (
                               p.joined || p.pending_me ? (
                                 <button

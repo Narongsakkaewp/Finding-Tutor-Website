@@ -3,9 +3,58 @@ import { Star, MapPin, User } from "lucide-react";
 import { API_BASE } from "../config";
 import { logUserInteraction } from "../utils/interactions";
 
+const parseSessionDate = (dateValue, timeValue) => {
+  const dateText = String(dateValue || "").trim();
+  if (!dateText) return null;
+
+  const ymd = dateText.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  const dmy = dateText.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (!ymd && !dmy) return null;
+
+  const year = ymd ? Number(ymd[1]) : Number(dmy[3]) > 2400 ? Number(dmy[3]) - 543 : Number(dmy[3]);
+  const month = ymd ? Number(ymd[2]) - 1 : Number(dmy[2]) - 1;
+  const day = ymd ? Number(ymd[3]) : Number(dmy[1]);
+  const timeText = String(timeValue || "").trim();
+  const timeMatch = timeText.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+
+  const date = new Date(
+    year,
+    month,
+    day,
+    timeMatch ? Number(timeMatch[1]) : 23,
+    timeMatch ? Number(timeMatch[2]) : 59,
+    timeMatch ? Number(timeMatch[3] || 0) : 59
+  );
+
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const isTutorPostExpired = (tutor = {}) => {
+  if (tutor.is_expired === true) return true;
+
+  const rawDays = tutor.teaching_days || tutor.meta?.teaching_days || "";
+  const rawTimes = tutor.teaching_time || tutor.meta?.teaching_time || "";
+  const dayText = String(rawDays || "");
+  const timeText = String(rawTimes || "");
+  const extractedDays = dayText.match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}/g);
+  const extractedTimes = timeText.match(/\d{1,2}:\d{2}(?::\d{2})?/g);
+  const days = (extractedDays || dayText.split(",")).map((item) => item.trim()).filter(Boolean);
+  const times = (extractedTimes || timeText.split(",")).map((item) => item.trim());
+
+  if (!days.length) return false;
+
+  const sessions = days
+    .map((day, index) => parseSessionDate(day, times[index] || times[0] || ""))
+    .filter(Boolean);
+
+  if (!sessions.length) return false;
+  return !sessions.some((session) => session.getTime() >= Date.now());
+};
+
 export default function RecommendedTutors({ userId, onOpen }) {
   const [recs, setRecs] = useState({ items: [], explore_items: [], based_on: "", reason_terms: [] });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [joinLoading, setJoinLoading] = useState({});
   const [showExplore, setShowExplore] = useState(false);
 
@@ -15,6 +64,9 @@ export default function RecommendedTutors({ userId, onOpen }) {
 
     const applyData = (data) => {
       if (ignore) return;
+      if (data?.success === false) {
+        throw new Error(data.error || data.message || "Recommendation API returned an error");
+      }
 
       const payload = Array.isArray(data)
         ? { items: data, explore_items: [], based_on: "", reason_terms: [] }
@@ -35,13 +87,23 @@ export default function RecommendedTutors({ userId, onOpen }) {
         items: dedupeRows(payload.items || []),
         explore_items: dedupeRows(payload.explore_items || []),
       });
+      setError("");
     };
 
     const fetchRecommendations = () => {
       fetch(`${API_BASE}/api/recommendations?user_id=${id}&_t=${Date.now()}`)
-        .then((res) => res.json())
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data?.error || data?.message || `Recommendation API failed (${res.status})`);
+          }
+          return data;
+        })
         .then(applyData)
-        .catch((err) => console.error("Recs Error:", err))
+        .catch((err) => {
+          console.error("Recs Error:", err);
+          if (!ignore) setError(err.message || "Recommendation API failed");
+        })
         .finally(() => {
           if (!ignore) setLoading(false);
         });
@@ -70,6 +132,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
   const handleJoin = async (e, tutor) => {
     e.stopPropagation();
     if (!userId) return alert("กรุณาเข้าสู่ระบบก่อนทำรายการ");
+    if (isTutorPostExpired(tutor)) return alert("โพสต์นี้เลยวันเรียนแล้ว ไม่สามารถขอเข้าร่วมได้");
     if (!window.confirm("ยืนยันที่จะเข้าร่วมคลาสนี้ใช่หรือไม่?")) return;
 
     const postId = tutor.id || tutor.tutor_post_id;
@@ -155,6 +218,14 @@ export default function RecommendedTutors({ userId, onOpen }) {
     return <div className="text-center py-4 text-gray-500">กำลังประมวลผลติวเตอร์ที่เหมาะกับคุณ...</div>;
   }
 
+  if (error) {
+    return (
+      <div className="bg-red-50 rounded-2xl p-6 mb-8 border border-red-100 shadow-sm text-sm text-red-600">
+        โหลดคำแนะนำไม่สำเร็จ: {error}
+      </div>
+    );
+  }
+
   const hasPrimaryItems = Array.isArray(recs.items) && recs.items.length > 0;
   const hasExploreItems = Array.isArray(recs.explore_items) && recs.explore_items.length > 0;
   const hasReasonTerms = Array.isArray(recs.reason_terms) && recs.reason_terms.length > 0;
@@ -176,7 +247,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
   }
 
   const renderCard = (tutor, variant = "primary") => {
-    const isExpired = !!tutor.is_expired;
+    const isExpired = isTutorPostExpired(tutor);
     const isExplore = variant === "explore";
     const key = tutor.id || tutor.tutor_post_id;
     const isFull = Number(tutor.group_size || 0) > 0 && Number(tutor.join_count || 0) >= Number(tutor.group_size || 0);
@@ -312,7 +383,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
                 onClick={() => setShowExplore((prev) => !prev)}
                 className="px-5 py-2.5 rounded-full border border-indigo-200 bg-white text-indigo-700 font-semibold hover:bg-indigo-50 transition-colors shadow-sm"
               >
-                {showExplore ? "ซ่อนรายการสำรวจเพิ่มเติม" : "ดูโพสต์เพิ่มเติมที่หลากหลายขึ้น"}
+                {showExplore ? "ซ่อนติวเตอร์เพิ่มเติม" : "ดูติวเตอร์เพิ่มเติม"}
               </button>
             </div>
           )}

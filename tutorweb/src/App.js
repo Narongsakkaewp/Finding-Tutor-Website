@@ -30,6 +30,11 @@ import {
   ShieldAlert
 } from "lucide-react";
 
+const normalizeUser = (rawUser) => {
+  if (!rawUser) return null;
+  const userId = rawUser.user_id ?? rawUser.id;
+  return userId ? { ...rawUser, user_id: Number(userId) } : rawUser;
+};
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -45,7 +50,7 @@ function App() {
 
   const [user, setUser] = useState(() => {
     const raw = localStorage.getItem('user');
-    return raw ? JSON.parse(raw) : null;
+    return raw ? normalizeUser(JSON.parse(raw)) : null;
   });
 
   const [userType, setUserType] = useState(() => {
@@ -91,7 +96,10 @@ function App() {
     return localStorage.getItem('backPage') || 'mypost';
   });
 
-  const [viewingUserId, setViewingUserId] = useState(null); // [NEW] For viewing other profiles
+  const [viewingUserId, setViewingUserId] = useState(() => {
+    const saved = localStorage.getItem('viewingUserId');
+    return saved ? Number(saved) : null;
+  }); // [NEW] For viewing other profiles
 
   const [postsCache, setPostsCache] = useState([]);
 
@@ -116,6 +124,14 @@ function App() {
       localStorage.setItem('backPage', backPage);
     }
   }, [currentPage, selectedPostId, selectedPostType, backPage]);
+
+  useEffect(() => {
+    if (viewingUserId) {
+      localStorage.setItem('viewingUserId', String(viewingUserId));
+    } else {
+      localStorage.removeItem('viewingUserId');
+    }
+  }, [viewingUserId]);
 
   useEffect(() => {
     localStorage.setItem('isAuthenticated', isAuthenticated ? 'true' : 'false');
@@ -193,8 +209,9 @@ function App() {
     const role = (payload.userType || payload.role || payload.user?.role || '').toLowerCase();
     setIsAuthenticated(true);
     if (payload.user) {
-      setUser(payload.user);
-      localStorage.setItem('user', JSON.stringify(payload.user));
+      const nextUser = normalizeUser(payload.user);
+      setUser(nextUser);
+      localStorage.setItem('user', JSON.stringify(nextUser));
     }
     setUserType(role);
     localStorage.setItem('userType', role);
@@ -224,6 +241,7 @@ function App() {
     setUser(null);
     setUserType(null);
     setSelectedPostId(null);
+    setViewingUserId(null);
     setPostsCache([]);
     setBackPage('mypost');
 
@@ -237,6 +255,7 @@ function App() {
     localStorage.removeItem('selectedPostId');
     localStorage.removeItem('selectedPostType');
     localStorage.removeItem('backPage');
+    localStorage.removeItem('viewingUserId');
   };
 
   const openPostDetails = (postId, from = 'mypost', type = null) => {
@@ -260,9 +279,17 @@ function App() {
   const [profileBackPage, setProfileBackPage] = useState(null); // [NEW] Separate back tracking for profile
 
   const handleViewProfile = (userId) => {
-    setViewingUserId(userId);
+    const nextUserId = Number(userId);
+    if (!Number.isFinite(nextUserId) || nextUserId <= 0) return;
+    setViewingUserId(nextUserId);
     setProfileBackPage(currentPage);
     setCurrentPage('user_profile');
+  };
+
+  const handleUserProfileNotFound = () => {
+    setViewingUserId(null);
+    localStorage.removeItem('viewingUserId');
+    setCurrentPage(profileBackPage || 'profile');
   };
 
   const renderPage = () => {
@@ -325,11 +352,29 @@ function App() {
       case 'student_calendar': return <StudentCalendar />;
       case 'settings': return <Settings />;
       case 'user_profile': // [NEW]
+        if (!viewingUserId) {
+          return userType === 'tutor'
+            ? <TutorProfile
+              setCurrentPage={setCurrentPage}
+              user={user}
+              onEditProfile={handleEditProfile}
+              onOpenPost={(id, type) => openPostDetails(id, 'profile', type)}
+              onViewProfile={handleViewProfile}
+            />
+            : <Profile
+              setCurrentPage={setCurrentPage}
+              user={user}
+              onEditProfile={handleEditProfile}
+              onOpenPost={(id, type) => openPostDetails(id, 'profile', type)}
+              onViewProfile={handleViewProfile}
+            />;
+        }
         return (
           <UserProfilePage
             userId={viewingUserId}
             onBack={() => setCurrentPage(profileBackPage || 'home')}
             onOpenPost={(id, type) => openPostDetails(id, 'user_profile', type)}
+            onNotFound={handleUserProfileNotFound}
           />
         );
       case 'admin_dashboard': return <AdminDashboard />;

@@ -54,20 +54,25 @@ function Modal({ open, onClose, title, children }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-scale-in" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b bg-white/95 backdrop-blur">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden animate-scale-in flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="shrink-0 flex items-center justify-between p-4 border-b bg-white/95 backdrop-blur">
           <h3 className="text-lg font-bold text-gray-800">{title}</h3>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
             <X size={20} />
           </button>
         </div>
-        <div className="p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 custom-scrollbar">
           {children}
         </div>
       </div>
     </div>
   );
 }
+
+const getProfileTargetId = (item = {}) => {
+  const id = Number(item.user_id || item.tutor_id || item.owner_id || item.author_id || item.post_id);
+  return Number.isFinite(id) && id > 0 ? id : null;
+};
 
 // --------------------------- Hooks ---------------------------
 function useFavorites() {
@@ -415,7 +420,8 @@ export default function Favorite({ onViewProfile }) {
                   item={item}
                   onUnfav={handleUnfav}
                   onClick={() => {
-                    if (onViewProfile) onViewProfile(item.post_id);
+                    const profileId = getProfileTargetId(item);
+                    if (onViewProfile && profileId) onViewProfile(profileId);
                     else setPreviewPost(item);
                   }}
                 />

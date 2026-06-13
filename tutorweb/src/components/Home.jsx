@@ -28,6 +28,27 @@ const getUserContext = () => {
   }
 };
 
+const getTutorProfileUserId = (tutor = {}) => {
+  const directId = Number(
+    tutor?.dbTutorId ||
+    tutor?.tutor_id ||
+    tutor?.owner_id ||
+    tutor?.user_id ||
+    tutor?.authorId?.id ||
+    tutor?.user?.user_id ||
+    tutor?.user?.id
+  );
+  if (Number.isFinite(directId) && directId > 0) return directId;
+
+  const cardId = String(tutor?.id || "");
+  if (cardId.startsWith("t-")) {
+    const parsed = Number(cardId.slice(2));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  return null;
+};
+
 const today = new Date().toISOString().split("T")[0];
 
 const formatScheduleTime = (value) => {
@@ -44,6 +65,58 @@ const formatScheduleTimesList = (value) =>
     .map((item) => formatScheduleTime(item))
     .filter(Boolean)
     .join(", ");
+
+const parseSessionDateTime = (dateValue, timeValue) => {
+  const dateText = String(dateValue || "").trim();
+  if (!dateText) return null;
+
+  const ymd = dateText.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  const dmy = dateText.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (!ymd && !dmy) return null;
+
+  const year = ymd ? Number(ymd[1]) : Number(dmy[3]) > 2400 ? Number(dmy[3]) - 543 : Number(dmy[3]);
+  const month = ymd ? Number(ymd[2]) - 1 : Number(dmy[2]) - 1;
+  const day = ymd ? Number(ymd[3]) : Number(dmy[1]);
+  const timeText = String(timeValue || "").trim();
+  const timeMatch = timeText.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+
+  const parsed = new Date(
+    year,
+    month,
+    day,
+    timeMatch ? Number(timeMatch[1]) : 23,
+    timeMatch ? Number(timeMatch[2]) : 59,
+    timeMatch ? Number(timeMatch[3] || 0) : 59
+  );
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isPostExpiredBySchedule = (post = {}, isStudentPost = false) => {
+  if (post.is_expired === true) return true;
+
+  const rawDays = isStudentPost
+    ? post.preferred_days
+    : (post.meta?.teaching_days || post.teaching_days);
+  const rawTimes = isStudentPost
+    ? post.preferred_time
+    : (post.meta?.teaching_time || post.teaching_time);
+  const dayText = String(rawDays || "");
+  const timeText = String(rawTimes || "");
+  const extractedDays = dayText.match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}/g);
+  const extractedTimes = timeText.match(/\d{1,2}:\d{2}(?::\d{2})?/g);
+  const days = (extractedDays || dayText.split(",")).map((item) => item.trim()).filter(Boolean);
+  const times = (extractedTimes || timeText.split(",")).map((item) => item.trim());
+
+  if (!days.length) return false;
+
+  const sessions = days
+    .map((day, index) => parseSessionDateTime(day, times[index] || times[0] || ""))
+    .filter(Boolean);
+
+  if (!sessions.length) return false;
+  return !sessions.some((session) => session.getTime() >= Date.now());
+};
 
 /** ---------------- UI Components -------------- */
 
@@ -167,14 +240,14 @@ function Modal({ open, onClose, children, title }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden transform transition-all scale-100">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-3xl shadow-2xl overflow-hidden transform transition-all scale-100 flex flex-col">
+        <div className="shrink-0 flex items-center justify-between px-6 py-5 border-b border-gray-100">
           <h3 className="text-xl font-bold text-gray-800">{title}</h3>
           <button onClick={onClose} className="p-2 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
             <ChevronRight className="rotate-90" />
           </button>
         </div>
-        <div className="p-6 max-h-[80vh] overflow-y-auto custom-scrollbar">{children}</div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 custom-scrollbar">{children}</div>
       </div>
     </div>
   );
@@ -208,6 +281,7 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
   const handleJoin = async (e, post) => {
     e.stopPropagation();
     if (!userId) return alert("กรุณาเข้าสู่ระบบ");
+    if (isPostExpiredBySchedule(post, true)) return alert("โพสต์นี้หมดระยะเวลาแล้ว ไม่สามารถเข้าร่วมหรือเสนอสอนได้");
 
     if (isTutor) {
       if (!window.confirm("ยืนยันที่จะเสนอสอนให้นักเรียนคนนี้?")) return;
@@ -255,6 +329,7 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
     e.stopPropagation();
     if (isTutor) return alert("บัญชีติวเตอร์ไม่สามารถ Join ได้");
     if (!userId) return alert("กรุณาเข้าสู่ระบบ");
+    if (isPostExpiredBySchedule(post, false)) return alert("โพสต์นี้เลยวันเรียนแล้ว ไม่สามารถขอเข้าร่วมได้");
     setJoinLoading(s => ({ ...s, [post.id || post._id]: true }));
     try {
       const res = await fetch(`${API_BASE}/api/posts/tutor/${post.id || post._id}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId }) });
@@ -351,7 +426,7 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
   return (
     <div className={`grid grid-cols-1 ${type === 'tutor_profile' ? '' : 'sm:grid-cols-2 lg:grid-cols-3'} gap-4`}>
       {posts.map(p => {
-        const isStudent = (type === "student" || type === "tutor_recommendation" || type === "recommended_courses");
+        const isStudent = (type === "student" || type === "tutor_recommendation");
         const userImg = p.user?.profile_image || p.authorId?.avatarUrl || p.profile_picture_url || "../blank_avatar.jpg";
         const userName = p.user?.first_name || p.authorId?.name || (p.name ? `${p.name} ${p.lastname || ""}` : "User");
         const userUsername = p.user?.username || p.authorId?.username || p.username || "";
@@ -364,37 +439,7 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
         const days = isStudent ? p.preferred_days : p.meta?.teaching_days;
         const time = isStudent ? p.preferred_time : p.meta?.teaching_time;
 
-        // ✅ Expired Logic (คำนวณสดใน Frontend)
-        let isExpired = p.is_expired || false;
-
-        if (!isExpired) {
-          try {
-            let dateStr = "";
-            let timeStr = "";
-
-            if (isStudent) {
-              dateStr = p.preferred_days;
-              timeStr = p.preferred_time;
-            } else {
-              dateStr = p.meta?.teaching_days || p.teaching_days;
-              timeStr = p.meta?.teaching_time || p.teaching_time;
-            }
-
-            if (dateStr) {
-              if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
-                const targetDateTimeStr = timeStr ? `${dateStr}T${timeStr}` : `${dateStr}T23:59:59`;
-                const targetDate = new Date(targetDateTimeStr);
-                const now = new Date();
-
-                if (now > targetDate) {
-                  isExpired = true;
-                }
-              }
-            }
-          } catch (e) {
-            console.error("Date check error in Home", e);
-          }
-        }
+        const isExpired = isPostExpiredBySchedule(p, isStudent);
 
         return (
           <div
@@ -438,7 +483,7 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
 
             {isExpired ? (
               <div className="mt-3 pt-3 border-t border-gray-200 text-center">
-                <span className="text-red-500 text-xs font-bold">{isStudent ? "โพสต์นี้หมดระยะเวลาแล้ว" : "ติดต่อติวเตอร์โดยตรง"}</span>
+                <span className="text-red-500 text-xs font-bold">{isStudent ? "โพสต์นี้หมดระยะเวลาแล้ว" : "โพสต์นี้เลยวันเรียนแล้ว"}</span>
               </div>
             ) : (
               <>
@@ -685,13 +730,7 @@ function HomeStudent({ onViewProfile }) {
   const userId = user?.user_id;
 
   const openUserProfileFromTutor = (tutor) => {
-    const targetUserId = Number(
-      tutor?.dbTutorId ||
-      tutor?.user_id ||
-      tutor?.owner_id ||
-      tutor?.user?.id ||
-      String(tutor?.id || "").replace(/^t-/, "")
-    );
+    const targetUserId = getTutorProfileUserId(tutor);
     if (!targetUserId || !onViewProfile) return;
     setPreview(null);
     onViewProfile(targetUserId);
@@ -774,30 +813,30 @@ function HomeStudent({ onViewProfile }) {
       <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8 pb-20">
 
         {/* --- Hero Section --- */}
-        <div className="pt-8 md:pt-12 pb-10">
+        <div className="pt-6 md:pt-8 pb-8">
           {/* ... Hero Content ... */}
-          <div className="relative bg-white rounded-[3rem] shadow-2xl min-h-[500px] flex items-center border border-gray-100">
+          <div className="relative bg-white rounded-[2rem] shadow-xl min-h-[360px] flex items-center border border-gray-100">
             {/* Background Elements (Clipped) */}
-            <div className="absolute inset-0 z-0 overflow-hidden rounded-[3rem]">
-              <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-gradient-to-bl from-indigo-100/50 via-purple-100/30 to-white rounded-full blur-3xl -mr-40 -mt-40 opacity-70"></div>
-              <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-gradient-to-tr from-pink-100/40 via-blue-100/30 to-white rounded-full blur-3xl -ml-32 -mb-32 opacity-70"></div>
+            <div className="absolute inset-0 z-0 overflow-hidden rounded-[2rem]">
+              <div className="absolute top-0 right-0 w-[560px] h-[560px] bg-gradient-to-bl from-indigo-100/50 via-purple-100/30 to-white rounded-full blur-3xl -mr-32 -mt-32 opacity-70"></div>
+              <div className="absolute bottom-0 left-0 w-[420px] h-[420px] bg-gradient-to-tr from-pink-100/40 via-blue-100/30 to-white rounded-full blur-3xl -ml-24 -mb-24 opacity-70"></div>
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03]"></div>
             </div>
 
-            <div className="relative z-10 w-full grid lg:grid-cols-12 gap-8 lg:gap-16 items-center px-8 md:px-14 py-12">
-              <div className="lg:col-span-7 space-y-8">
-                <div className="inline-flex items-center gap-2 bg-white border border-indigo-100 rounded-full px-5 py-2 text-sm font-semibold text-indigo-600 shadow-sm animate-fade-in-up">
-                  <Sparkles size={16} className="text-amber-400 fill-amber-400" />
+            <div className="relative z-10 w-full grid lg:grid-cols-12 gap-6 lg:gap-10 items-center px-6 md:px-10 py-8">
+              <div className="lg:col-span-7 space-y-5">
+                <div className="inline-flex items-center gap-2 bg-white border border-indigo-100 rounded-full px-4 py-1.5 text-xs font-semibold text-indigo-600 shadow-sm animate-fade-in-up">
+                  <Sparkles size={14} className="text-amber-400 fill-amber-400" />
                   <span>แพลตฟอร์มหาติวเตอร์แบบใหม่</span>
                 </div>
 
-                <h1 className="text-5xl md:text-6xl lg:text-7xl font-black leading-[1.1] tracking-tight text-gray-900">
+                <h1 className="text-4xl md:text-5xl lg:text-6xl font-black leading-[1.08] tracking-tight text-gray-900">
                   อัพสกิลความรู้<br />
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600">ก้าวสู่อนาคต</span>
                 </h1>
 
                 {/* ✅ Search Box Container */}
-                <div className="relative z-50 max-w-xl w-full">
+                <div className="relative z-50 max-w-lg w-full">
                   <SmartSearch
                     userId={userId}
                     onSearch={(val) => {
@@ -812,13 +851,13 @@ function HomeStudent({ onViewProfile }) {
               <div className="hidden lg:col-span-5 lg:flex justify-end relative pointer-events-none">
                 <div className="relative">
                   {/* Abstract Shapes */}
-                  <div className="absolute -top-12 -right-12 w-24 h-24 bg-yellow-300 rounded-full blur-2xl opacity-60 animate-pulse"></div>
-                  <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-indigo-600 rounded-full blur-3xl opacity-20"></div>
+                  <div className="absolute -top-8 -right-8 w-20 h-20 bg-yellow-300 rounded-full blur-2xl opacity-60 animate-pulse"></div>
+                  <div className="absolute -bottom-8 -left-8 w-24 h-24 bg-indigo-600 rounded-full blur-3xl opacity-20"></div>
 
                   <img
                     src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=800&auto=format&fit=crop"
                     alt="Student Learning"
-                    className="relative z-10 rounded-[2.5rem] shadow-2xl border-[6px] border-white w-[420px] h-[520px] object-cover transform rotate-2 hover:rotate-0 transition-all duration-700"
+                    className="relative z-10 rounded-[2rem] shadow-xl border-[5px] border-white w-[320px] h-[360px] object-cover transform rotate-2 hover:rotate-0 transition-all duration-700"
                   />
                 </div>
               </div>
@@ -1281,7 +1320,7 @@ function DashboardStats() {
 }
 
 /** ========== TUTOR HOME ========== */
-function HomeTutor({ setCurrentPage, user, onViewProfile }) {
+function HomeTutor({ user, onViewProfile }) {
   const { user_id } = getUserContext();
   const [tutors, setTutors] = useState([]);
   const [loadingTutors, setLoadingTutors] = useState(true);
@@ -1292,13 +1331,7 @@ function HomeTutor({ setCurrentPage, user, onViewProfile }) {
   const [recKey, setRecKey] = useState(0);
 
   const openUserProfileFromTutor = (tutor) => {
-    const targetUserId = Number(
-      tutor?.dbTutorId ||
-      tutor?.user_id ||
-      tutor?.owner_id ||
-      tutor?.user?.id ||
-      String(tutor?.id || "").replace(/^t-/, "")
-    );
+    const targetUserId = getTutorProfileUserId(tutor);
     if (!targetUserId || !onViewProfile) return;
     setPreviewTutor(null);
     onViewProfile(targetUserId);
@@ -1357,6 +1390,15 @@ function HomeTutor({ setCurrentPage, user, onViewProfile }) {
                 เข้าถึงประกาศหาผู้สอนใหม่ๆ ที่ตรงกับวิชาและความถนัดของคุณ ระบบคัดกรองงานที่ใช่ให้คุณโดยอัตโนมัติ
               </p>
 
+              <button
+                type="button"
+                onClick={() => setCreatePostModalOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 px-5 py-3 text-sm font-bold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+              >
+                <MessageSquarePlus size={18} />
+                สร้างโพสต์รับสอน
+              </button>
+
             </div>
 
             <div className="relative z-10 hidden lg:flex flex-1 min-w-[320px] max-w-[430px] items-center justify-center self-stretch">
@@ -1376,39 +1418,6 @@ function HomeTutor({ setCurrentPage, user, onViewProfile }) {
 
             {/* Soft Background Decor */}
             <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-indigo-50 rounded-full blur-3xl -mr-20 -mt-20 opacity-60 pointer-events-none"></div>
-          </div>
-        </div>
-
-        {/* --- Action Buttons (Large Cards) --- */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-16">
-          {/* Create Post Card */}
-          <div
-            onClick={() => setCreatePostModalOpen(true)}
-            className="cursor-pointer group relative overflow-hidden bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 min-h-[160px] flex items-center justify-between shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
-          >
-            <div className="relative z-10">
-              <h3 className="text-2xl font-bold text-white mb-2">สร้างโพสต์รับสอน</h3>
-              <p className="text-indigo-100 text-sm font-medium opacity-90">สร้างโปรไฟล์หรือโพสต์งานสอนของคุณ<br />เพื่อให้นักเรียนค้นเจอได้ง่ายขึ้น</p>
-            </div>
-            <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-sm group-hover:bg-white/30 transition-colors">
-              <MessageSquarePlus className="text-white w-8 h-8" />
-            </div>
-            {/* Decorative */}
-            <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-          </div>
-
-          {/* Manage Posts Card */}
-          <div
-            onClick={() => setCurrentPage('manage_posts')}
-            className="cursor-pointer group relative overflow-hidden bg-white border border-gray-100 rounded-3xl p-8 min-h-[160px] flex items-center justify-between shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
-          >
-            <div className="relative z-10">
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">จัดการโพสต์ของฉัน</h3>
-              <p className="text-gray-500 text-sm font-medium">ดู แก้ไข หรือลบโพสต์งานสอนของคุณ</p>
-            </div>
-            <div className="bg-gray-100 p-4 rounded-2xl group-hover:bg-gray-200 transition-colors">
-              <BookOpen className="text-gray-600 w-8 h-8" />
-            </div>
           </div>
         </div>
 
