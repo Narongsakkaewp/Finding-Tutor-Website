@@ -39,6 +39,40 @@ const subjectOptions = [
     { value: 'ดนตรี', label: 'ดนตรี' },
 ];
 
+const parseProfileList = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map(item => String(item).trim()).filter(Boolean);
+
+    const text = String(value).trim();
+    if (!text) return [];
+
+    try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) return parsed.map(item => String(item).trim()).filter(Boolean);
+    } catch {
+        // Stored tutor profile lists are often saved as comma-separated text.
+    }
+
+    return text.split(',').map(item => item.trim()).filter(Boolean);
+};
+
+const normalizeTutorGrade = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return '';
+
+    if (/ประถม/.test(text)) return 'ประถมศึกษา';
+    if (/มัธยม(ศึกษา)?ตอนต้น|มัธยมต้น|ม\.?\s*1|ม\.?\s*2|ม\.?\s*3/.test(text)) return 'มัธยมต้น';
+    if (/มัธยม(ศึกษา)?ตอนปลาย|มัธยมปลาย|ม\.?\s*4|ม\.?\s*5|ม\.?\s*6/.test(text)) return 'มัธยมปลาย';
+    if (/ปริญญาตรี|มหาวิทยาลัย/.test(text)) return 'ปริญญาตรี';
+    if (/บุคคลทั่วไป|ทั่วไป/.test(text)) return 'บุคคลทั่วไป';
+
+    return text;
+};
+
+const normalizeTutorGradeList = (value) => (
+    Array.from(new Set(parseProfileList(value).map(normalizeTutorGrade).filter(Boolean)))
+);
+
 export default function TutorInfoPage({ setCurrentPage }) {
     const currentUser = useMemo(() => getCurrentUser(), []);
 
@@ -124,8 +158,8 @@ export default function TutorInfoPage({ setCurrentPage }) {
                     about_me: data.about_me || '',
                     education: data.education || [],
                     teaching_experience: data.teaching_experience || [],
-                    can_teach_grades: data.can_teach_grades ? data.can_teach_grades.split(',') : [],
-                    can_teach_subjects: data.can_teach_subjects ? data.can_teach_subjects.split(',') : [],
+                    can_teach_grades: normalizeTutorGradeList(data.can_teach_grades),
+                    can_teach_subjects: parseProfileList(data.can_teach_subjects),
                     hourly_rate: data.hourly_rate || '',
                 });
             } catch (err) { console.error(err); }
@@ -209,8 +243,14 @@ export default function TutorInfoPage({ setCurrentPage }) {
 
     const handleGradeChange = (gradeValue) => {
         setFormData(prev => {
-            const current = prev.can_teach_grades;
-            return { ...prev, can_teach_grades: current.includes(gradeValue) ? current.filter(g => g !== gradeValue) : [...current, gradeValue] };
+            const normalizedGrade = normalizeTutorGrade(gradeValue);
+            const current = normalizeTutorGradeList(prev.can_teach_grades);
+            return {
+                ...prev,
+                can_teach_grades: current.includes(normalizedGrade)
+                    ? current.filter(g => g !== normalizedGrade)
+                    : [...current, normalizedGrade],
+            };
         });
     };
 
@@ -359,7 +399,7 @@ export default function TutorInfoPage({ setCurrentPage }) {
                             <label className="block text-sm font-bold text-gray-700 mb-3">ระดับชั้นที่สอนได้</label>
                             <div className="flex flex-wrap gap-3">
                                 {gradeLevelOptions.map(option => {
-                                    const isSelected = formData.can_teach_grades.includes(option.value);
+                                    const isSelected = normalizeTutorGradeList(formData.can_teach_grades).includes(normalizeTutorGrade(option.value));
                                     return (
                                         <button
                                             key={option.value}

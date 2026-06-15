@@ -56,6 +56,12 @@ const STOPWORDS = new Set([
 ]);
 
 const GRADE_GROUPS = {
+  'ประถมศึกษา': ['ประถม', 'primary', 'ป.1', 'ป.2', 'ป.3', 'ป.4', 'ป.5', 'ป.6'],
+  'ประถม': ['ประถมศึกษา', 'primary', 'ป.1', 'ป.2', 'ป.3', 'ป.4', 'ป.5', 'ป.6'],
+  'มัธยมต้น': ['มัธยมศึกษาตอนต้น', 'ม.ต้น', 'ม.1', 'ม.2', 'ม.3', 'middle school'],
+  'มัธยมศึกษาตอนต้น': ['มัธยมต้น', 'ม.ต้น', 'ม.1', 'ม.2', 'ม.3', 'middle school'],
+  'มัธยมปลาย': ['มัธยมศึกษาตอนปลาย', 'ม.ปลาย', 'ม.4', 'ม.5', 'ม.6', 'high school'],
+  'มัธยมศึกษาตอนปลาย': ['มัธยมปลาย', 'ม.ปลาย', 'ม.4', 'ม.5', 'ม.6', 'high school'],
   'ม.1': ['มัธยมต้น', 'middle school'],
   'ม.2': ['มัธยมต้น', 'middle school'],
   'ม.3': ['มัธยมต้น', 'middle school'],
@@ -240,7 +246,7 @@ function expandTerms(text) {
 
     if (!compactCandidate) return false;
 
-    if (compactCandidate.length <= 2) {
+    if (compactCandidate.length <= 3) {
       return sourceToken === loweredCandidate || compactSourceToken === compactCandidate;
     }
 
@@ -402,11 +408,13 @@ function getFieldMatchPercent(text, signalMap, rawMax = 180) {
   return scoreFieldAgainstSignals(text, signalMap, 100, { rawMax });
 }
 
-function buildTutorRelevanceBreakdown(row, signals) {
+function buildTutorRelevanceBreakdown(row, signals, context = {}) {
   const subjectMatch = getFieldMatchPercent(row.subject, signals, 180);
   const canTeachSource = [row.can_teach_subjects, row.subject].filter(Boolean).join(' ');
   const canTeachMatch = getFieldMatchPercent(canTeachSource, signals, 180);
-  const levelMatch = getFieldMatchPercent(row.target_student_level, signals, 50);
+  const levelMatch = context.gradeLevel
+    ? (hasGradeLevelOverlap(row.target_student_level, context.gradeLevel) ? 100 : 0)
+    : getFieldMatchPercent(row.target_student_level, signals, 50);
   const levelMultiplier = levelMatch / 100;
   const relevancePercent = Math.min(
     100,
@@ -429,8 +437,8 @@ function buildTutorRelevanceBreakdown(row, signals) {
   };
 }
 
-function buildTutorRecommendationScore(row, signals) {
-  const relevance = buildTutorRelevanceBreakdown(row, signals);
+function buildTutorRecommendationScore(row, signals, context = {}) {
+  const relevance = buildTutorRelevanceBreakdown(row, signals, context);
   if (!relevance.passes_relevance) {
     return {
       ...relevance,
@@ -491,6 +499,68 @@ function matchesPrimaryInterests(row, primaryInterestTerms = []) {
   );
 
   return primaryInterestTerms.some((term) => rowTerms.has(normalizeText(term)));
+}
+
+function hasExpandedTermOverlap(leftText, rightText) {
+  const leftTerms = getExpandedTermSet(leftText);
+  const rightTerms = getExpandedTermSet(rightText);
+  if (!leftTerms.size || !rightTerms.size) return false;
+
+  return Array.from(leftTerms).some((term) => rightTerms.has(term));
+}
+
+function getGradeTermSet(text) {
+  const terms = getExpandedTermSet(text);
+  const normalized = normalizeText(text);
+  if (!normalized) return terms;
+
+  Object.entries(GRADE_GROUPS).forEach(([grade, aliases]) => {
+    const gradeTerms = [grade, ...(aliases || [])];
+    const matched = gradeTerms.some((term) => {
+      const normalizedTerm = normalizeText(term);
+      return normalizedTerm && normalized.includes(normalizedTerm);
+    });
+
+    if (matched) {
+      gradeTerms.forEach((term) => {
+        const normalizedTerm = normalizeText(term);
+        if (normalizedTerm) terms.add(normalizedTerm);
+      });
+    }
+  });
+
+  return terms;
+}
+
+function hasGradeLevelOverlap(leftText, rightText) {
+  const leftTerms = getGradeTermSet(leftText);
+  const rightTerms = getGradeTermSet(rightText);
+  if (!leftTerms.size || !rightTerms.size) return false;
+
+  return Array.from(leftTerms).some((term) => rightTerms.has(term));
+}
+
+function buildTutorStudentFitBreakdown(row, tutorSignals) {
+  const canTeachSubjects = tutorSignals?.canTeachSubjects || '';
+  const canTeachGrades = tutorSignals?.canTeachGrades || '';
+  const subjectText = row.subject || '';
+
+  const subjectMatch = canTeachSubjects
+    ? (hasExpandedTermOverlap(subjectText, canTeachSubjects) ? 100 : 0)
+    : getFieldMatchPercent(subjectText, tutorSignals?.signals || new Map(), 180);
+
+  const levelMatch = canTeachGrades
+    ? (hasGradeLevelOverlap(row.grade_level, canTeachGrades) ? 100 : 0)
+    : 100;
+
+  const fitPercent = (subjectMatch * 0.8) + (levelMatch * 0.2);
+
+  return {
+    tutor_subject_match: subjectMatch,
+    tutor_level_match: levelMatch,
+    tutor_fit_percent: fitPercent,
+    passes_tutor_fit: subjectMatch > 0 && levelMatch > 0,
+  };
 }
 
 function compareTutorRecommendationRows(a, b) {
@@ -1009,6 +1079,7 @@ async function getTutorSignals(pool, userId) {
     isColdStart: signals.size === 0, // ถ้ายังไม่มีคำสำคัญเลย ถือว่าเป็น cold start
     topTerms: serializeReasonTerms(signals), // คำสำคัญอันดับต้น ๆ ของติวเตอร์
     address: profile?.address || '', // ส่งที่อยู่กลับไปใช้ต่อ
+    canTeachSubjects: profile?.can_teach_subjects || '', // ส่งวิชาที่ติวเตอร์สอนได้กลับไปใช้กรองโพสต์นักเรียน
     canTeachGrades: profile?.can_teach_grades || '', // ส่งระดับชั้นที่ติวเตอร์รับสอนกลับไปใช้ต่อ
   };
 }
@@ -1262,7 +1333,7 @@ async function getTutorRecommendations(pool, userId, options = {}) {
   // คิดคะแนนตามสูตร 100 คะแนน:
   // Relevance 60 (ต้องผ่าน >80% ก่อน), Recency 20, Popularity 20
   const scoredRows = dedupeRows(candidates, (row) => row.tutor_post_id).map((row) => {
-    const score = buildTutorRecommendationScore(row, signals.signals);
+    const score = buildTutorRecommendationScore(row, signals.signals, signals);
     const lastSession = getPostLastSessionTime(row);
     const interestRank = getTutorInterestRank(row, signals.topTerms);
     const matchesPrimaryInterest = matchesPrimaryInterests(row, signals.primaryInterestTerms);
@@ -1392,13 +1463,17 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
     };
   }
 
-  const candidates = await getStudentRecommendationCandidates(pool, 120); //ดึงโพสต์นักเรียนมาเท่าที่พอใช้ เพื่อลดเวลาประมวลผล
+  const candidates = await getStudentRecommendationCandidates(pool, 500); //ดึงโพสต์นักเรียนให้กว้างพอหลังกรองวิชาและระดับชั้น
 
   // คิดคะแนนว่าโพสต์นักเรียนไหนตรงกับติวเตอร์มากที่สุด
-  let ranked = dedupeRows(candidates, (row) => row.student_post_id).map((row) => ({
-    ...row,
-    recommendation_score: scoreStudentCandidate(row, signals.signals),
-  }));
+  let ranked = dedupeRows(candidates, (row) => row.student_post_id).map((row) => {
+    const fit = buildTutorStudentFitBreakdown(row, signals);
+    return {
+      ...row,
+      ...fit,
+      recommendation_score: scoreStudentCandidate(row, signals.signals),
+    };
+  });
 
   if (signals.isColdStart) { //isColdStart คือเป็นค่าเริ่มต้นที่ไม่มีอะไรเลย
     // ถ้ายังไม่มีข้อมูลติวเตอร์พอ ให้เรียงตามความนิยมและความใหม่ของโพสต์ เหมือนนักเรียนเลยจ้า
@@ -1407,8 +1482,14 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
       (popularityScore({ favCount: a.fav_count, joinCount: a.join_count }, 'student') + recencyScore(a.created_at))
     ));
   } else {
-    // ถ้ามีข้อมูลแล้ว ให้เรียงตามคะแนนความเกี่ยวข้อง
-    ranked = ranked.sort((a, b) => b.recommendation_score - a.recommendation_score);
+    // ถ้ามีข้อมูลแล้ว ให้เอาเฉพาะโพสต์ที่ตรงวิชาที่สอนและระดับชั้นที่รับสอนก่อน
+    ranked = ranked
+      .filter((row) => row.passes_tutor_fit)
+      .sort((a, b) => (
+        Number(b.tutor_fit_percent || 0) - Number(a.tutor_fit_percent || 0) ||
+        Number(b.recommendation_score || 0) - Number(a.recommendation_score || 0) ||
+        new Date(b.created_at || 0) - new Date(a.created_at || 0)
+      ));
   }
 
   return { //แสดงผลการแนะนำโพสต์สำหรับติวเตอร์
@@ -1570,7 +1651,7 @@ async function getHomepageFeed(pool, userId, options = {}) {
   // - relevance percent ต้องมากกว่า 80 จึงนำ Relevance/Recency/Popularity ไปคิดรวม
   const matchedPosts = activeRows
     .map((row) => {
-      const score = buildTutorRecommendationScore(row, signals.signals);
+      const score = buildTutorRecommendationScore(row, signals.signals, signals);
       return {
         ...row,
         ...score,
@@ -1586,7 +1667,7 @@ async function getHomepageFeed(pool, userId, options = {}) {
   // (ใช้ created_at เป็น proxy เพราะโพสต์ที่สร้างล่าสุดและหมดอายุ = หมดอายุล่าสุด)
   const expiredSorted = expiredRows
     .map((row) => {
-      const score = buildTutorRecommendationScore(row, signals.signals);
+      const score = buildTutorRecommendationScore(row, signals.signals, signals);
       const lastSession = getPostLastSessionTime(row);
       return {
         ...row,
