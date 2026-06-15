@@ -17,8 +17,8 @@ const StarRow = ({ label, value, onChange }) => (
             size={24}
             className={`transition-colors ${
               star <= value
-                ? "text-yellow-400 fill-yellow-400"
-                : "text-gray-300 hover:text-yellow-200"
+                ? "text-orange-400 fill-orange-400"
+                : "text-gray-300 hover:text-orange-200"
             }`}
           />
         </button>

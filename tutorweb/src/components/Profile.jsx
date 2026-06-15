@@ -339,6 +339,7 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
         try {
           const pfRes = await fetch(`${API_BASE}/api/profile/${me}`);
           if (pfRes.ok) {
+          try {
             const p = await pfRes.json();
             const education = [];
             if (p.institution) {
@@ -364,7 +365,8 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
               education: education,
               username: p.username || prof.username,
             };
-          }
+          } catch { }
+        }
         } catch { }
         if (!cancelled) setProfile(prof);
 
@@ -401,7 +403,6 @@ function Profile({ setCurrentPage, user: currentUser, onEditProfile, onOpenPost,
           const budData = await budRes.json();
           if (!cancelled) setBuddies(budData);
         }
-
       } catch (e) { console.error(e); }
       finally { if (!cancelled) setLoading(false); }
     })();

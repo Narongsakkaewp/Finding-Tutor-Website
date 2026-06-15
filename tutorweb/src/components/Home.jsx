@@ -13,6 +13,7 @@ import RecommendedTutors from './RecommendedTutors';
 import { API_BASE } from '../config';
 import { useTabRestoration, useScrollRestoration } from '../hooks/useRestoration';
 import { logUserInteraction, notifyRecommendationRefresh } from '../utils/interactions';
+import { fetchAllPaginatedItems } from '../utils/fetchAllPaginatedItems';
 
 /** ---------------- Config ---------------- */
 /** ---------------- Utils ----------------- */
@@ -401,11 +402,11 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
 
         // 1. ดึงโพสต์ติวเตอร์รายคน
         if (type === "tutor_profile" && tutorId) {
-          url = `${API_BASE}/api/tutor-posts?tutorId=${tutorId}&limit=10`;
+          url = `${API_BASE}/api/tutor-posts?tutorId=${tutorId}`;
         }
         // 2. ดึงโพสต์ติวเตอร์ทั้งหมด (ค้นหา)
         else if (type === "tutor_search") {
-          url = `${API_BASE}/api/tutor-posts?search=${encodeURIComponent(searchKey || "")}&limit=12${filterStr}`;
+          url = `${API_BASE}/api/tutor-posts?search=${encodeURIComponent(searchKey || "")}${filterStr}`;
         }
         // 🔥 3. (เพิ่มใหม่) ดึงโพสต์แนะนำ (Recommendation)
         else if (type === "recommended_courses") {
@@ -420,10 +421,15 @@ function PostList({ type = "student", searchKey, tutorId, onOpen, filters = EMPT
           url = `${API_BASE}/api/student_posts?search=${encodeURIComponent(searchKey || "")}&limit=12${filterStr}&me=${userId}`;
         }
 
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const items = Array.isArray(data) ? data : (data.items || []);
+        let items = [];
+        if (type === "tutor_profile" || type === "tutor_search") {
+          items = await fetchAllPaginatedItems(url, { pageSize: 100 });
+        } else {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          items = Array.isArray(data) ? data : (data.items || []);
+        }
 
         if (!ignore) setPosts(items);
       } catch (e) {
@@ -886,7 +892,7 @@ function HomeStudent({ onViewProfile }) {
         {!query && (
           // ... (Same as before)
           <div className="space-y-16">
-            <section className="mt-10">
+            <section className="mt-4">
               <RecommendedTutors
                 userId={userId}
                 key={recKey}
@@ -1665,4 +1671,3 @@ function TutorReviewsList({ tutorId, API_BASE }) {
     </div>
   );
 }
-

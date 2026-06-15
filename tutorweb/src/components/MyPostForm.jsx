@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import LongdoLocationPicker from './LongdoLocationPicker';
 import { API_BASE } from '../config';
-import { Calendar, Clock, Plus, X } from "lucide-react"; // 🌟 นำเข้า Icon เพิ่มเติม
+import { Calendar, Clock, Plus, X, ChevronDown } from "lucide-react"; // 🌟 นำเข้า Icon เพิ่มเติม
 
 const postGradeLevelOptions = [
     { value: "ประถมศึกษา", label: "ประถมศึกษา" },
@@ -99,6 +99,7 @@ export default function MyPostForm({
     const [teachingMode, setTeachingMode] = useState("onsite");
     const [platform, setPlatform] = useState("");
     const [customPlatform, setCustomPlatform] = useState("");
+    const [activeSelect, setActiveSelect] = useState("");
     useEffect(() => {
         setFormData(createInitialStudentFormData(initialData));
     }, [initialData, editMode, feedType]);
@@ -372,6 +373,42 @@ export default function MyPostForm({
         </div>
     );
 
+    const renderAnimatedSelect = ({
+        selectKey,
+        value,
+        onChange,
+        children,
+        className = "",
+        required = false,
+        name,
+    }) => {
+        const isActive = activeSelect === selectKey;
+
+        return (
+            <div className="relative">
+                <select
+                    name={name}
+                    value={value}
+                    onChange={onChange}
+                    onFocus={() => setActiveSelect(selectKey)}
+                    onBlur={() => setActiveSelect("")}
+                    required={required}
+                    className={`appearance-none border rounded-lg p-2.5 pr-10 w-full outline-none bg-white transition-all duration-300 ease-out ${isActive
+                        ? "border-blue-500 ring-4 ring-blue-100 shadow-[0_12px_28px_rgba(59,130,246,0.16)] -translate-y-[1px]"
+                        : "border-gray-300 hover:border-blue-300"
+                        } ${className}`}
+                >
+                    {children}
+                </select>
+                <ChevronDown
+                    size={18}
+                    className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 transition-all duration-300 ease-out ${isActive ? "rotate-180 text-blue-500" : ""
+                        }`}
+                />
+            </div>
+        );
+    };
+
     return (
         <form onSubmit={handleSubmit} className="space-y-5">
             {/* วิชา/หัวข้อ */}
@@ -395,10 +432,19 @@ export default function MyPostForm({
                         {/* ระดับชั้น */}
                         <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-gray-700 mb-1">ระดับชั้นของผู้เรียน</label>
-                            <select name="grade_level" value={formData.grade_level} onChange={handleChange} required className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                                <option value="">-- กรุณาเลือก --</option>
-                                {postGradeLevelOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                            </select>
+                            {renderAnimatedSelect({
+                                selectKey: "grade_level",
+                                name: "grade_level",
+                                value: formData.grade_level,
+                                onChange: handleChange,
+                                required: true,
+                                children: (
+                                    <>
+                                        <option value="">-- กรุณาเลือก --</option>
+                                        {postGradeLevelOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                    </>
+                                )
+                            })}
                         </div>
                     </div>
 
@@ -425,9 +471,16 @@ export default function MyPostForm({
                             <div className="grid md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">แพลตฟอร์มที่ใช้</label>
-                                    <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="border rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                                        {platformOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                    </select>
+                                    {renderAnimatedSelect({
+                                        selectKey: "platform",
+                                        value: platform,
+                                        onChange: (e) => setPlatform(e.target.value),
+                                        children: (
+                                            <>
+                                                {platformOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                            </>
+                                        )
+                                    })}
                                 </div>
                                 {platform === "Other" && (
                                     <div>
@@ -525,13 +578,22 @@ export default function MyPostForm({
             <div className="pt-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">ข้อมูลติดต่อ</label>
                 <div className="flex gap-2">
-                    <select value={contactType} onChange={(e) => setContactType(e.target.value)} className="border rounded-lg p-2.5 w-1/3 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                        <option value="Line ID">Line ID</option>
-                        <option value="เบอร์โทร">เบอร์โทร</option>
-                        <option value="Email">Email</option>
-                        <option value="Facebook">Facebook</option>
-                        <option value="อื่นๆ">อื่นๆ</option>
-                    </select>
+                    <div className="w-1/3 min-w-[140px]">
+                        {renderAnimatedSelect({
+                            selectKey: "contact_type",
+                            value: contactType,
+                            onChange: (e) => setContactType(e.target.value),
+                            children: (
+                                <>
+                                    <option value="Line ID">Line ID</option>
+                                    <option value="เบอร์โทร">เบอร์โทร</option>
+                                    <option value="Email">Email</option>
+                                    <option value="Facebook">Facebook</option>
+                                    <option value="อื่นๆ">อื่นๆ</option>
+                                </>
+                            )
+                        })}
+                    </div>
                     <input type="text" value={contactValue} onChange={(e) => setContactValue(e.target.value)} required className="border rounded-lg p-2.5 w-2/3 focus:ring-2 focus:ring-blue-500 outline-none" placeholder={contactType === "อื่นๆ" ? "ระบุข้อมูลติดต่อ" : `ระบุ ${contactType}`} />
                 </div>
             </div>

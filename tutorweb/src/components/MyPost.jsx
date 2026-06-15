@@ -1,5 +1,5 @@
 // src/components/MyPost.jsx
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   MapPin, Calendar, Clock, Users, DollarSign, Heart, BahtSign,
   Filter, Search, Plus, X, ChevronDown, Mail, Phone, User, Star,
@@ -10,6 +10,7 @@ import MyPostForm from "./MyPostForm";
 import SmartSearch from "./SmartSearch";
 import { API_BASE } from '../config';
 import { useScrollRestoration } from '../hooks/useRestoration';
+import { fetchAllPaginatedItems } from '../utils/fetchAllPaginatedItems';
 
 /* ---------- helpers ---------- */
 function pickUser() {
@@ -355,6 +356,7 @@ function PostActionMenu({ isOpen, onClose, isOwner, isAdmin, onEdit, onDelete, o
 
 /* ---------- Main Component ---------- */
 function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
+  const LAST_OPENED_POST_KEY = "mypost_last_opened_post_id";
   const user = pickUser();
   const userType = pickUserType();
   const isTutor = userType === "tutor";
@@ -412,6 +414,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
   };
 
   const [formData, setFormData] = useState(initialFormData);
+  const postRefs = useRef({});
 
   // Logic การกรองข้อมูล (อัปเกรด: ค้นหาแบบ Google Style - ยืดหยุ่นและหั่นคำ)
   const filteredPosts = useMemo(() => {
@@ -456,11 +459,8 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
         setPosts(normalized);
         setPostsCache?.(normalized);
       } else {
-        const url = `${API_BASE}/api/tutor-posts?page=1&limit=100&me=${meId}`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const list = extractList(data);
+        const url = `${API_BASE}/api/tutor-posts?me=${meId}`;
+        const list = await fetchAllPaginatedItems(url, { pageSize: 100 });
         const normalized = list.map(normalizeTutorPost).filter(p => p.id != null);
         setPosts(normalized);
         setPostsCache?.(normalized);
@@ -478,6 +478,28 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
 
   // ✅ Scroll Restoration (Automatically saves current position and restores it)
   useScrollRestoration('mypost', [posts]);
+
+  useEffect(() => {
+    const targetPostId = sessionStorage.getItem(LAST_OPENED_POST_KEY);
+    if (!targetPostId || filteredPosts.length === 0) return;
+
+    const matchedPost = filteredPosts.find((post) => String(post.id) === String(targetPostId));
+    if (!matchedPost) return;
+
+    const timer = setTimeout(() => {
+      const el = postRefs.current[targetPostId];
+      if (!el) return;
+
+      el.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+      sessionStorage.removeItem(LAST_OPENED_POST_KEY);
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, [filteredPosts]);
 
 
 
@@ -919,7 +941,17 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                 : !hasUpcomingPostSession(post.meta?.teaching_days, post.meta?.teaching_time);
 
               return (
-                <div key={post.id} className="bg-white border p-4 rounded-2xl shadow-sm">
+                <div
+                  key={post.id}
+                  ref={(el) => {
+                    if (el) {
+                      postRefs.current[String(post.id)] = el;
+                    } else {
+                      delete postRefs.current[String(post.id)];
+                    }
+                  }}
+                  className="bg-white border p-4 rounded-2xl shadow-sm"
+                >
                   <div className="flex items-center justify-between mb-2">
                     <div
                       className="flex items-center gap-3 cursor-pointer group"
@@ -1082,6 +1114,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                       onClick={() => {
                         if (onOpenDetails) {
                           localStorage.setItem("myPostScrollPosition", window.scrollY);
+                          sessionStorage.setItem(LAST_OPENED_POST_KEY, String(post.id));
                           onOpenDetails(post.id, 'mypost', post.post_type);
                         }
                       }}
@@ -1110,6 +1143,7 @@ function MyPost({ setPostsCache, onViewProfile, onOpenDetails }) {
                           e.stopPropagation();
                           if (onOpenDetails) {
                             localStorage.setItem("myPostScrollPosition", window.scrollY);
+                            sessionStorage.setItem(LAST_OPENED_POST_KEY, String(post.id));
                             onOpenDetails(post.id, 'mypost', post.post_type);
                           }
                         }}
