@@ -67,6 +67,23 @@ const formatScheduleTimesList = (value) =>
     .filter(Boolean)
     .join(", ");
 
+const formatPostCreatedAt = (post = {}) => {
+  const value = post.createdAt || post.created_at || post.created || post.meta?.createdAt || post.meta?.created_at;
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleString("th-TH", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+};
+
 const parseSessionDateTime = (dateValue, timeValue) => {
   const dateText = String(dateValue || "").trim();
   if (!dateText) return null;
@@ -1024,7 +1041,7 @@ function HomeStudent({ onViewProfile }) {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <Badge text="ประกาศสอนพิเศษ" color="indigo" />
-                  <span className="text-xs text-gray-400">โพสต์เมื่อ: {new Date(preview.createdAt || new Date()).toLocaleDateString("th-TH")}</span>
+                  <span className="text-xs text-gray-400">โพสต์เมื่อ: {formatPostCreatedAt(preview)}</span>
                 </div>
 
                 <h3 className="text-2xl font-bold text-gray-900">{preview.subject}</h3>
