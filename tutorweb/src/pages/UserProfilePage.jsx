@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactCalendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
+import { fetchAllPaginatedItems } from "../utils/fetchAllPaginatedItems";
 import {
   ArrowLeft,
   BookOpen,
@@ -194,7 +195,7 @@ function UserProfilePage({ userId, onBack, onOpenPost, onNotFound }) {
 
       const [postsS, postsT, calendarData] = await Promise.all([
         fetch(`${API_URL}/api/student_posts?student_id=${userId}`).then((r) => (r.ok ? r.json() : [])),
-        fetch(`${API_URL}/api/tutor-posts?tutorId=${userId}`).then((r) => (r.ok ? r.json().then((j) => j.items) : [])),
+        fetchAllPaginatedItems(`${API_URL}/api/tutor-posts?tutorId=${userId}`, { pageSize: 100 }),
         fetch(`${API_URL}/api/calendar/${userId}`).then((r) => (r.ok ? r.json() : { items: [] })),
       ]);
 

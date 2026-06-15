@@ -6,6 +6,7 @@ import {
 import SmartSearch from "../components/SmartSearch";
 import TutorPostForm from "../components/TutorPostForm";
 import { API_BASE } from '../config';
+import { fetchAllPaginatedItems } from '../utils/fetchAllPaginatedItems';
 
 // Config
 // --- Helper Components (เอามาไว้ในนี้เลยจะได้ไม่ error) ---
@@ -204,9 +205,8 @@ function MyTutorPosts({ tutorId }) {
       if (!tutorId) return;
       try {
         setLoading(true);
-        const res = await fetch(`${API_BASE}/api/tutor-posts?tutorId=${tutorId}&limit=10`);
-        const data = await res.json();
-        setPosts(data.items || []);
+        const items = await fetchAllPaginatedItems(`${API_BASE}/api/tutor-posts?tutorId=${tutorId}`, { pageSize: 100 });
+        setPosts(items);
       } finally { setLoading(false); }
     }
     load();

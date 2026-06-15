@@ -5,7 +5,7 @@ const SUBJECT_SYNONYMS = {
   chemistry: ['เคมี', 'chemistry', 'chem', 'อินทรีย์', 'organic', 'stoichiometry', 'เคมีอินทรีย์', 'สารประกอบ', 'ธาตุ', 'โมล', 'reaction'],
   biology: ['ชีวะ', 'ชีววิทยา', 'biology', 'bio', 'genetics', 'anatomy', 'พันธุศาสตร์', 'พฤกษศาสตร์'],
   science: ['วิทย์', 'วิทยาศาสตร์', 'science', 'sci', 'stem', 'ดาราศาสตร์', 'astronomy', 'โลกและอวกาศ'],
-  math: ['คณิต', 'คณิตศาสตร์', 'math', 'mathematics', 'algebra', 'calculus', 'เลข', 'สถิติ', 'stat', 'geometry', 'trigonometry', 'probability', 'แคล', 'แคลคูลัส', 'discrete'],
+  math: ['คณิต', 'คณิตศาสตร์', 'math', 'mathematics', 'algebra', 'calculus', 'เลข', 'สถิติ', 'stat', 'geometry', 'trigonometry', 'probability', 'แคล', 'แคลคูลัส', 'discrete', 'differential equations', 'linear algebra', 'number theory', 'matrix', 'vector'],
   social: ['สังคม', 'สังคมศึกษา', 'social', 'history', 'ประวัติศาสตร์', 'religion', 'ศาสนา', 'civics', 'หน้าที่พลเมือง', 'geography', 'ภูมิศาสตร์'],
   law: ['กฎหมาย', 'law', 'นิติ', 'นิติศาสตร์', 'legal', 'แพ่ง', 'อาญา', 'รัฐธรรมนูญ'],
   // === 🗣️ สายภาษา (Languages) ===
@@ -817,6 +817,7 @@ async function getStudentSignals(pool, userId) {
   addSignal(signals, profile?.interested_subjects, STUDENT_PROFILE_SIGNAL_WEIGHTS.interestedSubjects); // วิชาที่สนใจ
   addSignal(signals, profile?.about, STUDENT_PROFILE_SIGNAL_WEIGHTS.about); // about ใช้เสริมบริบท
 
+  // โพสต์เก่า ๆ จะมีผลน้อยกว่าโพสต์ใหม่ แต่ก็ยังมีผลอยู่บ้าง เพราะแสดงถึงความสนใจในอดีต
   // ดึงโพสต์ที่นักเรียนเคยสร้าง เพื่อดูว่าเคยสนใจวิชาอะไร
   const [myPosts] = await pool.query(
     `SELECT subject, description, grade_level
@@ -1053,7 +1054,7 @@ async function getTutorRecommendationCandidates(pool, userId = 0, limit = 300) {
         CASE WHEN fme.user_id IS NULL THEN 0 ELSE 1 END AS favorited,
         COALESCE(jc.join_count, 0) AS join_count,
         COALESCE(tc.students_taught_count, 0) AS students_taught_count,
-        (SELECT status FROM tutor_post_joins WHERE tutor_post_id = tp.tutor_post_id AND user_id = ? LIMIT 1) AS my_join_status
+        myj.my_join_status
      FROM tutor_posts tp
      JOIN register r ON tp.tutor_id = r.user_id
      LEFT JOIN tutor_profiles tpro ON tp.tutor_id = tpro.user_id
@@ -1076,6 +1077,18 @@ async function getTutorRecommendationCandidates(pool, userId = 0, limit = 300) {
        WHERE status = 'approved'
        GROUP BY tutor_post_id
      ) jc ON jc.tutor_post_id = tp.tutor_post_id
+     LEFT JOIN (
+       SELECT
+         tutor_post_id,
+         CASE
+           WHEN MAX(CASE WHEN status = 'approved' THEN 2 WHEN status = 'pending' THEN 1 ELSE 0 END) = 2 THEN 'approved'
+           WHEN MAX(CASE WHEN status = 'approved' THEN 2 WHEN status = 'pending' THEN 1 ELSE 0 END) = 1 THEN 'pending'
+           ELSE NULL
+         END AS my_join_status
+       FROM tutor_post_joins
+       WHERE user_id = ?
+       GROUP BY tutor_post_id
+     ) myj ON myj.tutor_post_id = tp.tutor_post_id
      LEFT JOIN (
        SELECT tutor_id, COUNT(DISTINCT learner_id) AS students_taught_count
        FROM (
