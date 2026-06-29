@@ -1,4 +1,4 @@
-const { smartSearch, SUBJECT_SYNONYMS } = require('../utils/discoveryEngine');
+const { smartSearch } = require('../utils/discoveryEngine');
 
 const logSearchHistory = async (pool, userId, keyword) => {
   if (!userId || !keyword || keyword.trim().length < 2) return;
@@ -126,42 +126,21 @@ exports.getPopularSubjects = async (req, res) => {
       LIMIT 8
     `);
 
-    const colorByCanonical = {
-      math: 'blue',
-      science: 'emerald',
-      physics: 'emerald',
-      chemistry: 'emerald',
-      biology: 'emerald',
-      english: 'rose',
-      programming: 'indigo',
-      web: 'indigo',
-      chinese: 'amber',
-      japanese: 'amber',
-    };
-
-    const iconByCanonical = {
-      math: 'Calculator',
-      science: 'FlaskConical',
-      physics: 'FlaskConical',
-      chemistry: 'FlaskConical',
-      biology: 'FlaskConical',
-      english: 'Languages',
-      programming: 'Laptop',
-      web: 'Laptop',
-    };
+    const colors = ['blue', 'emerald', 'rose', 'indigo', 'amber'];
 
     const result = rows.map((row) => {
-      const normalized = String(row.subject || '').toLowerCase();
-      const canonical = Object.entries(SUBJECT_SYNONYMS).find(([key, aliases]) => {
-        return normalized.includes(key) || aliases.some((alias) => normalized.includes(String(alias).toLowerCase()));
-      })?.[0];
+      const subject = String(row.subject || '');
+      const colorIndex = Array.from(subject).reduce(
+        (sum, character) => sum + character.codePointAt(0),
+        0
+      ) % colors.length;
 
       return {
         id: row.subject,
         name: row.subject,
         count: Number(row.score || 0),
-        icon: iconByCanonical[canonical] || 'BookOpen',
-        color: colorByCanonical[canonical] || 'amber',
+        icon: 'BookOpen',
+        color: colors[colorIndex],
       };
     });
 

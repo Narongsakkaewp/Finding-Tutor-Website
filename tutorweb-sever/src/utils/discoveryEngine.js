@@ -1,74 +1,39 @@
 ﻿//tutorweb-sever/src/utils/discoveryEngine.js
+const {
+  scoreTextVariants,
+  semanticSimilarityToPercent,
+} = require('./semanticEmbedding');
+
 // Discovery Engine คือส่วนกลางของระบบ Recommendation/Search
 // หน้าที่หลักของไฟล์นี้มี 5 ส่วน:
-// 1. แปลงข้อความเป็น keyword กลาง เช่น "คณิต", "math", "mathematics" ให้ถือว่าเป็นกลุ่มเดียวกัน
+// 1. แปลงข้อความโปรไฟล์/โพสต์เป็น multilingual embeddings แล้ววัด semantic similarity
 // 2. สร้าง user signals จาก Bio/Profile, โพสต์เก่า, การค้นหา และพฤติกรรมการใช้งาน
 // 3. คำนวณคะแนน recommendation เต็ม 100 คะแนน แบ่งเป็น Relevance 60, Recency 20, Popularity 20
 // 4. กรองโพสต์ที่ไม่ผ่านเงื่อนไขหลัก เช่น วิชาไม่ตรง ระดับชั้นไม่ตรง หรือ Relevance Percent ไม่เกิน 80
 // 5. ส่งรายการแนะนำให้ frontend ทั้งฝั่งนักเรียน, ฝั่งติวเตอร์, mixed feed และ smart search
 //
-// โครงสร้างคะแนนหลัก:
-// - Relevance: ความตรงกับผู้ใช้ เป็นคะแนนหลัก โดย Match แต่ละตัวเป็นแบบ strict 0/100
-//   SubjectMatch, CanTeachMatch และ LevelMatch ต้องตรงครบ จึงจะผ่าน Relevance Percent > 80
-// - Recency: ความใหม่ของโพสต์ ใช้ช่วยเรียงโพสต์ที่ยังเกี่ยวข้องให้โพสต์ใหม่ขึ้นก่อน
-// - Popularity: ความนิยม เช่น favorites, joins, rating ใช้เป็นคะแนนเสริม ไม่ให้ชนะ relevance ที่ไม่ตรงเงื่อนไข
+// โครงสร้างคะแนนหลักของ Recommendation:
+// 1) Relevance = 60 คะแนน
+//    เป็นคะแนนสำคัญที่สุด ใช้ตอบคำถามว่า "โพสต์นี้ตรงกับสิ่งที่ผู้ใช้ต้องการหรือไม่"
+//    SubjectMatch และ CanTeachMatch มาจาก semantic embedding similarity
+//    ส่วน LevelMatch เป็น business rule แบบ hard rule เพื่อกันระดับชั้นผิดกลุ่ม
+//
+// 2) Recency = 20 คะแนน
+//    เป็นคะแนนเสริมจากความใหม่ของโพสต์ ใช้ช่วยเรียงโพสต์ที่เกี่ยวข้องใกล้เคียงกัน
+//    โพสต์ที่ใหม่กว่าจะได้เปรียบ แต่ Recency จะไม่ช่วยโพสต์ที่ Relevance ไม่ผ่าน
+//
+// 3) Popularity = 20 คะแนน
+//    เป็นคะแนนเสริมจากพฤติกรรมผู้ใช้ เช่น favorites, joins และ rating
+//    ใช้สะท้อนความน่าสนใจ/ความน่าเชื่อถือของโพสต์ แต่ไม่ให้ชนะโพสต์ที่ตรงกับผู้ใช้มากกว่า
+//
+// Final Score = RelevanceScore + RecencyScore + PopularityScore
+// โดย RelevanceScore เต็ม 60, RecencyScore เต็ม 20, PopularityScore เต็ม 20
 //
 // หมายเหตุ:
 // - ค่า weight ภายในหลายตัวเป็น "น้ำหนักดิบ" เพื่อสร้าง/จัดลำดับ signal ไม่ใช่คะแนนสุดท้ายโดยตรง
-// - Relevance ฝั่งโพสต์ติวเตอร์จะไม่ใช้คะแนนไล่ระดับจาก signal แล้ว แต่ใช้ 0/100 เพื่อให้ตรงตามเงื่อนไข Subject/CanTeach/Level
+// - การตีความความหมายของวิชาใช้ embeddings เท่านั้น
 // - คะแนนสุดท้ายจะถูก scale/cap ผ่าน RECOMMENDATION_SCORE_CAPS ให้ไม่เกิน 100 เสมอ
 // - โพสต์หมดอายุยังแสดงได้ตาม requirement แต่ต้องยังเกี่ยวข้องกับ Subject/CanTeach/Level ของผู้ใช้
-const SUBJECT_SYNONYMS = {
-  // === 📚 สายวิชาการหลัก (Academics) ===
-  physics: ['ฟิสิกส์', 'physics', 'phy', 'physic', 'กลศาสตร์', 'อะตอม', 'atom', 'ไฟฟ้า', 'กล', 'quantum', 'mechanics', 'electricity', 'motion'],
-  chemistry: ['เคมี', 'chemistry', 'chem', 'อินทรีย์', 'organic', 'stoichiometry', 'เคมีอินทรีย์', 'สารประกอบ', 'ธาตุ', 'โมล', 'reaction'],
-  biology: ['ชีวะ', 'ชีววิทยา', 'biology', 'bio', 'genetics', 'anatomy', 'พันธุศาสตร์', 'พฤกษศาสตร์'],
-  science: ['วิทย์', 'วิทยาศาสตร์', 'science', 'sci', 'stem', 'ดาราศาสตร์', 'astronomy', 'โลกและอวกาศ'],
-  math: ['คณิต', 'คณิตศาสตร์', 'math', 'mathematics', 'algebra', 'calculus', 'เลข', 'สถิติ', 'stat', 'geometry', 'trigonometry', 'probability', 'แคล', 'แคลคูลัส', 'discrete', 'differential equations', 'linear algebra', 'number theory', 'matrix', 'vector'],
-  social: ['สังคม', 'สังคมศึกษา', 'social', 'history', 'ประวัติศาสตร์', 'religion', 'ศาสนา', 'civics', 'หน้าที่พลเมือง', 'geography', 'ภูมิศาสตร์'],
-  law: ['กฎหมาย', 'law', 'นิติ', 'นิติศาสตร์', 'legal', 'แพ่ง', 'อาญา', 'รัฐธรรมนูญ'],
-  // === 🗣️ สายภาษา (Languages) ===
-  english: ['อังกฤษ', 'ภาษาอังกฤษ', 'english', 'eng', 'toeic', 'ielts', 'toefl', 'grammar', 'speaking', 'presentation', 'conversation', 'reading', 'writing', 'vocabulary'],
-  chinese: ['จีน', 'ภาษาจีน', 'chinese', 'mandarin', 'hsk', 'pinyin', 'จีนกลาง', 'เหล่าซือ'],
-  japanese: ['ญี่ปุ่น', 'ภาษาญี่ปุ่น', 'japanese', 'jlpt', 'n1', 'n2', 'n3','n4', 'n5', 'hiragana', 'katakana', 'kanji', 'เซนเซย์'],
-  korean: ['เกาหลี', 'ภาษาเกาหลี', 'korean', 'topik', 'hangul', 'ฮันกึล'],
-  french: ['ฝรั่งเศส', 'ภาษาฝรั่งเศส', 'french', 'francais', 'français', 'pat'],
-  german: ['เยอรมัน', 'ภาษาเยอรมัน', 'german', 'deutsch', 'goethe'],
-  thai: ['ไทย', 'ภาษาไทย', 'thai', 'หลักภาษา', 'วรรณคดี', 'tpat', 'tgat'],
-  // === 💻 สายเทคโนโลยีและเขียนโปรแกรม (Tech & Programming) ===
-  programming: ['เขียนโปรแกรม', 'programming', 'program', 'coding', 'code', 'developer', 'dev', 'software', 'algorithm', 'problem solving', 'python', 'java', 'data structure', 'data structures', 'c', 'rust', 'go'],
-  web: ['เว็บ', 'web', 'website', 'html', 'css', 'javascript', 'js', 'react', 'node', 'frontend', 'backend', 'fullstack', 'php', 'web development', 'tailwind', 'bootstrap', 'vue', 'nextjs', 'typescript'],
-  mobile: ['แอปมือถือ', 'mobile app', 'ios', 'android', 'flutter', 'react native', 'swift', 'kotlin', 'dart'],
-  java: ['java', 'oop', 'object oriented', 'จาวา'],
-  python: ['python', 'py', 'ไพธอน', 'machine learning', 'ml', 'ai', 'deep learning', 'pandas'],
-  cpp: ['c++', 'cpp', 'ซีพลัสพลัส'],
-  csharp: ['c#', 'csharp', 'ซีชาร์ป', '.net', 'dotnet'],
-  database: ['database', 'ฐานข้อมูล', 'sql', 'mysql', 'postgresql', 'db', 'mongodb', 'nosql'],
-  datastructure: ['data structure', 'data structures', 'โครงสร้างข้อมูล', 'linked list', 'tree', 'graph', 'stack', 'queue'],
-  algorithm: ['algorithm', 'algorithms', 'อัลกอริทึม', 'problem solving', 'sorting', 'searching'],
-  cloud: ['cloud', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'devops', 'server'],
-  network: ['network', 'เครือข่าย', 'cisco', 'ccna', 'it support', 'system admin', 'cybersecurity', 'security', 'ความปลอดภัยไซเบอร์'],
-  data_analytics: ['data analytics', 'data analysis', 'excel', 'powerbi', 'tableau', 'วิเคราะห์ข้อมูล', 'data science'],
-  // === 🔌 สายวิศวกรรมและอิเล็กทรอนิกส์ (Engineering & Electronics) ===
-  electronics: ['microcontroller', 'arduino', 'esp32', 'วงจร', 'อิเล็กทรอนิกส์', 'embedded', 'iot', 'ไฟฟ้า', 'circuit', 'digital logic', 'ect', 'raspberry pi'],
-  engineering: ['วิศวะ', 'วิศวกรรม', 'engineering', 'mechanic', 'drawing', 'autocad', 'solidworks'],
-  // === 💼 สายธุรกิจและการสื่อสาร (Business & Career) ===
-  business: ['ธุรกิจ', 'business', 'บริหาร', 'management', 'entrepreneur', 'startup'],
-  accounting: ['บัญชี', 'accounting', 'บัญชีเบื้องต้น', 'เดบิต', 'เครดิต', 'งบการเงิน', 'tax', 'ภาษี'],
-  economics: ['เศรษฐศาสตร์', 'economics', 'microeconomics', 'macroeconomics', 'demand', 'supply', 'elasticity'],
-  marketing: ['การตลาด', 'marketing', 'digital marketing', 'content', 'branding', 'seo', 'social media', 'ads'],
-  sales: ['การขาย', 'sales', 'sale engineer', 'account executive', 'b2b', 'crm', 'telesales', 'negotiation'],
-  communication: ['การสื่อสาร', 'communication', 'public speaking', 'soft skills', 'small talk', 'networking', 'presentation', 'บุคลิกภาพ'],
-  // === 🎨 สายศิลปะ การออกแบบ และดนตรี (Arts, Design & Music) ===
-  design: ['ออกแบบ', 'design', 'ui', 'ux', 'ux/ui', 'figma', 'illustrator', 'photoshop', 'graphic', 'adobe', 'canva'],
-  art: ['ศิลปะ', 'art', 'drawing', 'วาดรูป', 'painting', 'สีน้ำ', 'sketch', 'illustration', 'ประติมากรรม'],
-  video_editing: ['ตัดต่อ', 'video editing', 'premiere pro', 'after effects', 'vlog', 'youtube', 'tiktok'],
-  music: ['ดนตรี', 'music', 'guitar', 'piano', 'vocal', 'ร้องเพลง', 'กีตาร์', 'กีตาร์ไฟฟ้า', 'electric guitar', 'เปียโน', 'ทฤษฎีดนตรี', 'ไวโอลิน', 'กลอง'],
-  // === 🏃‍♂️ สายกีฬาและไลฟ์สไตล์ (Sports & Lifestyle) ===
-  sports: ['กีฬา', 'sports', 'ว่ายน้ำ', 'swimming', 'แบดมินตัน', 'badminton', 'เทนนิส', 'tennis', 'ฟุตบอล', 'football', 'โยคะ', 'yoga', 'ฟิตเนส'],
-  cooking: ['ทำอาหาร', 'cooking', 'เบเกอรี่', 'bakery', 'ทำขนม', 'culinary', 'บาริสต้า', 'ชงกาแฟ']
-};
-
 const STOPWORDS = new Set([
   'และ', 'กับ', 'ของ', 'ที่', 'ให้', 'ได้', 'อยาก', 'หา', 'เรียน', 'สอน', 'วิชา',
   'the', 'for', 'and', 'with', 'from', 'into', 'this', 'that', 'your',
@@ -105,9 +70,8 @@ const RECOMMENDATION_SCORE_CAPS = Object.freeze({
 });
 
 // เกณฑ์ขั้นต่ำของ Relevance Percent
-// ใน logic ล่าสุด SubjectMatch/CanTeachMatch/LevelMatch เป็น strict 0/100
-// ดังนั้นถ้าใช้สูตร Subject + CanTeach * Level แล้วต้องได้มากกว่า 80
-// ผลคือจะผ่านเฉพาะกรณีที่ Subject, CanTeach และ Level ตรงครบเท่านั้น
+// SubjectMatch/CanTeachMatch ถูก normalize จาก cosine similarity เป็น 0-100
+// ส่วน LevelMatch ยังเป็น 0/100 และสูตรรวมต้องได้มากกว่า 80
 const RELEVANCE_THRESHOLD_RATIO = 0.80;
 
 // จำกัดน้ำหนักสะสมของ keyword หนึ่งคำ ไม่ให้คำเดียวครอบระบบมากเกินไป
@@ -164,9 +128,16 @@ const INTERACTION_SIGNAL_WEIGHTS = Object.freeze({
 });
 
 // สัดส่วนของ Relevance สำหรับโพสต์ติวเตอร์
-// หมายเหตุ: หลังปรับเป็น strict matching ค่า match จริงมีแค่ 0 หรือ 100
-// object นี้ใช้สื่อความหมายของสูตรว่า Subject มีน้ำหนัก 55% และ CanTeach มีน้ำหนัก 45%
-// โดย CanTeach จะถูกคูณด้วย Level ก่อนตามสูตร Subject + CanTeach * Level
+// SubjectMatch และ CanTeachMatch เป็นคะแนน 0-100 จาก semantic embedding similarity
+// ไม่ใช่การเทียบคำตรง ๆ และไม่ใช้ synonyms แบบเก่าแล้ว
+//
+// สูตร Relevance Percent:
+// RelevancePercent = SubjectMatch*0.55 + CanTeachMatch*(LevelMatch/100)*0.45
+//
+// เหตุผลของน้ำหนัก:
+// - Subject 55%: วิชาของโพสต์ต้องตรงกับความต้องการหลักของผู้ใช้
+// - CanTeach 45%: รายการวิชาที่ติวเตอร์สอนได้ช่วยยืนยันว่าติวเตอร์สอนเรื่องนั้นได้จริง
+// - LevelMatch: ใช้คูณ CanTeach เพื่อกันกรณีวิชาคล้ายกันแต่ระดับชั้นไม่เหมาะ
 const TUTOR_RELEVANCE_FIELD_POINTS = Object.freeze({
   subject: 55,             // SubjectMatch คิดเป็น 55% ของ Relevance Percent
   canTeachSubjects: 45,    // CanTeachMatch คิดเป็น 45% แต่ต้องคูณ LevelMatch ก่อน
@@ -198,43 +169,10 @@ const STUDENT_POPULARITY_FIELD_POINTS = Object.freeze({
 });
 
 // ---------------------------------------------------------------------------
-// 1) Text normalization / keyword expansion
-// กลุ่มนี้ใช้ทำความสะอาดข้อความ ตัดคำ และขยายคำพ้องความหมาย
-// เพื่อให้ระบบจับคู่คำไทย/อังกฤษ/คำย่อได้แม่นขึ้น
+// 1) Text normalization
+// token ใช้สำหรับสร้างคำอธิบายและจัดกลุ่มข้อความที่เหมือนกันเท่านั้น
+// การตัดสินความเกี่ยวข้องของวิชาใช้ semantic embeddings
 // ---------------------------------------------------------------------------
-
-// แปลง alias ให้เป็น key แบบสั้นและเทียบง่าย
-// เช่น "Data Structure" -> "datastructure", "C++" -> "c"
-// ใช้ตอนสร้าง index คำพ้องความหมายและตอนตรวจคำที่สะกดต่างกัน
-function normalizeAliasKey(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[_\s./#+-]+/g, '');
-}
-
-// ตาราง lookup สำหรับแปลงคำพ้องความหมายกลับไปเป็นหมวดวิชาหลัก
-// เช่น "เลข", "math", "mathematics" จะชี้กลับไปที่ canonical = "math"
-const ALIAS_TO_CANONICAL = Object.entries(SUBJECT_SYNONYMS).reduce((acc, [canonical, aliases]) => {
-  acc[canonical] = canonical;
-  acc[normalizeAliasKey(canonical)] = canonical;
-  aliases.forEach((alias) => {
-    const lowered = String(alias).toLowerCase();
-    acc[lowered] = canonical;
-    acc[normalizeAliasKey(lowered)] = canonical;
-  });
-  return acc;
-}, Object.create(null));
-
-// guard สำหรับคำกำกวมที่อาจอยู่ได้หลายวิชา
-// ตัวอย่าง "ไฟฟ้า" อาจหมายถึง physics/electronics แต่ถ้าเจอร่วมกับ "กีตาร์"
-// จะไม่ให้ match ไปฝั่ง physics/electronics แบบผิดบริบท
-const AMBIGUOUS_ALIAS_CONTEXT_GUARDS = [
-  {
-    candidateAliases: ['ไฟฟ้า', 'electricity', 'electric'],
-    blockedCanonicals: ['physics', 'electronics'],
-    requiredContextTerms: ['กีตาร์', 'guitar', 'ดนตรี', 'music', 'ร้องเพลง', 'riff', 'ริฟฟ์', 'instrument'],
-  },
-];
 
 // ทำความสะอาดข้อความก่อนนำไปเทียบ
 // แปลงเป็นตัวพิมพ์เล็ก ลบสัญลักษณ์ที่ไม่จำเป็น และรวมช่องว่างให้เป็นรูปแบบเดียวกัน
@@ -272,78 +210,12 @@ function tokenize(text) {
   return Array.from(tokens);
 }
 
-// ขยายคำที่เกี่ยวข้องกับคำค้นหา
-// เช่น "ฟิสิกส์" จะขยายไปถึง "physics", "กลศาสตร์", "motion"
-// ผลลัพธ์ถูกใช้ทั้งสร้าง signal และตรวจว่า subject/canTeach ตรงกันหรือไม่
-function expandTerms(text) {
-  const tokens = tokenize(text);
-  const expanded = new Set(tokens);
-
-  const tokenHasContext = (sourceToken, contextTerms = []) => {
-    const compactSourceToken = normalizeAliasKey(sourceToken);
-    return contextTerms.some((term) => {
-      const loweredTerm = String(term).toLowerCase();
-      const compactTerm = normalizeAliasKey(loweredTerm);
-      return sourceToken.includes(loweredTerm) || (compactTerm && compactSourceToken.includes(compactTerm));
-    });
-  };
-
-  const isGuardedAmbiguousMatch = (sourceToken, candidate, canonicalKey) => {
-    const loweredCandidate = String(candidate || '').toLowerCase();
-    return AMBIGUOUS_ALIAS_CONTEXT_GUARDS.some((guard) => {
-      const candidateMatch = guard.candidateAliases.some((alias) => String(alias).toLowerCase() === loweredCandidate);
-      if (!candidateMatch) return false;
-      if (!guard.blockedCanonicals.includes(canonicalKey)) return false;
-      return tokenHasContext(sourceToken, guard.requiredContextTerms);
-    });
-  };
-
-  const matchesTerm = (sourceToken, compactSourceToken, candidate) => {
-    const loweredCandidate = String(candidate).toLowerCase();
-    const compactCandidate = normalizeAliasKey(loweredCandidate);
-
-    if (!compactCandidate) return false;
-
-    if (compactCandidate.length <= 3) {
-      return sourceToken === loweredCandidate || compactSourceToken === compactCandidate;
-    }
-
-    return sourceToken.includes(loweredCandidate) || compactSourceToken.includes(compactCandidate);
-  };
-
-  tokens.forEach((token) => {
-    const compactToken = normalizeAliasKey(token);
-    const canonical = Object.prototype.hasOwnProperty.call(ALIAS_TO_CANONICAL, token)
-      ? ALIAS_TO_CANONICAL[token]
-      : (Object.prototype.hasOwnProperty.call(ALIAS_TO_CANONICAL, compactToken)
-        ? ALIAS_TO_CANONICAL[compactToken]
-        : null);
-    if (canonical) {
-      expanded.add(canonical);
-      (SUBJECT_SYNONYMS[canonical] || []).forEach((alias) => expanded.add(String(alias).toLowerCase()));
-    }
-
-    Object.entries(SUBJECT_SYNONYMS).forEach(([key, aliases]) => {
-      const matchesAlias =
-        (!isGuardedAmbiguousMatch(token, key, key) && matchesTerm(token, compactToken, key)) ||
-        aliases.some((alias) => !isGuardedAmbiguousMatch(token, alias, key) && matchesTerm(token, compactToken, alias));
-
-      if (matchesAlias) {
-        expanded.add(key);
-        aliases.forEach((alias) => expanded.add(String(alias).toLowerCase()));
-      }
-    });
-  });
-
-  return Array.from(expanded);
-}
-
 // เพิ่ม keyword เข้า signal map พร้อมน้ำหนัก
-// rawText จะถูก expandTerms ก่อน จึงทำให้คำพ้องความหมายได้รับน้ำหนักด้วย
+// เก็บเฉพาะ token ที่ปรากฏจริง ไม่มีการเติมคำหรือหมวดวิชา
 // มี cap ต่อคำที่ MAX_SIGNAL_WEIGHT_PER_TERM เพื่อไม่ให้คำเดียวแรงเกินไป
 function addSignal(map, rawText, weight) {
   if (!rawText || !weight) return;
-  expandTerms(rawText).forEach((term) => {
+  tokenize(rawText).forEach((term) => {
     if (!term || STOPWORDS.has(term) || term.length < 2) return;
     map.set(term, Math.min(MAX_SIGNAL_WEIGHT_PER_TERM, (map.get(term) || 0) + weight));
   });
@@ -370,22 +242,9 @@ function serializeReasonTerms(signalMap, limit = 5) {
     .map(([term]) => term);
 }
 
-// สร้างชุดคำสนใจหลักจากช่อง "วิชาที่สนใจ" ของนักเรียน
-// ถ้าเจอคำสาย programming เช่น Python/Java/Data Structure
-// จะเติมคำกลุ่ม coding เพิ่ม เพื่อให้ match กับโพสต์สายเขียนโปรแกรมได้ดีขึ้น
+// สร้างชุดคำที่ปรากฏจริงจากช่อง "วิชาที่สนใจ" เพื่อใช้แสดงเหตุผล
 function buildPrimaryInterestTerms(rawText) {
-  const terms = new Set(
-    expandTerms(rawText)
-      .map((term) => normalizeText(term))
-      .filter(Boolean)
-  );
-
-  const techTerms = ['python', 'java', 'data structure', 'data structures', 'datastructure', 'algorithm', 'programming'];
-  if (techTerms.some((term) => terms.has(term))) {
-    ['programming', 'coding', 'code', 'developer', 'software', 'algorithm', 'data structure'].forEach((term) => terms.add(term));
-  }
-
-  return Array.from(terms);
+  return tokenize(rawText).map((term) => normalizeText(term)).filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -497,67 +356,28 @@ function getPostLastSessionTime(post = {}) {
   ), null);
 }
 
-// helper สำหรับแปลง field หนึ่ง ๆ เป็นเปอร์เซ็นต์ match จาก signal map
-// ปัจจุบันยังใช้ในบาง flow เช่นโพสต์นักเรียน/ค้นหา แต่ relevance หลักของโพสต์ติวเตอร์เป็น strict 0/100 แล้ว
-function getFieldMatchPercent(text, signalMap, rawMax = 180) {
-  return scoreFieldAgainstSignals(text, signalMap, 100, { rawMax });
-}
-
-function getSignalTermSet(signalMap) {
-  // แปลง signal Map ให้เป็นชุดคำสำหรับ fallback ในกรณีผู้ใช้ไม่มีวิชาที่สนใจใน Bio
-  // ใช้เฉพาะตอนที่ไม่มี primaryInterestTerms เพราะ logic strict ควรอิงความต้องการหลักก่อน
-  const terms = new Set();
-  if (!signalMap?.size) return terms;
-
-  signalMap.forEach((_, term) => {
-    expandTerms(term).forEach((expandedTerm) => {
-      const normalized = normalizeText(expandedTerm);
-      if (normalized) terms.add(normalized);
-    });
-  });
-
-  return terms;
-}
-
-function getRecommendationInterestTerms(signals, context = {}) {
-  // ถ้านักเรียนกรอก "วิชาที่สนใจ" ใน Bio ให้ใช้ชุดคำนั้นเป็นหลัก
-  // เพื่อกันคำจาก search/history/interaction มาดันโพสต์คนละวิชาขึ้นมา
-  const primaryTerms = Array.isArray(context.primaryInterestTerms)
-    ? context.primaryInterestTerms.map((term) => normalizeText(term)).filter(Boolean)
-    : [];
-
-  if (primaryTerms.length) return new Set(primaryTerms);
-  return getSignalTermSet(signals);
-}
-
-function hasExpandedTermOverlapWithSet(text, termSet) {
-  // ตรวจว่า text มี keyword ใด keyword หนึ่งที่อยู่ใน termSet หรือไม่
-  // ผลลัพธ์นี้ถูกใช้แปลงเป็น match แบบ 100/0 ในสูตร Relevance
-  if (!termSet?.size) return false;
-
-  return expandTerms(text)
-    .map((term) => normalizeText(term))
-    .filter(Boolean)
-    .some((term) => termSet.has(term));
-}
-
 // ---------------------------------------------------------------------------
 // 4) Tutor-post relevance scoring
 // ใช้กับฝั่งนักเรียนที่ต้องการหาโพสต์รับสอนของติวเตอร์
 // สูตรหลัก: Subject + CanTeach * Level
-// โดย SubjectMatch, CanTeachMatch และ LevelMatch มีค่าแค่ 0 หรือ 100
+// โดย SubjectMatch และ CanTeachMatch เป็นคะแนน 0-100 จาก embedding similarity
+// ส่วน LevelMatch เป็น 0/100 เพราะเป็นเงื่อนไขระดับชั้นที่ควรตรงแบบชัดเจน
 // ถ้า Relevance Percent ไม่มากกว่า 80 จะไม่คิด Recency และ Popularity ต่อ
 // ---------------------------------------------------------------------------
 
 function buildTutorRelevanceBreakdown(row, signals, context = {}) {
-  const interestTerms = getRecommendationInterestTerms(signals, context);
+  // SubjectMatch:
+  // เปรียบเทียบ "ความต้องการ/ความสนใจของนักเรียน" กับ "subject ของโพสต์"
+  // ค่านี้มาจาก cosine similarity ของ embedding แล้วแปลงเป็นเปอร์เซ็นต์ 0-100
+  // ถ้า semanticSubjectMatch เป็น null แปลว่าโมเดล embedding ใช้งานไม่ได้หรือไม่มีข้อความให้เทียบ
+  const semanticSubjectMatch = semanticSimilarityToPercent(row.semantic_subject_similarity);
+  const subjectMatch = semanticSubjectMatch ?? 0;
 
-  // Subject Match แบบ strict: หัวข้อโพสต์ตรงกับวิชาที่นักเรียนสนใจ = 100, ไม่ตรง = 0
-  const subjectMatch = hasExpandedTermOverlapWithSet(row.subject, interestTerms) ? 100 : 0;
-
-  // CanTeach Match แบบ strict: วิชาที่ติวเตอร์สอนได้ตรงกับวิชาที่นักเรียนสนใจ = 100, ไม่ตรง = 0
-  const canTeachSource = [row.can_teach_subjects, row.subject].filter(Boolean).join(' ');
-  const canTeachMatch = hasExpandedTermOverlapWithSet(canTeachSource, interestTerms) ? 100 : 0;
+  // CanTeachMatch:
+  // เปรียบเทียบ "ความต้องการ/ความสนใจของนักเรียน" กับ "วิชาที่ติวเตอร์ระบุว่าสอนได้"
+  // ใช้ช่วยยืนยันว่าโพสต์ไม่ได้แค่ตั้งชื่อวิชาคล้ายกัน แต่โปรไฟล์ติวเตอร์ก็รองรับวิชานั้นด้วย
+  const semanticCanTeachMatch = semanticSimilarityToPercent(row.semantic_can_teach_similarity);
+  const canTeachMatch = semanticCanTeachMatch ?? 0;
 
   // Level Match: ถ้านักเรียนมีระดับชั้นใน Bio จะใช้เป็น hard condition
   // เช่น มัธยมต้นต้อง match กับ ม.1-ม.3 เท่านั้น ไม่ให้ มัธยมปลายผ่าน
@@ -566,16 +386,28 @@ function buildTutorRelevanceBreakdown(row, signals, context = {}) {
     : 100;
   const levelMultiplier = levelMatch / 100;
 
-  // สูตร Relevance Percent ตาม requirement:
+  // สูตร Relevance Percent:
   // RelevancePercent = SubjectMatch*0.55 + CanTeachMatch*(LevelMatch/100)*0.45
-  // เมื่อ Match ทั้งหมดเป็น 100 จะได้ RelevancePercent = 100
-  // ถ้าขาดตัวใดตัวหนึ่ง คะแนนจะไม่ถึงเกณฑ์ > 80 และโพสต์จะไม่ผ่าน
+  //
+  // ตัวอย่าง:
+  // SubjectMatch = 90, CanTeachMatch = 85, LevelMatch = 100
+  // RelevancePercent = 90*0.55 + 85*1*0.45 = 87.75
+  //
+  // ถ้า LevelMatch = 0 ส่วน CanTeach จะถูกตัดออกทันที
+  // เพื่อกันการแนะนำโพสต์ที่วิชาใกล้เคียงแต่ระดับชั้นไม่เหมาะกับผู้ใช้
   const relevancePercent = Math.min(
     100,
     (subjectMatch * 0.55) + (canTeachMatch * levelMultiplier * 0.45)
   );
-  // แปลง Relevance Percent ให้เป็น Relevance Score เต็ม 60 คะแนน
+
+  // แปลง Relevance Percent 0-100 ให้เป็น Relevance Score เต็ม 60 คะแนน
+  // เช่น RelevancePercent 90 จะได้ RelevanceScore 54 คะแนน
   const relevanceScore = scaleToWeightedCap(relevancePercent, 100, RECOMMENDATION_SCORE_CAPS.relevance);
+
+  // Gate สำคัญของระบบ:
+  // ต้องมี SubjectMatch, CanTeachMatch, LevelMatch และ RelevancePercent > 80
+  // ถ้าไม่ผ่าน จะไม่ให้ Recency/Popularity มาดันโพสต์นั้นขึ้นมา
+  // เหตุผลคือโพสต์ยอดนิยมหรือโพสต์ใหม่มาก ๆ ไม่ควรชนะแค่เพราะดัง/ใหม่ ถ้าวิชาไม่ตรงกับผู้ใช้
   const passesRelevance =
     subjectMatch > 0 &&
     canTeachMatch > 0 &&
@@ -593,7 +425,7 @@ function buildTutorRelevanceBreakdown(row, signals, context = {}) {
 }
 
 // คำนวณคะแนนรวมของโพสต์ติวเตอร์ 1 โพสต์
-// ขั้นแรกคิด Relevance แบบ strict ถ้าไม่ผ่านจะคืนคะแนนรวม 0 ทันที
+// ขั้นแรกคิด Relevance ถ้าไม่ผ่านจะคืนคะแนนรวม 0 ทันที
 // ถ้าผ่านแล้วจึงคำนวณ Popularity และ Recency ต่อ
 function buildTutorRecommendationScore(row, signals, context = {}) {
   const relevance = buildTutorRelevanceBreakdown(row, signals, context);
@@ -607,6 +439,10 @@ function buildTutorRecommendationScore(row, signals, context = {}) {
     };
   }
 
+  // หลังจากผ่าน Relevance แล้ว จึงค่อยคิดคะแนนเสริม:
+  // - Popularity: ความนิยม/ความน่าเชื่อถือของโพสต์ เต็ม 20
+  // - Recency: ความใหม่ของโพสต์ เต็ม 20
+  // แล้วรวมกับ RelevanceScore ที่ถูก scale เป็นคะแนนเต็ม 60
   const popularity = popularityScore({
     favCount: row.fav_count,
     reviewCount: row.review_count,
@@ -633,37 +469,13 @@ function matchesTutorRecommendationConditions(row) {
   );
 }
 
-// หาอันดับของวิชาโพสต์ตามลำดับคำสนใจของผู้ใช้
-// ถ้าโพสต์ตรงกับ topTerms ลำดับแรกจะได้ rank ต่ำกว่า และถูกเรียงขึ้นก่อน
-function getTutorInterestRank(row, topTerms = []) {
-  if (!Array.isArray(topTerms) || topTerms.length === 0) return 999;
-
-  const rowTerms = new Set(
-    expandTerms([row.subject, row.can_teach_subjects].filter(Boolean).join(' '))
-      .map((term) => normalizeText(term))
-      .filter(Boolean)
-  );
-
-  for (let index = 0; index < topTerms.length; index += 1) {
-    const termVariants = expandTerms(topTerms[index]).map((term) => normalizeText(term)).filter(Boolean);
-    if (termVariants.some((term) => rowTerms.has(term))) return index;
-  }
-
-  return 999;
-}
-
 // ตรวจว่าโพสต์ตรงกับวิชาที่นักเรียนระบุในช่อง "วิชาที่สนใจ" หรือไม่
 // ใช้เป็นตัวกรองหลักเพื่อกันคำจากพฤติกรรมมาดันโพสต์คนละวิชา
 function matchesPrimaryInterests(row, primaryInterestTerms = []) {
   if (!Array.isArray(primaryInterestTerms) || primaryInterestTerms.length === 0) return true;
 
-  const rowTerms = new Set(
-    expandTerms([row.subject, row.can_teach_subjects].filter(Boolean).join(' '))
-      .map((term) => normalizeText(term))
-      .filter(Boolean)
-  );
-
-  return primaryInterestTerms.some((term) => rowTerms.has(normalizeText(term)));
+  const semanticMatch = semanticSimilarityToPercent(row.semantic_core_similarity);
+  return semanticMatch !== null && semanticMatch > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -672,20 +484,10 @@ function matchesPrimaryInterests(row, primaryInterestTerms = []) {
 // เช่น นักเรียน ม.ต้น ไม่ควรได้โพสต์ ม.ปลาย หรือ art ไม่ควร match กับคำว่า Parts
 // ---------------------------------------------------------------------------
 
-// ตรวจว่าข้อความสองฝั่งมี keyword/คำพ้องความหมายร่วมกันหรือไม่
-// ใช้กับการ match แบบ strict เช่น วิชาที่สอนของติวเตอร์กับหัวข้อโพสต์นักเรียน
-function hasExpandedTermOverlap(leftText, rightText) {
-  const leftTerms = getExpandedTermSet(leftText);
-  const rightTerms = getExpandedTermSet(rightText);
-  if (!leftTerms.size || !rightTerms.size) return false;
-
-  return Array.from(leftTerms).some((term) => rightTerms.has(term));
-}
-
 // สร้างชุดคำระดับชั้น เช่น "มัธยมต้น" จะขยายเป็น ม.1, ม.2, ม.3, middle school
 // ทำให้การเทียบระดับชั้นไม่พลาดเพราะใช้คำเรียกคนละแบบ
 function getGradeTermSet(text) {
-  const terms = getExpandedTermSet(text);
+  const terms = getTokenSet(text);
   const normalized = normalizeText(text);
   if (!normalized) return terms;
 
@@ -722,12 +524,9 @@ function hasGradeLevelOverlap(leftText, rightText) {
 function buildTutorStudentFitBreakdown(row, tutorSignals) {
   const canTeachSubjects = tutorSignals?.canTeachSubjects || '';
   const canTeachGrades = tutorSignals?.canTeachGrades || '';
-  const subjectText = row.subject || '';
-
   // ฝั่งติวเตอร์ดูโพสต์นักเรียน: วิชาในโพสต์นักเรียนต้องตรงกับวิชาที่ติวเตอร์สอนได้จริง
-  const subjectMatch = canTeachSubjects
-    ? (hasExpandedTermOverlap(subjectText, canTeachSubjects) ? 100 : 0)
-    : getFieldMatchPercent(subjectText, tutorSignals?.signals || new Map(), 180);
+  const semanticSubjectMatch = semanticSimilarityToPercent(row.semantic_subject_similarity);
+  const subjectMatch = semanticSubjectMatch ?? 0;
 
   // ระดับชั้นของโพสต์นักเรียนต้องอยู่ในช่วงที่ติวเตอร์รับสอน
   const levelMatch = canTeachGrades
@@ -740,7 +539,7 @@ function buildTutorStudentFitBreakdown(row, tutorSignals) {
     tutor_subject_match: subjectMatch,
     tutor_level_match: levelMatch,
     tutor_fit_percent: fitPercent,
-    passes_tutor_fit: subjectMatch > 0 && levelMatch > 0,
+    passes_tutor_fit: subjectMatch >= 55 && levelMatch > 0,
   };
 }
 
@@ -756,11 +555,10 @@ function compareTutorRecommendationRows(a, b) {
   );
 }
 
-// สร้าง Set ของ keyword จากข้อความเดียว
-// ต่างจาก expandTerms ตรงที่คืนเป็น Set เพื่อใช้ตรวจ overlap ได้เร็ว
-function getExpandedTermSet(text) {
+// สร้าง Set ของ token ที่ปรากฏจริงจากข้อความเดียว
+function getTokenSet(text) {
   return new Set(
-    expandTerms(text)
+    tokenize(text)
       .map((term) => normalizeText(term))
       .filter(Boolean)
   );
@@ -800,14 +598,22 @@ function buildTutorRelevanceRawScore(row, signals) {
 // คิดคะแนน relevance ของโพสต์นักเรียนสำหรับฝั่งติวเตอร์
 // ยังเป็นคะแนนแบบ field-weighted เพราะฝั่งโพสต์นักเรียนมี description/major/faculty เป็นตัวช่วย
 function buildStudentRelevanceRawScore(row, signals) {
-  const subjectTerms = getExpandedTermSet(row.subject);
-  return (
-    scoreFieldAgainstSignals(row.subject, signals, STUDENT_RELEVANCE_FIELD_POINTS.subject) +
-    scoreFieldAgainstSignals(row.description, signals, STUDENT_RELEVANCE_FIELD_POINTS.description, { excludeTerms: subjectTerms }) +
-    scoreFieldAgainstSignals(row.major, signals, STUDENT_RELEVANCE_FIELD_POINTS.major) +
-    scoreFieldAgainstSignals(row.grade_level, signals, STUDENT_RELEVANCE_FIELD_POINTS.gradeLevel, { rawMax: 1200 }) +
-    scoreFieldAgainstSignals(row.faculty, signals, STUDENT_RELEVANCE_FIELD_POINTS.faculty)
+  const semanticMatch = semanticSimilarityToPercent(row.semantic_profile_similarity);
+  if (semanticMatch === null) return 0;
+
+  const semanticCap =
+    STUDENT_RELEVANCE_FIELD_POINTS.subject +
+    STUDENT_RELEVANCE_FIELD_POINTS.description +
+    STUDENT_RELEVANCE_FIELD_POINTS.major +
+    STUDENT_RELEVANCE_FIELD_POINTS.faculty;
+  const semanticScore = scaleToWeightedCap(semanticMatch, 100, semanticCap);
+  const levelScore = scoreFieldAgainstSignals(
+    row.grade_level,
+    signals,
+    STUDENT_RELEVANCE_FIELD_POINTS.gradeLevel,
+    { rawMax: 1200 }
   );
+  return semanticScore + levelScore;
 }
 
 //ดูข้อความในโพสต์ว่าตรงกับคำสำคัญของผู้ใช้งานมากแค่ไหน
@@ -819,7 +625,7 @@ function scoreTextAgainstSignals(text, signalMap, multiplier = 1) {
   if (!haystack || !signalMap?.size || !multiplier) return 0;
 
   const fieldTerms = new Set(
-    expandTerms(text)
+    tokenize(text)
       .map((term) => normalizeText(term))
       .filter(Boolean)
   );
@@ -849,25 +655,54 @@ function daysSince(dateValue) {
   return Math.max(0, (Date.now() - value.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-//ให้คะแนนความใหม่ของโพสต์
-// คิดคะแนนความใหม่ของโพสต์เต็ม 20 คะแนน
-// ยิ่งโพสต์ใหม่ยิ่งได้คะแนนสูง แต่จะไม่ช่วยโพสต์ที่ relevance ไม่ผ่าน
+// ให้คะแนนความใหม่ของโพสต์ (Recency Score)
+//
+// Recency เป็นคะแนนเสริมเต็ม 20 คะแนนจากคะแนนรวม 100
+// ใช้หลังจากโพสต์ผ่าน Relevance แล้วเท่านั้น
+//
+// เหตุผลของเกณฑ์นี้:
+// เว็บหาติวเตอร์ไม่เหมือนข่าวหรือ social media ที่โพสต์เก่าเร็วมาก
+// ติวเตอร์อาจยังเปิดรับสอนอยู่หลายสัปดาห์ จึงกำหนดให้โพสต์ภายใน 14 วันยังใหม่เต็มคะแนน
+// หลังจากนั้นลดคะแนนลงแบบค่อยเป็นค่อยไป เพื่อให้โพสต์ใหม่ได้เปรียบ
+// แต่ไม่ตัดโพสต์ที่ยังเกี่ยวข้องออกเร็วเกินไป
+//
+// เกณฑ์คะแนนจริง:
+// - อายุโพสต์ <= 14 วัน  = 20 คะแนน
+// - อายุโพสต์ <= 30 วัน  = 15 คะแนน
+// - อายุโพสต์ <= 60 วัน  = 10 คะแนน
+// - อายุโพสต์ <= 90 วัน  = 5 คะแนน
+// - อายุโพสต์ > 90 วัน   = 0 คะแนน
 function recencyScore(dateValue) {
   const ageDays = daysSince(dateValue);
   let rawScore = 0;
-  // โพสต์ใหม่จะได้คะแนนมากกว่า แต่คะแนนส่วนนี้ถูก cap ไว้สูงสุด 20 คะแนน
-  if (ageDays <= 1) rawScore = 100; // โพสต์ที่สร้างในวันนี้หรือเมื่อวาน
-  else if (ageDays <= 3) rawScore = 80; // โพสต์ใน 3 วันที่ผ่านมา
-  else if (ageDays <= 7) rawScore = 60; // โพสต์ใน 7 วันที่ผ่านมา
-  else if (ageDays <= 14) rawScore = 35; // โพสต์ใน 14 วันที่ผ่านมา
-  else if (ageDays <= 30) rawScore = 15; // โพสต์ใน 30 วันที่ผ่านมา
+
+  // rawScore เป็นคะแนนดิบเต็ม 100 แล้วค่อยแปลงลงมาเป็นคะแนนเต็ม 20 ด้วย scaleToWeightedCap()
+  // เช่น rawScore 75 -> 75% ของ 20 = 15 คะแนน
+  if (ageDays <= 14) rawScore = 100; // 20 คะแนน
+  else if (ageDays <= 30) rawScore = 75; // 15 คะแนน
+  else if (ageDays <= 60) rawScore = 50; // 10 คะแนน
+  else if (ageDays <= 90) rawScore = 25; // 5 คะแนน
   return scaleToWeightedCap(rawScore, 100, RECOMMENDATION_SCORE_CAPS.recency);
 }
 
-//ให้คะแนนความนิยมของโพสต์/ติวเตอร์
-// คิดคะแนนความนิยมเต็ม 20 คะแนน
-// type='tutor' ใช้ Favorites + Joins + Rating
-// type='student' ใช้ Favorites + Joins
+// ให้คะแนนความนิยมของโพสต์ (Popularity Score)
+//
+// Popularity เป็นคะแนนเสริมเต็ม 20 คะแนนจากคะแนนรวม 100
+// ใช้สะท้อนว่าโพสต์/ติวเตอร์มี engagement หรือความน่าเชื่อถือมากน้อยแค่ไหน
+// แต่จะถูกคิดหลังจากผ่าน Relevance แล้ว เพื่อไม่ให้โพสต์ที่ดังแต่ไม่ตรงความต้องการถูกแนะนำ
+//
+// type='tutor':
+// - Favorites 30%: ผู้ใช้กดบันทึก/สนใจโพสต์
+// - Joins 30%: มีคนเข้าร่วมหรือตอบรับโพสต์
+// - Rating 40%: คะแนนรีวิวของติวเตอร์ สำคัญที่สุดใน popularity เพราะสะท้อนคุณภาพ/ความน่าเชื่อถือ
+//
+// type='student':
+// - Favorites 45% และ Joins 55%
+// - ไม่มี rating เพราะเป็นโพสต์ของนักเรียน ไม่ใช่โปรไฟล์ติวเตอร์
+//
+// หมายเหตุ:
+// ใช้ Math.min() จำกัดเพดานจำนวน favorites/joins เพื่อไม่ให้โพสต์ที่ยอดสูงมากเพียงโพสต์เดียว
+// ได้เปรียบจนกลบโพสต์อื่นมากเกินไป
 function popularityScore(
   { favCount = 0, reviewCount = 0, joinCount = 0, rating = 0 },
   type = 'tutor'
@@ -877,12 +712,18 @@ function popularityScore(
 
   if (type === 'student') {
     // Popularity ของโพสต์นักเรียนใช้ Favorites และ Joins
+    // favCount ถูก cap ที่ 20 ครั้ง และ joinCount ถูก cap ที่ 30 ครั้ง
+    // ถ้าเกินกว่านี้จะถือว่าได้คะแนนส่วนนี้เต็มแล้ว เพื่อกันคะแนนพุ่งเกินสมดุล
     rawScore =
       (Math.min(Number(favCount || 0), 20) / 20) * STUDENT_POPULARITY_FIELD_POINTS.favorites +
       (Math.min(Number(joinCount || 0), 30) / 30) * STUDENT_POPULARITY_FIELD_POINTS.joins;
     rawMax = sumConfigPoints(STUDENT_POPULARITY_FIELD_POINTS);
   } else {
     // ตัวแปรย่อย Popularity ของติวเตอร์: Favorites, Joins, Rating
+    // ตัวอย่าง:
+    // favCount 10 จาก cap 20 = ได้ 50% ของคะแนน Favorites
+    // joinCount 15 จาก cap 30 = ได้ 50% ของคะแนน Joins
+    // rating 4.5 จาก 5 = ได้ 90% ของคะแนน Rating
     rawScore =
       (Math.min(Number(favCount || 0), 20) / 20) * TUTOR_POPULARITY_FIELD_POINTS.favorites +
       (Math.min(Number(joinCount || 0), 30) / 30) * TUTOR_POPULARITY_FIELD_POINTS.joins +
@@ -906,51 +747,9 @@ function calculateIsExpired(post) {
   return daysSince(createdAt) > 45;
 }
 
-//เอาชื่อวิชาต่างๆที่ได้มา มาแปลงให้เป็นชื่อกลางที่มีอยู่ใน SUBJECT_SYNONYMS
-// หา canonical subject ของโพสต์
-// ใช้ตอน diversify เพื่อกันวิชาเดียวกันขึ้นซ้ำเยอะเกินไป
+// ใช้ชื่อวิชาที่ normalize แล้วเป็น key สำหรับกระจายรายการไม่ให้หัวข้อเดิมซ้ำมากเกินไป
 function getCanonicalSubject(subject) {
-  const terms = expandTerms(subject);
-  return terms.find((term) => SUBJECT_SYNONYMS[term]) || normalizeText(subject);
-}
-
-//เช็คว่าโพสต์นั้นตรงกับความสนใจของผู้ใช้หรือไม่ โดยดูจากคำสำคัญที่ของผู้ใช้
-// ตรวจว่า row match กับ topTerms โดยดูหลาย field
-// ใช้กับ flow สำรอง/สำรวจ เพื่อดูว่าโพสต์ยังเกี่ยวข้องกับผู้ใช้ไหม
-function rowMatchesTopTerms(row, topTerms = []) {
-  if (!Array.isArray(topTerms) || topTerms.length === 0) return false;
-
-  const rowTerms = new Set(
-    expandTerms(
-      [
-        row.subject,
-        row.description,
-        row.target_student_level,
-        row.location,
-        row.name,
-        row.lastname,
-      ].filter(Boolean).join(' ')
-    )
-  );
-
-  return topTerms.some((term) => rowTerms.has(String(term || '').toLowerCase()));
-}
-
-// ตรวจว่า row match กับ topTerms เฉพาะแกนวิชา
-// ใช้เมื่อต้องการจับเฉพาะ subject/canTeach ไม่รวม description/location
-function rowMatchesCoreSubjectTerms(row, topTerms = []) {
-  if (!Array.isArray(topTerms) || topTerms.length === 0) return false;
-
-  const rowTerms = new Set(
-    expandTerms(
-      [
-        row.subject,
-        row.can_teach_subjects,
-      ].filter(Boolean).join(' ')
-    )
-  );
-
-  return topTerms.some((term) => rowTerms.has(String(term || '').toLowerCase()));
+  return normalizeText(subject);
 }
 
 // ---------------------------------------------------------------------------
@@ -1230,6 +1029,14 @@ async function getStudentSignals(pool, userId) {
     institution: profile?.institution || '', // ส่งสถานศึกษาออกไปใช้ต่อ
     faculty: profile?.faculty || '', // ส่งคณะออกไปใช้ต่อ
     major: profile?.major || '', // ส่งสาขาออกไปใช้ต่อ
+    semanticProfileText: [
+      profile?.interested_subjects,
+      profile?.major,
+      profile?.faculty,
+      profile?.about,
+      ...serializeReasonTerms(signals, 8),
+    ].filter(Boolean).join(' | '),
+    primaryInterestText: profile?.interested_subjects || '',
   };
 }
 
@@ -1324,6 +1131,11 @@ async function getTutorSignals(pool, userId) {
     address: profile?.address || '', // ส่งที่อยู่กลับไปใช้ต่อ
     canTeachSubjects: profile?.can_teach_subjects || '', // ส่งวิชาที่ติวเตอร์สอนได้กลับไปใช้กรองโพสต์นักเรียน
     canTeachGrades: profile?.can_teach_grades || '', // ส่งระดับชั้นที่ติวเตอร์รับสอนกลับไปใช้ต่อ
+    semanticProfileText: [
+      profile?.can_teach_subjects,
+      profile?.about_me,
+      ...serializeReasonTerms(signals, 8),
+    ].filter(Boolean).join(' | '),
   };
 }
 
@@ -1594,13 +1406,62 @@ function mapStudentRow(row) {
 // - getHomepageFeed: feed รูปแบบ matched/expired สำหรับหน้าหลัก
 // ---------------------------------------------------------------------------
 
+async function addTutorSemanticScores(rows, queryText, primaryInterestText = '') {
+  const coreQuery = primaryInterestText || queryText;
+  const semanticRows = await scoreTextVariants(coreQuery, rows, [
+    {
+      key: 'semantic_subject_similarity',
+      buildText: (row) => row.subject || '',
+    },
+    {
+      key: 'semantic_can_teach_similarity',
+      buildText: (row) => [row.can_teach_subjects, row.subject].filter(Boolean).join(' | '),
+    },
+  ]);
+
+  const scoredRows = await scoreTextVariants(coreQuery, semanticRows, [
+    {
+      key: 'semantic_core_similarity',
+      buildText: (row) => [
+        row.subject,
+        row.can_teach_subjects,
+        row.description,
+      ].filter(Boolean).join(' | '),
+    },
+  ]);
+  const available = scoredRows.some((row) => Number.isFinite(row.semantic_core_similarity));
+  return scoredRows.map((row) => ({ ...row, semantic_embedding_available: available }));
+}
+
+async function addStudentSemanticScores(rows, queryText) {
+  const scoredRows = await scoreTextVariants(queryText, rows, [
+    {
+      key: 'semantic_subject_similarity',
+      buildText: (row) => row.subject || '',
+    },
+    {
+      key: 'semantic_profile_similarity',
+      buildText: (row) => [
+        row.subject,
+        row.description,
+        row.major,
+        row.faculty,
+      ].filter(Boolean).join(' | '),
+    },
+  ]);
+  const available = scoredRows.some((row) => Number.isFinite(row.semantic_profile_similarity));
+  return scoredRows.map((row) => ({ ...row, semantic_embedding_available: available }));
+}
+
 // แนะนำโพสต์ติวเตอร์ให้ผู้ใช้ที่เป็นนักเรียน
 // Flow:
 // 1. สร้าง student signals จาก Bio/Profile
 // 2. ดึง candidate โพสต์ติวเตอร์
-// 3. คิด strict relevance 0/100 สำหรับ Subject, CanTeach, Level
-// 4. แยก active กับ expired
-// 5. แสดง active ที่ผ่านเงื่อนไขก่อน แล้วตามด้วย expired ที่ยังเกี่ยวข้อง
+// 3. เติม semantic similarity ให้ candidate แต่ละโพสต์
+// 4. คิด Relevance จาก SubjectMatch, CanTeachMatch และ LevelMatch
+// 5. ถ้า Relevance ผ่าน จึงคิด Recency และ Popularity แล้วรวมเป็นคะแนน 100
+// 6. แยก active กับ expired
+// 7. แสดง active ที่ผ่านเงื่อนไขก่อน แล้วตามด้วย expired ที่ยังเกี่ยวข้อง
 async function getTutorRecommendations(pool, userId, options = {}) {
   const limit = Number(options.limit || 12); //เริ่มต้น 12 โพสต์
   const candidateLimit = Math.max(500, limit * 50);
@@ -1624,14 +1485,41 @@ async function getTutorRecommendations(pool, userId, options = {}) {
   }
 
   const signals = await getUserSignals(pool, userId, 'student'); //ดึงข้อมูลนักเรียน ระบบจะไปดูข้อมูลของนักเรียนใน getUserSignals กรณีที่ Login หรือมี Userid แล้ว
-  const candidates = await getTutorRecommendationCandidates(pool, userId, candidateLimit); //ดึงโพสต์ติวเตอร์ให้กว้างพอรวมโพสต์หมดอายุที่เกี่ยวข้อง
+  const rawCandidates = await getTutorRecommendationCandidates(pool, userId, candidateLimit); //ดึงโพสต์ติวเตอร์ให้กว้างพอรวมโพสต์หมดอายุที่เกี่ยวข้อง
+  const candidates = await addTutorSemanticScores(
+    rawCandidates,
+    signals.semanticProfileText || signals.topTerms.join(' | '),
+    signals.primaryInterestText
+  );
+  if (candidates.length && !candidates[0].semantic_embedding_available) {
+    const fallbackRows = buildColdStartTutorRows(candidates, limit);
+    return {
+      items: fallbackRows.map(mapTutorRow),
+      explore_items: [],
+      based_on: 'โมเดล semantic embedding ไม่พร้อม จึงแสดงโพสต์ใหม่และโพสต์ยอดนิยมชั่วคราว',
+      reason_terms: [],
+      recommendation_engine: 'semantic_embeddings_unavailable',
+    };
+  }
 
   // คิดคะแนนตามสูตร 100 คะแนน:
-  // Relevance 60 (ต้องผ่าน >80% ก่อน), Recency 20, Popularity 20
+  //
+  // 1) Relevance 60 คะแนน
+  //    - ได้จาก embedding similarity ของ Subject และ CanTeach
+  //    - ต้องมี RelevancePercent > 80 ก่อนถึงจะผ่าน
+  //
+  // 2) Recency 20 คะแนน
+  //    - ได้จากอายุโพสต์ เช่น <=14 วัน = 20 คะแนน
+  //
+  // 3) Popularity 20 คะแนน
+  //    - ได้จาก favorites, joins และ rating
+  //
+  // ถ้า Relevance ไม่ผ่าน ฟังก์ชัน buildTutorRecommendationScore()
+  // จะคืน Recency/Popularity เป็น 0 เพื่อกันโพสต์ไม่ตรงเรื่องถูกดันขึ้นด้วยความใหม่หรือความนิยม
   const scoredRows = dedupeRows(candidates, (row) => row.tutor_post_id).map((row) => {
     const score = buildTutorRecommendationScore(row, signals.signals, signals);
     const lastSession = getPostLastSessionTime(row);
-    const interestRank = getTutorInterestRank(row, signals.topTerms);
+    const interestRank = 0;
     const matchesPrimaryInterest = matchesPrimaryInterests(row, signals.primaryInterestTerms);
     return {
       ...row,
@@ -1738,6 +1626,7 @@ async function getTutorRecommendations(pool, userId, options = {}) {
       popularity: 20,
       relevance_threshold: 80,
       formula: 'Subject + CanTeach * Level',
+      text_matching: 'multilingual_semantic_embeddings',
     },
   }; //แสดงสิ่งที่แนะนำมาได้ไป frontend
 }
@@ -1762,7 +1651,12 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
     };
   }
 
-  const candidates = await getStudentRecommendationCandidates(pool, 500); //ดึงโพสต์นักเรียนให้กว้างพอหลังกรองวิชาและระดับชั้น
+  const rawCandidates = await getStudentRecommendationCandidates(pool, 500); //ดึงโพสต์นักเรียนให้กว้างพอหลังกรองวิชาและระดับชั้น
+  const candidates = await addStudentSemanticScores(
+    rawCandidates,
+    signals.semanticProfileText || signals.topTerms.join(' | ')
+  );
+  const semanticUnavailable = candidates.length && !candidates[0].semantic_embedding_available;
 
   // คิดคะแนนว่าโพสต์นักเรียนไหนตรงกับติวเตอร์มากที่สุด
   let ranked = dedupeRows(candidates, (row) => row.student_post_id).map((row) => {
@@ -1774,7 +1668,7 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
     };
   });
 
-  if (signals.isColdStart) { //isColdStart คือเป็นค่าเริ่มต้นที่ไม่มีอะไรเลย
+  if (signals.isColdStart || semanticUnavailable) { //isColdStart คือเป็นค่าเริ่มต้นที่ไม่มีอะไรเลย
     // ถ้ายังไม่มีข้อมูลติวเตอร์พอ ให้เรียงตามความนิยมและความใหม่ของโพสต์ เหมือนนักเรียนเลยจ้า
     ranked = ranked.sort((a, b) => (
       (popularityScore({ favCount: b.fav_count, joinCount: b.join_count }, 'student') + recencyScore(b.created_at)) -
@@ -1793,10 +1687,13 @@ async function getStudentRecommendationsForTutor(pool, userId, options = {}) {
 
   return { //แสดงผลการแนะนำโพสต์สำหรับติวเตอร์
     items: ranked.slice(0, limit).map(mapStudentRow),
-    based_on: signals.isColdStart
+    based_on: signals.isColdStart || semanticUnavailable
       ? 'ยังไม่มีข้อมูลการสอนมากพอ จึงใช้โพสต์ใหม่และโพสต์ที่มีความเคลื่อนไหวสูง'
       : `คัดจากวิชาที่คุณสอนและพฤติกรรมล่าสุด: ${signals.topTerms.slice(0, 5).join(', ')}`,
     reason_terms: signals.topTerms,
+    recommendation_engine: semanticUnavailable
+      ? 'semantic_embeddings_unavailable'
+      : 'multilingual_semantic_embeddings',
   };
 }
 
@@ -1807,9 +1704,14 @@ async function getMixedFeedRecommendations(pool, userId, options = {}) {
   // ใช้ข้อมูลความสนใจของนักเรียนเป็นตัวกลางสำหรับฟีดรวม ตรงหน้ารายการที่สนใจ
   const signals = await getUserSignals(pool, userId, 'student');
   // ดึงโพสต์ติวเตอร์และโพสต์นักเรียนมาพร้อมกัน
-  const [tutors, students] = await Promise.all([
+  const [rawTutors, rawStudents] = await Promise.all([
     getTutorRecommendationCandidates(pool, userId, 90),
     getStudentRecommendationCandidates(pool, 90),
+  ]);
+  const semanticQuery = signals.semanticProfileText || signals.topTerms.join(' | ');
+  const [tutors, students] = await Promise.all([
+    addTutorSemanticScores(rawTutors, semanticQuery, signals.primaryInterestText),
+    addStudentSemanticScores(rawStudents, semanticQuery),
   ]);
 
   // คิดคะแนนโพสต์ติวเตอร์และโพสต์นักเรียนแยกกันก่อน
@@ -1862,9 +1764,13 @@ async function smartSearch(pool, query, userId = 0) { //ระบบค้นห
     querySignals.set(term, (querySignals.get(term) || 0) + Math.min(weight, 14));
   }
 
-  const [tutors, students] = await Promise.all([
+  const [rawTutors, rawStudents] = await Promise.all([
     getTutorRecommendationCandidates(pool, userId, 120),
     getStudentRecommendationCandidates(pool, 120),
+  ]);
+  const [tutors, students] = await Promise.all([
+    addTutorSemanticScores(rawTutors, query, query),
+    addStudentSemanticScores(rawStudents, query),
   ]);
 
   // คิดคะแนนโพสต์ติวเตอร์ แล้วตัดโพสต์ที่ไม่เกี่ยวหรือหมดเวลาออก
@@ -1950,7 +1856,12 @@ async function getHomepageFeed(pool, userId, options = {}) {
     ? await getUserSignals(pool, userId, 'student').catch(() => ({ signals: new Map(), topTerms: [], isColdStart: true }))
     : { signals: new Map(), topTerms: [], isColdStart: true };
 
-  const candidates = await getTutorRecommendationCandidates(pool, userId || 0, 200);
+  const rawCandidates = await getTutorRecommendationCandidates(pool, userId || 0, 200);
+  const candidates = await addTutorSemanticScores(
+    rawCandidates,
+    signals.semanticProfileText || signals.topTerms.join(' | '),
+    signals.primaryInterestText
+  );
   const allRows = dedupeRows(candidates, (row) => row.tutor_post_id);
 
   // แยกโพสต์ active และ expired
@@ -2005,6 +1916,7 @@ async function getHomepageFeed(pool, userId, options = {}) {
       recency: 20,
       popularity: 20,
       formula: 'Subject + CanTeach * Level',
+      text_matching: 'multilingual_semantic_embeddings',
     },
     based_on: signals.isColdStart
       ? 'โพสต์ที่ตรงเงื่อนไขและโพสต์หมดอายุล่าสุด'
@@ -2013,8 +1925,6 @@ async function getHomepageFeed(pool, userId, options = {}) {
 }
 
 module.exports = {
-  SUBJECT_SYNONYMS,
-  expandTerms,
   normalizeText,
   tokenize,
   getUserSignals,
