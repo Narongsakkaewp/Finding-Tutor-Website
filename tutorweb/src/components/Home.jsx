@@ -751,6 +751,8 @@ function HomeStudent({ onViewProfile }) {
 
   const user = JSON.parse(localStorage.getItem('user'));
   const userId = user?.user_id;
+  const userType = (localStorage.getItem("userType") || "").toLowerCase();
+  const isAdmin = userType === "admin" || user?.role === "admin";
 
   const openUserProfileFromTutor = (tutor) => {
     const targetUserId = getTutorProfileUserId(tutor);
@@ -889,7 +891,7 @@ function HomeStudent({ onViewProfile }) {
         </div>
 
         {/* --- 1. Recommended Section (When NOT searching) --- */}
-        {!query && (
+        {!query && !isAdmin && (
           // ... (Same as before)
           <div className="space-y-16">
             <section className="mt-4">

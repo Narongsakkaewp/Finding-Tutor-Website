@@ -218,7 +218,14 @@ function Notification({ userId, onOpenPost, onReadAll, onReadOne, onViewProfile 
       return;
     }
 
-    if (item.type === 'admin_report_alert' || item.type === 'system_alert') {
+    if (item.type === 'admin_report_alert') {
+      if (item.report_target_type === 'profile' && item.reported_user_id && typeof onViewProfile === 'function') {
+        onViewProfile(item.reported_user_id);
+      }
+      return;
+    }
+
+    if (item.type === 'system_alert') {
       return;
     }
 

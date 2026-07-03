@@ -3,7 +3,7 @@ import { ShieldAlert, CheckCircle, XCircle, Trash2, Eye, Filter, Loader2, Flag, 
 import MyPostDetails from './MyPostDetails';
 import { API_BASE } from '../config';
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ onViewProfile }) {
     // Reports State
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -239,13 +239,20 @@ export default function AdminDashboard() {
                                                         <div className="text-sm text-gray-500 mt-1">
                                                             ผู้รายงาน: {report.reporter_name} {report.reporter_lastname} (ID: {report.reporter_id})
                                                         </div>
+                                                        {report.post_type === 'profile' && (
+                                                            <div className="text-sm text-indigo-600 mt-1 font-medium">
+                                                                ผู้ใช้ที่ถูกรายงาน: @{report.reported_username || `user_${report.reported_user_id}`}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
 
                                                 <div
                                                     onClick={() => {
                                                         if (report.post_type === 'profile') {
-                                                            window.open(`/profile/${report.reported_user_id}`, '_blank');
+                                                            if (typeof onViewProfile === 'function' && report.reported_user_id) {
+                                                                onViewProfile(report.reported_user_id);
+                                                            }
                                                         } else {
                                                             setViewingPost(report);
                                                         }
@@ -263,6 +270,20 @@ export default function AdminDashboard() {
                                                     </h4>
                                                     <div className="text-gray-900 font-medium mb-1 line-clamp-1 group-hover:text-blue-600 transition-colors">{report.post_title}</div>
                                                     <div className="text-xs text-gray-500 line-clamp-2">{report.post_content}</div>
+                                                    {report.post_type === 'profile' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (typeof onViewProfile === 'function' && report.reported_user_id) {
+                                                                    onViewProfile(report.reported_user_id);
+                                                                }
+                                                            }}
+                                                            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
+                                                        >
+                                                            ดูโปรไฟล์ @{report.reported_username || `user_${report.reported_user_id}`}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
 

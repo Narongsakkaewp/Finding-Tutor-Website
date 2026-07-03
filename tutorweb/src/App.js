@@ -377,7 +377,7 @@ function App() {
             onNotFound={handleUserProfileNotFound}
           />
         );
-      case 'admin_dashboard': return <AdminDashboard />;
+      case 'admin_dashboard': return <AdminDashboard onViewProfile={handleViewProfile} />;
       case 'manage_posts': return <ManageMyPosts onBack={() => setCurrentPage('home')} />;
       default: return <Home />;
     }

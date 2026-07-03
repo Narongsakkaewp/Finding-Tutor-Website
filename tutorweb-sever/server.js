@@ -2895,6 +2895,10 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         n.created_at,
         n.user_id,
         n.actor_id,
+        rpt.post_type AS report_target_type,
+        rpt.post_id AS report_post_id,
+        rpt.reported_user_id,
+        reported_user.username AS reported_username,
         -- ข้อมูลผู้กระทำ (Actor)
         au.name AS actor_firstname, 
         au.lastname AS actor_lastname,
@@ -2942,10 +2946,22 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         END AS inferred_post_type,
         sp.subject AS student_subject_candidate,
         tp.subject AS tutor_subject_candidate,
+        report_sp.subject AS report_student_subject,
+        report_tp.subject AS report_tutor_subject,
         ce_student.subject AS calendar_student_subject,
         ce_tutor.subject AS calendar_tutor_subject
 
       FROM notifications n
+      LEFT JOIN user_reports rpt
+        ON n.type = 'admin_report_alert'
+       AND n.related_id = rpt.report_id
+      LEFT JOIN register reported_user ON rpt.reported_user_id = reported_user.user_id
+      LEFT JOIN student_posts report_sp
+        ON rpt.post_type IN ('student_post', 'student')
+       AND rpt.post_id = report_sp.student_post_id
+      LEFT JOIN tutor_posts report_tp
+        ON rpt.post_type IN ('tutor_post', 'tutor')
+       AND rpt.post_id = report_tp.tutor_post_id
       LEFT JOIN register au ON au.user_id = n.actor_id
       -- Join เพื่อเอารูปโปรไฟล์ (ลองหาทั้งจาก student และ tutor profile)
       LEFT JOIN student_profiles spro ON spro.user_id = n.actor_id
@@ -3034,9 +3050,29 @@ app.get('/api/notifications/:user_id', async (req, res) => {
         resolvedPostType === 'student_post' ? (studentSubject || row.post_subject) :
           resolvedPostType === 'tutor_post' ? (tutorSubject || row.post_subject) :
             row.post_subject;
+      const normalizedMessage =
+        row.type === 'admin_report_alert' && row.reported_username
+          ? `มีรายงานใหม่เกี่ยวกับผู้ใช้งาน @${row.reported_username}`
+          : row.message;
+
+      let finalMessage = normalizedMessage;
+      if (row.type === 'admin_report_alert') {
+        if (row.report_target_type === 'profile' && row.reported_username) {
+          finalMessage = `มีรายงานใหม่เกี่ยวกับผู้ใช้งาน @${row.reported_username}`;
+        } else if (row.report_target_type === 'profile' && row.reported_user_id) {
+          finalMessage = `มีรายงานใหม่เกี่ยวกับผู้ใช้งาน user_${row.reported_user_id}`;
+        } else if ((row.report_target_type === 'student_post' || row.report_target_type === 'student') && row.report_student_subject) {
+          finalMessage = `มีรายงานใหม่เกี่ยวกับโพสต์นักเรียน: ${row.report_student_subject}`;
+        } else if ((row.report_target_type === 'tutor_post' || row.report_target_type === 'tutor') && row.report_tutor_subject) {
+          finalMessage = `มีรายงานใหม่เกี่ยวกับโพสต์ติวเตอร์: ${row.report_tutor_subject}`;
+        } else if (row.report_post_id) {
+          finalMessage = `มีรายงานใหม่เกี่ยวกับโพสต์หมายเลข ${row.report_post_id}`;
+        }
+      }
 
       return {
         ...row,
+        message: finalMessage,
         resolved_post_type: resolvedPostType,
         post_subject: resolvedSubject,
       };
@@ -5220,6 +5256,7 @@ app.post('/api/reports', async (req, res) => {
     const { reporter_id, post_id, post_type, reason, reported_user_id } = req.body;
 
     let targetUserId = reported_user_id;
+    let reportedUser = null;
 
     // 🕵️ AUTO-DETECT Target User (If missing from frontend)
     if (!targetUserId && post_id) {
@@ -5236,6 +5273,14 @@ app.post('/api/reports', async (req, res) => {
       // Allow reporting just a user (profilereport) if implemented later
     }
 
+    if (targetUserId) {
+      const [reportedRows] = await pool.query(
+        'SELECT user_id, username, name, lastname FROM register WHERE user_id = ? LIMIT 1',
+        [targetUserId]
+      );
+      reportedUser = reportedRows[0] || null;
+    }
+
     const [reportResult] = await pool.query(
       `INSERT INTO user_reports (reporter_id, reported_user_id, post_id, post_type, reason, created_at)
        VALUES (?, ?, ?, ?, ?, NOW())`,
@@ -5249,6 +5294,7 @@ app.post('/api/reports', async (req, res) => {
     );
 
     if (admins.length > 0) {
+      const reportedUsername = reportedUser?.username ? `@${reportedUser.username}` : null;
       const targetLabel = post_type === 'profile'
         ? 'ผู้ใช้งาน'
         : post_id
@@ -5297,6 +5343,9 @@ app.get('/api/admin/reports', async (req, res) => {
       SELECT 
         r.report_id, r.reporter_id, r.reported_user_id, r.post_id, r.reason, r.status, r.created_at,
         reporter.name as reporter_name, reporter.lastname as reporter_lastname,
+        reported.username as reported_username,
+        reported.name as reported_name,
+        reported.lastname as reported_lastname,
         
         /* Resolve Post Title/Type */
         CASE 
@@ -5309,14 +5358,21 @@ app.get('/api/admin/reports', async (req, res) => {
         CASE 
           WHEN r.post_type IN ('student_post', 'student') THEN COALESCE(sp.subject, 'Post Deleted')
           WHEN r.post_type IN ('tutor_post', 'tutor') THEN COALESCE(tp.subject, 'Post Deleted')
-          WHEN r.post_type = 'profile' THEN CONCAT('User: ', COALESCE(reported.name, 'Unknown'), ' ', COALESCE(reported.lastname, ''))
+          WHEN r.post_type = 'profile' THEN CONCAT('User: ', COALESCE(CONCAT('@', reported.username), COALESCE(reported.name, 'Unknown')))
           ELSE 'Unknown'
         END as post_title,
 
         CASE 
           WHEN r.post_type IN ('student_post', 'student') THEN sp.description
           WHEN r.post_type IN ('tutor_post', 'tutor') THEN tp.description
-          WHEN r.post_type = 'profile' THEN CONCAT('Reported User ID: ', r.reported_user_id)
+          WHEN r.post_type = 'profile' THEN CONCAT(
+            'ชื่อ: ',
+            TRIM(CONCAT(COALESCE(reported.name, ''), ' ', COALESCE(reported.lastname, ''))),
+            ' | Username: ',
+            COALESCE(CONCAT('@', reported.username), CONCAT('user_', r.reported_user_id)),
+            ' | User ID: ',
+            r.reported_user_id
+          )
           ELSE ''
         END as post_content
 

@@ -256,7 +256,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
       <div
         key={`${variant}-${key}`}
         className={`rounded-xl p-4 shadow-sm hover:shadow-md transition-all border cursor-pointer group relative overflow-hidden ${
-          isExpired ? "bg-gray-50 border-gray-200 opacity-80" : "bg-white hover:border-indigo-300"
+          isExpired ? "bg-gray-50 border-gray-200" : "bg-white hover:border-indigo-300"
         }`}
         onClick={() => {
           logUserInteraction({
