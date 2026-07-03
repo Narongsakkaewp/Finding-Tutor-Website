@@ -450,6 +450,7 @@ app.use('/api/favorites', favoriteRoutes);
 
 // --- 🧠 Recommendation API ---
 app.get('/api/recommendations/courses', recommendationController.getRecommendations);
+app.get('/api/recommendations/upcoming-courses', recommendationController.getUpcomingCourses);
 app.get('/api/recommendations/tutor', recommendationController.getStudentRequestsForTutor);
 app.get('/api/recommendations/friends', recommendationController.getStudyBuddyRecommendations);
 app.get('/api/recommendations/trending', recommendationController.getTrendingSubjects); // ✅ Dynamic Trending

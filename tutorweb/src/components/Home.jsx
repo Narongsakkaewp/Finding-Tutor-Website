@@ -10,6 +10,7 @@ import TutorPostForm from './TutorPostForm';
 import TutorSearchList from './TutorSearchList';
 import SmartSearch from './SmartSearch';
 import RecommendedTutors from './RecommendedTutors';
+import UpcomingTutorCourses from './UpcomingTutorCourses';
 import { API_BASE } from '../config';
 import { useTabRestoration, useScrollRestoration } from '../hooks/useRestoration';
 import { logUserInteraction, notifyRecommendationRefresh } from '../utils/interactions';
@@ -162,7 +163,17 @@ function SectionHeader({ title, subtitle, actionLabel = "ดูทั้งห�
           {Icon && <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600"><Icon size={20} /></div>}
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-gray-900">{title}</h2>
         </div>
-        {subtitle && <p className="text-base text-gray-500 ml-1">{subtitle}</p>}
+        {subtitle && (
+          Icon === Users ? (
+            <div className="ml-1 mt-2">
+              <span className="inline-flex items-center rounded-full border border-orange-100 bg-white px-3 py-1 text-sm font-medium text-slate-600">
+                {subtitle}
+              </span>
+            </div>
+          ) : (
+            <p className={`ml-1 ${typeof subtitle === "string" ? "text-base text-gray-500" : ""}`}>{subtitle}</p>
+          )
+        )}
       </div>
       {onAction && (
         <button onClick={onAction} className="group inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors">
@@ -178,6 +189,21 @@ function TutorCard({ item, onOpen, onToggleSave }) {
   useEffect(() => { setLiked(!!item.is_favorited); }, [item.is_favorited]);
 
   const toggle = (e) => { e.stopPropagation(); setLiked((v) => !v); onToggleSave?.(item); };
+  const imageSrc = item.image || "";
+  const hasImage = imageSrc && !String(imageSrc).toLowerCase().includes("blank_avatar");
+  const accentPalette = [
+    "bg-cyan-100 text-cyan-700",
+    "bg-emerald-100 text-emerald-700",
+    "bg-amber-100 text-amber-700",
+    "bg-rose-100 text-rose-700",
+  ];
+  const accentClass = accentPalette[Math.abs(Number(item.id || 0)) % accentPalette.length];
+  const initials = String(item.name || "T")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "T";
 
   return (
     <div
@@ -185,7 +211,13 @@ function TutorCard({ item, onOpen, onToggleSave }) {
       onClick={() => onOpen?.(item)}
     >
       <div className="relative aspect-[5/4] w-full overflow-hidden">
-        <img src={item.image} alt={item.name} className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-500" loading="lazy" />
+        {hasImage ? (
+          <img src={item.image} alt={item.name} className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-500" loading="lazy" />
+        ) : (
+          <div className={`flex h-full w-full items-center justify-center ${accentClass}`}>
+            <span className="text-6xl font-black tracking-tight opacity-90">{initials}</span>
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/25 to-transparent opacity-80" />
         <button onClick={toggle} className={`absolute top-3 right-3 inline-flex items-center justify-center h-8 w-8 rounded-full backdrop-blur-md bg-white/30 border border-white/50 transition-colors hover:bg-white ${liked ? "text-rose-500 bg-white" : "text-white"}`}>
           <Heart className={`h-4 w-4 ${liked ? "fill-rose-500" : ""}`} />
@@ -230,7 +262,8 @@ function TutorCard({ item, onOpen, onToggleSave }) {
           )}
         </div>
         <div className="mt-auto grid grid-cols-[1fr_auto] gap-2 pt-1">
-          <button className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-semibold text-sm hover:bg-indigo-600 transition-colors">ดูรายละเอียด</button>
+          <button className="w-full py-2.5 rounded-xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-colors">
+            ดูรายละเอียด</button>
         </div>
       </div>
     </div>
@@ -902,12 +935,19 @@ function HomeStudent({ onViewProfile }) {
               />
             </section>
 
+            <section className="mt-10">
+              <UpcomingTutorCourses
+                userId={userId}
+                onOpen={(item) => openPreviewWithTracking(item, "tutor", "open_upcoming_course")}
+              />
+            </section>
+
             {/* <section className="mb-12">
               <SectionHeader title="วิชายอดฮิต" subtitle="อัปเดตตามความนิยมจริงแบบเรียลไทม์" icon={Sparkles} />
               <TrendingSubjectsList onOpen={(item) => handleSearch(item.name || item.id)} />
             </section> */}
 
-            <section className="mt-12">
+            <section className="mt-12 rounded-[28px] border border-orange-100 bg-orange-50 p-6">
               <SectionHeader
                 title="ติวเตอร์หน้าใหม่"
                 subtitle="ติวเตอร์ที่เพิ่งสมัครเข้ามาใหม่"
@@ -935,9 +975,9 @@ function HomeStudent({ onViewProfile }) {
                 <div className="mt-8 text-center">
                   <button
                     onClick={() => setVisibleCount(prev => prev + 8)}
-                    className="px-6 py-2.5 rounded-full bg-white border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:text-indigo-600 hover:border-indigo-100 shadow-sm transition-all active:scale-95 flex items-center gap-2 mx-auto"
+                    className="px-6 py-2.5 rounded-full bg-white border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 hover:text-orange-600 hover:border-indigo-100 shadow-sm transition-all active:scale-95 flex items-center gap-2 mx-auto"
                   >
-                    แสดงเพิ่มเติม <ChevronRight size={16} className="rotate-90" />
+                    แสดงเพิ่มเติม
                   </button>
                 </div>
               )}

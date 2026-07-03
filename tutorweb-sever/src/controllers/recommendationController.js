@@ -2,6 +2,9 @@ const {
   getTutorRecommendations,
   getStudentRecommendationsForTutor,
 } = require('../utils/discoveryEngine');
+const {
+  getUpcomingCourseRecommendations,
+} = require('../services/upcomingCoursesService');
 
 exports.getRecommendations = async (req, res) => {
   try {
@@ -43,6 +46,24 @@ exports.getRecommendedCourses = async (req, res) => {
   } catch (err) {
     console.error('Recommended Courses Error:', err);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.getUpcomingCourses = async (req, res) => {
+  try {
+    const pool = req.db;
+    const userId = Number(req.query.user_id) || 0;
+    const limit = Number(req.query.limit) || 24;
+
+    if (!userId) {
+      return res.json({ items: [], based_on: '', reason_terms: [] });
+    }
+
+    const result = await getUpcomingCourseRecommendations(pool, userId, { limit });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Upcoming Courses Error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 };
 

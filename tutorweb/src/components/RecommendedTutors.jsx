@@ -287,7 +287,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
             className={`w-12 h-12 rounded-full object-cover border ${isExpired ? "grayscale" : ""}`}
           />
           <div className="flex-1 min-w-0">
-            <h3 className={`font-bold truncate group-hover:text-indigo-600 transition-colors ${isExpired ? "text-gray-600" : "text-gray-900"}`}>
+            <h3 className={`font-bold truncate group-hover:text-blue-700 transition-colors ${isExpired ? "text-gray-600" : "text-gray-900"}`}>
               {tutor.subject}
             </h3>
             <div className="text-sm text-gray-500 flex items-center gap-1 mt-1">
@@ -341,7 +341,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
                 <button
                   disabled={joinLoading[key] || isFull}
                   onClick={(e) => handleJoin(e, tutor)}
-                  className={`w-full py-2 rounded-xl text-sm font-bold text-white transition-colors ${isFull ? "bg-gray-400 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"}`}
+                  className={`w-full py-2 rounded-xl text-sm font-bold text-white transition-colors ${isFull ? "bg-gray-400 cursor-not-allowed" : "bg-blue-500 hover:bg-blue-700"}`}
                 >
                   {isFull ? "เต็มแล้ว" : (joinLoading[key] ? "กำลังประมวลผล..." : "ขอเข้าร่วม")}
                 </button>
@@ -383,7 +383,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
                 onClick={() => setShowExplore((prev) => !prev)}
                 className="px-5 py-2.5 rounded-full border border-indigo-200 bg-white text-indigo-700 font-semibold hover:bg-indigo-50 transition-colors shadow-sm"
               >
-                {showExplore ? "ซ่อนติวเตอร์เพิ่มเติม" : "ดูติวเตอร์เพิ่มเติม"}
+                {showExplore ? "แสดงน้อยลง" : "แสดงเพิ่มเติม"}
               </button>
             </div>
           )}

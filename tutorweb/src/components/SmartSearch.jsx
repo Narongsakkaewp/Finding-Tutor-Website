@@ -169,7 +169,7 @@ export default function SmartSearch({ userId, onSearch, onSelectResult }) {
         <div className="p-1">
           <button
             onClick={() => handleTriggerSearch()}
-            className="bg-sky-600 hover:bg-sky-700 text-white px-6 py-2.5 rounded-full font-bold transition-all shadow-md active:scale-95 flex items-center gap-2 text-sm"
+            className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-full font-bold transition-all shadow-md active:scale-95 flex items-center gap-2 text-sm"
           >
             ค้นหา
           </button>
