@@ -381,7 +381,7 @@ export default function RecommendedTutors({ userId, onOpen }) {
               <button
                 type="button"
                 onClick={() => setShowExplore((prev) => !prev)}
-                className="px-5 py-2.5 rounded-full border border-indigo-200 bg-white text-indigo-700 font-semibold hover:bg-indigo-50 transition-colors shadow-sm"
+                className="px-5 py-2.5 rounded-full border border-indigo-200 bg-white text-gray-600 font-medium hover:bg-gray-50 hover:border-indigo-100 shadow-sm transition-all active:scale-95"
               >
                 {showExplore ? "แสดงน้อยลง" : "แสดงเพิ่มเติม"}
               </button>
