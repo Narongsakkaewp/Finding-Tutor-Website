@@ -247,6 +247,55 @@ function buildPrimaryInterestTerms(rawText) {
   return tokenize(rawText).map((term) => normalizeText(term)).filter(Boolean);
 }
 
+const PRIMARY_INTEREST_ALIASES = Object.freeze({
+  'ศิลปะ': ['art', 'drawing', 'วาด', 'วาดรูป', 'วาดภาพ', 'ออกแบบ', 'design'],
+  'การออกแบบ': ['ออกแบบ', 'design', 'graphic', 'graphics', 'ui', 'ux', 'figma', 'portfolio'],
+  'ออกแบบ': ['การออกแบบ', 'design', 'graphic', 'graphics', 'ui', 'ux', 'figma', 'portfolio'],
+  'ภาษาอังกฤษ': ['อังกฤษ', 'english', 'eng', 'toeic', 'ielts', 'toefl', 'grammar', 'speaking', 'writing', 'essay', 'conversation'],
+  'อังกฤษ': ['ภาษาอังกฤษ', 'english', 'eng', 'toeic', 'ielts', 'toefl', 'grammar', 'speaking', 'writing', 'essay', 'conversation'],
+  'จีน': ['ภาษาจีน', 'chinese', 'mandarin', 'hsk', 'pinyin'],
+  'ภาษาจีน': ['จีน', 'chinese', 'mandarin', 'hsk', 'pinyin'],
+  'python': ['python'],
+  'java': ['java', 'oop'],
+  'javascript': ['javascript', 'js', 'react', 'frontend'],
+  'html': ['html', 'css', 'web', 'website', 'frontend'],
+  'react': ['react', 'javascript', 'frontend'],
+  'physics': ['physics', 'ฟิสิกส์'],
+});
+
+function expandPrimaryInterestTerm(term) {
+  const normalized = normalizeText(term);
+  if (!normalized) return [];
+  const aliases = PRIMARY_INTEREST_ALIASES[normalized] || [];
+  return [normalized, ...aliases.map(normalizeText)].filter(Boolean);
+}
+
+function buildPrimaryInterestMatcherTerms(primaryInterestTerms = []) {
+  const matcherTerms = new Set();
+  primaryInterestTerms.forEach((term) => {
+    expandPrimaryInterestTerm(term).forEach((expanded) => {
+      if (expanded.length >= 2 && !STOPWORDS.has(expanded)) {
+        matcherTerms.add(expanded);
+      }
+    });
+  });
+  return matcherTerms;
+}
+
+function hasPrimaryInterestTermMatch(row, primaryInterestTerms = []) {
+  const matcherTerms = buildPrimaryInterestMatcherTerms(primaryInterestTerms);
+  if (!matcherTerms.size) return true;
+
+  const candidateText = normalizeText([
+    row.subject,
+    row.description,
+    row.can_teach_subjects,
+  ].filter(Boolean).join(' | '));
+
+  if (!candidateText) return false;
+  return Array.from(matcherTerms).some((term) => candidateText.includes(term));
+}
+
 // ---------------------------------------------------------------------------
 // 2) Score helpers
 // กลุ่มนี้ใช้ scale คะแนนดิบให้เข้าเพดานคะแนนที่กำหนด
@@ -381,8 +430,14 @@ function buildTutorRelevanceBreakdown(row, signals, context = {}) {
 
   // Level Match: ถ้านักเรียนมีระดับชั้นใน Bio จะใช้เป็น hard condition
   // เช่น มัธยมต้นต้อง match กับ ม.1-ม.3 เท่านั้น ไม่ให้ มัธยมปลายผ่าน
+  const hasLevelConflict = context.gradeLevel
+    ? hasExplicitGradeLevelConflict(
+      context.gradeLevel,
+      [row.target_student_level, row.subject, row.description].filter(Boolean).join(' | ')
+    )
+    : false;
   const levelMatch = context.gradeLevel
-    ? (hasGradeLevelOverlap(row.target_student_level, context.gradeLevel) ? 100 : 0)
+    ? (!hasLevelConflict && hasGradeLevelOverlap(row.target_student_level, context.gradeLevel) ? 100 : 0)
     : 100;
   const levelMultiplier = levelMatch / 100;
 
@@ -418,6 +473,7 @@ function buildTutorRelevanceBreakdown(row, signals, context = {}) {
     subject_match: Number(subjectMatch.toFixed(2)),
     can_teach_match: Number(canTeachMatch.toFixed(2)),
     level_match: Number(levelMatch.toFixed(2)),
+    level_conflict: hasLevelConflict,
     relevance_percent: Number(relevancePercent.toFixed(2)),
     relevance_score: passesRelevance ? relevanceScore : 0,
     passes_relevance: passesRelevance,
@@ -474,8 +530,7 @@ function matchesTutorRecommendationConditions(row) {
 function matchesPrimaryInterests(row, primaryInterestTerms = []) {
   if (!Array.isArray(primaryInterestTerms) || primaryInterestTerms.length === 0) return true;
 
-  const semanticMatch = semanticSimilarityToPercent(row.semantic_core_similarity);
-  return semanticMatch !== null && semanticMatch > 0;
+  return hasPrimaryInterestTermMatch(row, primaryInterestTerms);
 }
 
 // ---------------------------------------------------------------------------
@@ -519,6 +574,18 @@ function hasGradeLevelOverlap(leftText, rightText) {
   return Array.from(leftTerms).some((term) => rightTerms.has(term));
 }
 
+function hasExplicitGradeLevelConflict(studentLevel, postText) {
+  const studentTerms = getGradeTermSet(studentLevel);
+  const postTerms = getGradeTermSet(postText);
+  if (!studentTerms.size || !postTerms.size) return false;
+
+  const generalTerms = getGradeTermSet('บุคคลทั่วไป ทุกระดับชั้น general');
+  generalTerms.forEach((term) => postTerms.delete(term));
+  if (!postTerms.size) return false;
+
+  return !Array.from(studentTerms).some((term) => postTerms.has(term));
+}
+
 // คำนวณความเหมาะสมของโพสต์นักเรียนสำหรับติวเตอร์
 // ใช้ฝั่ง "นักเรียนที่อาจเหมาะกับคุณ" โดยบังคับให้วิชาและระดับชั้นตรงกับ Bio ของติวเตอร์
 function buildTutorStudentFitBreakdown(row, tutorSignals) {
@@ -552,6 +619,16 @@ function compareTutorRecommendationRows(a, b) {
     Number(b.relevance_score || 0) - Number(a.relevance_score || 0) ||
     Number(b.recommendation_score || 0) - Number(a.recommendation_score || 0) ||
     new Date(b.created_at || 0) - new Date(a.created_at || 0)
+  );
+}
+
+function compareExpiredTutorRows(a, b) {
+  const bExpiredAt = b.expired_at ? new Date(b.expired_at).getTime() : 0;
+  const aExpiredAt = a.expired_at ? new Date(a.expired_at).getTime() : 0;
+
+  return (
+    bExpiredAt - aExpiredAt ||
+    compareTutorRecommendationRows(a, b)
   );
 }
 
@@ -1570,26 +1647,25 @@ async function getTutorRecommendations(pool, userId, options = {}) {
       row.matches_primary_interest &&
       (signals.isColdStart || matchesTutorRecommendationConditions(row))
     ))
-    .sort((a, b) => {
-      const bExpiredAt = b.expired_at ? new Date(b.expired_at).getTime() : 0;
-      const aExpiredAt = a.expired_at ? new Date(a.expired_at).getTime() : 0;
-      return bExpiredAt - aExpiredAt;
-    });
+    .sort(compareExpiredTutorRows);
+  const expiredPrimaryRanked = signals.isColdStart
+    ? expiredRanked
+    : expiredRanked.filter((row) => row.passes_relevance);
+  const expiredExploreRanked = signals.isColdStart
+    ? []
+    : expiredRanked.filter((row) => !row.passes_relevance);
 
-  //คัดโพสต์ให้หลากหลาย ไม่ซ้ำติวเตอร์หรือวิชาเดิมมากไป
-  let primaryRows = diversifyTutorRows(activeRanked, limit); //โพสต์หลักที่เลือกมาแล้วว่ายัง active อยู่ diversifyTutorRows กันติวเตอร์ซ้ำหรือโพสต์วิชาเดิมๆ
-
-  if (primaryRows.length === 0) {
-    primaryRows = activeRanked.slice(0, limit);
-  }
-
-  // รายการหน้าหลักมี 2 กลุ่ม: active ที่ผ่าน threshold ก่อน แล้วตามด้วย expired ที่ยังอิง Subject/CanTeach/Level ของผู้ใช้
-  primaryRows = [...primaryRows, ...expiredRanked.slice(0, limit)];
+  const primaryRows = [...activeRanked, ...expiredPrimaryRanked];
 
   const primaryIds = new Set(primaryRows.map((row) => row.tutor_post_id));
   const exploreSourceRows = signals.isColdStart ? ranked : scoredRows;
   const lowerRelevanceRows = exploreSourceRows
-    .filter((row) => !row.is_expired && row.matches_primary_interest && !primaryIds.has(row.tutor_post_id))
+    .filter((row) => (
+      !row.is_expired &&
+      row.matches_primary_interest &&
+      (signals.isColdStart || matchesTutorRecommendationConditions(row)) &&
+      !primaryIds.has(row.tutor_post_id)
+    ))
     .sort(compareTutorRecommendationRows); // โพสต์คะแนนรองลงมา/ใกล้เคียง ใช้ในปุ่มดูติวเตอร์เพิ่มเติม
   // โพสต์หมดอายุใน explore: แสดงได้และเรียงจากหมดล่าสุดไปเก่าสุด แม้ไม่ผ่าน threshold หลัก
   const expiredForExplore = exploreSourceRows
@@ -1599,12 +1675,16 @@ async function getTutorRecommendations(pool, userId, options = {}) {
       row.matches_primary_interest &&
       (signals.isColdStart || matchesTutorRecommendationConditions(row))
     ))
-    .sort((a, b) => {
-      const bExpiredAt = b.expired_at ? new Date(b.expired_at).getTime() : 0;
-      const aExpiredAt = a.expired_at ? new Date(a.expired_at).getTime() : 0;
-      return bExpiredAt - aExpiredAt;
-    });
-  const exploreRows = buildExploreTutorRows(lowerRelevanceRows, expiredForExplore, Math.min(limit, 12));
+    .sort(compareExpiredTutorRows);
+  const expiredExploreRows = dedupeRows(
+    [...expiredExploreRanked, ...expiredForExplore],
+    (row) => row.tutor_post_id
+  );
+  const exploreRows = buildExploreTutorRows(
+    lowerRelevanceRows,
+    expiredExploreRows,
+    Math.min(limit, 12)
+  );
 
   const items = primaryRows.map(mapTutorRow);
   const exploreItems = exploreRows.map((row) => ({

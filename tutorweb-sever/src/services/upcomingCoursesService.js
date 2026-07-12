@@ -9,6 +9,93 @@ function normalizeText(value) {
     .trim();
 }
 
+function tokenizeText(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) return [];
+
+  const parts = normalized
+    .split(/[\s,/|+-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const tokens = new Set(parts);
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    tokens.add(`${parts[index]} ${parts[index + 1]}`);
+  }
+  for (let index = 0; index < parts.length - 2; index += 1) {
+    tokens.add(`${parts[index]} ${parts[index + 1]} ${parts[index + 2]}`);
+  }
+
+  return Array.from(tokens);
+}
+
+const SUBJECT_ALIASES = {
+  'วิทย์': ['วิทยาศาสตร์', 'science', 'physics', 'ฟิสิกส์', 'chemistry', 'เคมี', 'biology', 'ชีวะ', 'ชีววิทยา'],
+  'วิทยาศาสตร์': ['วิทย์', 'science', 'physics', 'ฟิสิกส์', 'chemistry', 'เคมี', 'biology', 'ชีวะ', 'ชีววิทยา'],
+  'คณิต': ['คณิตศาสตร์', 'math', 'mathematics', 'algebra', 'calculus', 'statistics'],
+  'คณิตศาสตร์': ['คณิต', 'math', 'mathematics', 'algebra', 'calculus', 'statistics'],
+  'วิทย์ คณิต': ['วิทย์', 'วิทยาศาสตร์', 'คณิต', 'คณิตศาสตร์', 'science', 'math', 'physics', 'ฟิสิกส์', 'chemistry', 'เคมี', 'biology', 'ชีวะ', 'ชีววิทยา'],
+  'วิทย์-คณิต': ['วิทย์', 'วิทยาศาสตร์', 'คณิต', 'คณิตศาสตร์', 'science', 'math', 'physics', 'ฟิสิกส์', 'chemistry', 'เคมี', 'biology', 'ชีวะ', 'ชีววิทยา'],
+  'ศิลปะ': ['art', 'drawing', 'วาด', 'วาดรูป', 'วาดภาพ', 'ออกแบบ', 'design'],
+  'การออกแบบ': ['ออกแบบ', 'design', 'graphic', 'graphics', 'ui', 'ux', 'figma', 'portfolio'],
+  'ออกแบบ': ['การออกแบบ', 'design', 'graphic', 'graphics', 'ui', 'ux', 'figma', 'portfolio'],
+  'ภาษาอังกฤษ': ['อังกฤษ', 'english', 'eng', 'toeic', 'ielts', 'toefl', 'grammar', 'speaking', 'writing', 'essay', 'conversation'],
+  'อังกฤษ': ['ภาษาอังกฤษ', 'english', 'eng', 'toeic', 'ielts', 'toefl', 'grammar', 'speaking', 'writing', 'essay', 'conversation'],
+  'จีน': ['ภาษาจีน', 'chinese', 'mandarin', 'hsk', 'pinyin'],
+  'ภาษาจีน': ['จีน', 'chinese', 'mandarin', 'hsk', 'pinyin'],
+  chemistry: ['chem', 'เคมี', 'วิทย์', 'science'],
+  chem: ['chemistry', 'เคมี', 'วิทย์', 'science'],
+  'เคมี': ['chemistry', 'chem', 'วิทย์', 'science'],
+  biology: ['bio', 'ชีวะ', 'ชีววิทยา', 'วิทย์', 'science'],
+  bio: ['biology', 'ชีวะ', 'ชีววิทยา', 'วิทย์', 'science'],
+  'ชีวะ': ['biology', 'bio', 'ชีววิทยา', 'วิทย์', 'science'],
+  'ชีววิทยา': ['biology', 'bio', 'ชีวะ', 'วิทย์', 'science'],
+  python: ['programming', 'coding', 'code', 'developer', 'data science', 'ai', 'machine learning'],
+  java: ['programming', 'coding', 'code', 'oop', 'object oriented'],
+  javascript: ['js', 'programming', 'coding', 'code', 'web', 'frontend', 'react', 'node'],
+  js: ['javascript', 'web', 'frontend', 'react', 'node'],
+  html: ['web', 'website', 'frontend', 'css', 'javascript'],
+  react: ['web', 'website', 'frontend', 'javascript', 'js'],
+  physics: ['mechanics', 'science'],
+  'ฟิสิกส์': ['physics', 'mechanics', 'science', 'วิทย์'],
+  'differential equation': ['calculus', 'math', 'mathematics', 'engineering mathematics'],
+};
+
+function expandSubjectToken(token) {
+  const normalized = normalizeText(token);
+  if (!normalized) return [];
+
+  const aliases = SUBJECT_ALIASES[normalized] || [];
+  return [normalized, ...aliases.map(normalizeText)].filter(Boolean);
+}
+
+function buildInterestTokenSet(rawText) {
+  const tokens = new Set();
+  tokenizeText(rawText).forEach((token) => {
+    expandSubjectToken(token).forEach((expanded) => tokens.add(expanded));
+  });
+  return tokens;
+}
+
+function hasInterestTokenMatch(row, interestTokens) {
+  if (!interestTokens || !interestTokens.size) return true;
+
+  const candidateTokens = new Set(tokenizeText([
+    row.subject,
+    row.description,
+    row.can_teach_subjects,
+  ].filter(Boolean).join(' | ')));
+  const candidateText = normalizeText([
+    row.subject,
+    row.description,
+    row.can_teach_subjects,
+  ].filter(Boolean).join(' | '));
+
+  return Array.from(interestTokens).some((token) => (
+    candidateTokens.has(token) || candidateText.includes(token)
+  ));
+}
+
 function parseDateToken(dateValue) {
   const dateText = String(dateValue || '').trim();
   if (!dateText) return null;
@@ -90,6 +177,45 @@ function hasGradeOverlap(studentLevel, tutorLevel) {
   return Array.from(left).some((term) => right.has(term));
 }
 
+function getGradeGroups(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) return new Set();
+
+  const groups = {
+    primary: ['ประถมศึกษา', 'ประถม', 'ป.1', 'ป.2', 'ป.3', 'ป.4', 'ป.5', 'ป.6', 'primary'],
+    lower_secondary: ['มัธยมศึกษาตอนต้น', 'มัธยมต้น', 'ม.ต้น', 'ม.1', 'ม.2', 'ม.3', 'middle school'],
+    upper_secondary: ['มัธยมศึกษาตอนปลาย', 'มัธยมปลาย', 'ม.ปลาย', 'ม.4', 'ม.5', 'ม.6', 'high school'],
+    bachelor: ['ปริญญาตรี', 'มหาวิทยาลัย', 'อุดมศึกษา', 'university', 'bachelor'],
+    general: ['บุคคลทั่วไป', 'ทั่วไป', 'ทุกระดับชั้น', 'all levels', 'general'],
+  };
+
+  const matched = new Set();
+  Object.entries(groups).forEach(([group, aliases]) => {
+    if (aliases.some((term) => normalized.includes(normalizeText(term)))) {
+      matched.add(group);
+    }
+  });
+
+  return matched;
+}
+
+function hasStrictGradeOverlap(studentLevel, tutorLevel) {
+  const studentGroups = getGradeGroups(studentLevel);
+  const tutorGroups = getGradeGroups(tutorLevel);
+  if (!studentGroups.size) return true;
+  if (!tutorGroups.size) return false;
+  if (tutorGroups.has('general')) return true;
+  return Array.from(studentGroups).some((group) => tutorGroups.has(group));
+}
+
+function hasExplicitGradeConflict(studentLevel, courseText) {
+  const studentGroups = getGradeGroups(studentLevel);
+  const courseGroups = getGradeGroups(courseText);
+  courseGroups.delete('general');
+  if (!studentGroups.size || !courseGroups.size) return false;
+  return !Array.from(studentGroups).some((group) => courseGroups.has(group));
+}
+
 function getStartOfTomorrow() {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -167,6 +293,20 @@ function buildStudentQueryText(context) {
     ...(context.searches || []).map((row) => row.keyword),
     ...(context.favorites || []).map((row) => row.subject),
   ].filter(Boolean).join(' | ');
+}
+
+function getStudentPreferenceText(context) {
+  const profile = context.profile || {};
+  const explicitInterest = String(profile.interested_subjects || '').trim();
+  if (explicitInterest) return explicitInterest;
+
+  return [
+    profile.major,
+    profile.faculty,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter((value) => value && value !== '-')
+    .join(' | ');
 }
 
 async function fetchUpcomingTutorCandidates(pool, userId, limit) {
@@ -296,6 +436,9 @@ async function getUpcomingCourseRecommendations(pool, userId, options = {}) {
   const candidateLimit = Math.max(80, limit * 20);
   const context = await fetchStudentContext(pool, userId);
   const queryText = buildStudentQueryText(context);
+  const hasExplicitInterest = Boolean(String(context.profile?.interested_subjects || '').trim());
+  const interestText = getStudentPreferenceText(context);
+  const interestTokens = buildInterestTokenSet(interestText);
   const profileGradeLevel = context.profile?.grade_level || '';
   const tomorrow = getStartOfTomorrow();
 
@@ -337,18 +480,38 @@ async function getUpcomingCourseRecommendations(pool, userId, options = {}) {
     },
   ]);
 
-  const filtered = semanticRows
+  const scoredRows = interestText
+    ? await scoreTextVariants(interestText, semanticRows, [
+      {
+        key: 'semantic_interest_similarity',
+        buildText: (row) => [row.subject, row.description, row.can_teach_subjects].filter(Boolean).join(' | '),
+      },
+    ])
+    : semanticRows;
+
+  const filtered = scoredRows
     .map((row) => {
       const subjectPercent = semanticSimilarityToPercent(row.semantic_subject_similarity) || 0;
       const profilePercent = semanticSimilarityToPercent(row.semantic_profile_similarity) || 0;
-      const gradeMatch = profileGradeLevel ? hasGradeOverlap(profileGradeLevel, row.target_student_level || row.can_teach_grades || '') : false;
-      const relevancePercent = Math.round((subjectPercent * 0.55) + (profilePercent * 0.45));
-      const hasSemanticMatch = relevancePercent >= 28;
-      const isRelevant = hasSemanticMatch || gradeMatch;
+      const interestPercent = semanticSimilarityToPercent(row.semantic_interest_similarity) || 0;
+      const directInterestMatch = hasInterestTokenMatch(row, interestTokens);
+      const levelText = [row.target_student_level, row.can_teach_grades].filter(Boolean).join(' | ');
+      const gradeMatch = profileGradeLevel ? hasStrictGradeOverlap(profileGradeLevel, levelText) : true;
+      const gradeConflict = profileGradeLevel
+        ? hasExplicitGradeConflict(profileGradeLevel, [row.target_student_level, row.subject, row.description].filter(Boolean).join(' | '))
+        : false;
+      const relevancePercent = Math.round((interestPercent * 0.55) + (subjectPercent * 0.25) + (profilePercent * 0.20));
+      const hasPrimaryInterest = interestTokens.size > 0
+        ? (hasExplicitInterest ? directInterestMatch : (directInterestMatch || interestPercent >= 65))
+        : (relevancePercent >= 28 || gradeMatch);
+      const isRelevant = hasPrimaryInterest && gradeMatch && !gradeConflict && (relevancePercent >= 28 || directInterestMatch);
 
       return {
         ...row,
         gradeMatch,
+        gradeConflict,
+        directInterestMatch,
+        interestPercent,
         relevancePercent,
         isRelevant,
       };
